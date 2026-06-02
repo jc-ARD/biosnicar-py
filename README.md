@@ -15,6 +15,7 @@ BioSNICAR computes 480-band spectral albedo (0.2–5.0 µm) from the physical pr
 **Key capabilities:**
 
 - **Forward model** — multi-layer ice/snow with arbitrary impurity profiles, liquid water, grain shape corrections
+- **Sea ice** — first-year and multiyear Arctic sea ice via Maxwell-Garnett brine effective medium (v0.1 MVP, `biosnicar.sea_ice`)
 - **Parameter sweeps** — Cartesian product over any input parameter, returns a pandas DataFrame
 - **Platform bands** — map spectral albedo onto 8 satellite/GCM platforms (Sentinel-2/3, Landsat 8, MODIS, CESM, MAR, HadCM3) with spectral indices
 - **Neural-network emulator** — ~50,000× faster than the full model, enabling optimisation and MCMC
@@ -193,6 +194,40 @@ outputs.plot_subsurface(show=True)
 See [docs/SUBSURFACE.md](docs/SUBSURFACE.md) and [examples/11_subsurface_light.py](examples/11_subsurface_light.py).
 
 
+## Sea ice (v0.1)
+
+The `biosnicar.sea_ice` module extends BioSNICAR to Arctic sea ice. Brine inclusions are modelled via Cox & Weeks (1983) brine volume and Maxwell-Garnett effective medium theory. Three built-in presets cover common winter conditions.
+
+```python
+from biosnicar.sea_ice.api import SeaIceColumn, SeaIceLayer, SnowLayer
+from biosnicar.sea_ice.presets import FYI_WINTER_BARE, FYI_WINTER_SNOW, MYI_WINTER_BARE
+
+# Use a built-in preset
+col = SeaIceColumn.from_preset(FYI_WINTER_BARE)
+result = col.compute_albedo(sza_deg=60, atmosphere="sub_arctic_winter")
+print(result.broadband)    # ~0.44
+print(result.spectrum)     # 480-band spectral albedo
+
+# Build a custom column
+col = SeaIceColumn(layers=[
+    SnowLayer(thickness_m=0.10, density_kg_m3=300, grain_radius_um=200),
+    SeaIceLayer(thickness_m=0.05, temperature_C=-20, salinity_psu=10,
+                density_kg_m3=920, bubble_radius_um=100),
+    SeaIceLayer(thickness_m=1.50, temperature_C=-8,  salinity_psu=6,
+                density_kg_m3=910, bubble_radius_um=200),
+])
+result = col.compute_albedo(sza_deg=60)
+```
+
+`compute_albedo()` accepts `sza_deg`, `atmosphere` (7 profiles), and `sky` (`"clear"` or `"cloudy"`). It returns an `AlbedoResult` with `.spectrum`, `.broadband`, `.visible`, `.nir`, and `.outputs`.
+
+**Layer type `4`** is the new sea-ice layer type. Use the adding-doubling solver (the default); the Toon solver does not handle the Fresnel air-ice interface correctly.
+
+**MVP scope:** bare FYI/MYI, snow-covered FYI. Deferred: melt ponds, sea-ice algae, salty snow, inverse retrieval.
+
+See [docs/sea_ice.md](docs/sea_ice.md) and [examples/13_sea_ice.py](examples/13_sea_ice.py).
+
+
 ## Built-in plotting
 
 All result objects have `.plot()` methods that return `(fig, axes)` for further customisation:
@@ -256,6 +291,7 @@ The default configuration is in `biosnicar/inputs.yaml`. A guide to choosing phy
 | Topic | Location |
 |-------|----------|
 | Full user guide | [biosnicar.vercel.app](https://biosnicar.vercel.app) |
+| **Sea ice extension** | [docs/sea_ice.md](docs/sea_ice.md) |
 | Band convolution | [docs/BANDS.md](docs/BANDS.md) |
 | Emulator | [docs/EMULATOR.md](docs/EMULATOR.md) |
 | Inversion | [docs/INVERSION.md](docs/INVERSION.md) |

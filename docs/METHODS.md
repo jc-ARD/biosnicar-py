@@ -11,6 +11,49 @@ BioSNICAR solves the two-stream radiative transfer (RT) equation for a multi-lay
 
 The forward model accepts physical parameters including bubble effective radius (`rds`, um), ice density (`rho`, kg m^-3), solar zenith angle (`solzen`, degrees), sky condition (`direct`, binary: 0 = diffuse/cloudy, 1 = direct/clear), and impurity concentrations in the surface layer (black carbon in ppb; algae in cells mL^-1; dust in ppb).
 
+### 1.1 Layer types
+
+Each layer in the column is assigned a `layer_type` integer that selects the optical-property calculation path:
+
+| `layer_type` | Description |
+|---|---|
+| 0 | Granular snow or ice — spherical, spheroidal, hexagonal plate, or Koch snowflake grains |
+| 1 | Solid bubbly glacier ice — bulk ice medium with air inclusions; Fresnel reflection at the air-ice boundary |
+| 2 | Solid bubbly glacier ice — same as 1 but without Fresnel correction |
+| 3 | Mixed water/ice spheres — interspersed liquid water and ice grains |
+| 4 | **Sea ice** — brine inclusions via Maxwell-Garnett effective medium (v0.1, see Section 1.2) |
+
+### 1.2 Sea ice (layer_type = 4)
+
+Sea ice contains brine inclusions: pockets of concentrated liquid seawater that remain liquid below 0 °C. Their presence modifies the complex refractive index of the ice and therefore its optical properties. The sea ice model (v0.1 MVP) uses a three-step pipeline:
+
+**Step 1 — Brine volume fraction** (Cox & Weeks 1983).  
+Given bulk salinity S (psu) and temperature T (°C), the brine volume fraction ν_b is:
+
+```
+F1(T) = −4.732 − 22.45T − 0.6397T² − 0.01074T³     (−22.9 ≤ T ≤ −2 °C)
+ν_b   = (S × ρ_i) / (F1 − ρ_i × S × F2)
+```
+
+**Step 2 — Effective medium** (Maxwell-Garnett).  
+The complex permittivity of pure ice ε_ice and of brine ε_brine are combined at volume fraction ν_b:
+
+```
+ε_eff = ε_ice × [ε_brine(1 + 2ν_b) + 2ε_ice(1 − ν_b)] /
+                [ε_brine(1 − ν_b)  + ε_ice(2 + ν_b)]
+```
+
+The effective refractive index n_eff + ik_eff = √ε_eff determines the absorption coefficient of the ice+brine medium.
+
+**Step 3 — Combined optical properties**.  
+Absorption comes from the imaginary part of n_eff. Scattering comes from air bubbles, using the existing `bubbly_air.npz` LUT; the air volume fraction is inferred from the density balance. The result is (τ, ω, g) at all 480 bands, stored in a pre-computed LUT at `data/OP_data/480band/luts/sea_ice.npz` covering temperature (7 points), salinity (6 points), density (4 points), and bubble radius (4 points) — 672 combinations total.
+
+Sea ice requires the **adding-doubling solver** (the default). The Toon solver does not handle the Fresnel air-ice interface required for sea ice.
+
+Brine RI is computed from Rowe et al. (2020) liquid water data at 0 °C with linear salinity and temperature corrections (Quan & Fry 1995; Pegau et al. 1997).
+
+Known MVP limitations: air bubble scattering uses the pure-ice LUT (~5% approximation); Maxwell-Garnett valid for ν_b < 0.3; brine RI calibrated at ~35 psu. See [docs/sea_ice.md](sea_ice.md) for full detail.
+
 ## 2. Neural Network Emulator
 
 ### 2.1 Motivation

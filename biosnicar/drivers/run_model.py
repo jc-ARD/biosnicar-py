@@ -32,12 +32,15 @@ _ILLUMINATION_KEYS = {"solzen", "direct", "incoming"}
 _ICE_BROADCAST_KEYS = {
     "rds", "rho", "dz", "lwc", "layer_type",
     "cdom", "shp", "water", "hex_side", "hex_length", "shp_fctr", "grain_ar",
+    # sea-ice per-layer fields (layer_type=4)
+    "sea_ice_salinity", "sea_ice_temperature", "sea_ice_bubble_radius",
 }
 
 # All per-layer ice list attributes (used to resize when nbr_lyr changes)
 _ICE_ALL_LIST_ATTRS = [
     "dz", "layer_type", "cdom", "rho", "rds", "shp", "water",
     "hex_side", "hex_length", "shp_fctr", "grain_ar", "lwc",
+    "sea_ice_salinity", "sea_ice_temperature", "sea_ice_bubble_radius",
 ]
 
 
@@ -156,12 +159,16 @@ def _apply_overrides(overrides, ice, illumination, impurities, input_file):
             new_nbr_lyr = len(value)
             break
 
+    # Sea-ice fields default to None — use None rather than last-value fill.
+    _SEA_ICE_ATTRS = {"sea_ice_salinity", "sea_ice_temperature", "sea_ice_bubble_radius"}
+
     # If layer count is changing, resize all per-layer attributes first
     if new_nbr_lyr is not None and new_nbr_lyr != ice.nbr_lyr:
         for attr in _ICE_ALL_LIST_ATTRS:
             old = getattr(ice, attr)
+            fill = None if attr in _SEA_ICE_ATTRS else old[-1]
             if len(old) < new_nbr_lyr:
-                setattr(ice, attr, old + [old[-1]] * (new_nbr_lyr - len(old)))
+                setattr(ice, attr, old + [fill] * (new_nbr_lyr - len(old)))
             elif len(old) > new_nbr_lyr:
                 setattr(ice, attr, old[:new_nbr_lyr])
         # Resize impurity concentrations too

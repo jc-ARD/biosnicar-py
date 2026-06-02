@@ -14,10 +14,130 @@ import os
 
 import numpy as np
 import pandas as pd
-from scipy.interpolate import pchip
+from scipy.interpolate import pchip, RegularGridInterpolator
 
 import biosnicar.optical_properties.mie_coated_water_spheres as wcs
 from biosnicar.optical_properties.op_lookup import get_hex_lut, get_lut
+import biosnicar as _biosnicar
+
+_SEA_ICE_LUT_PATH = str(
+    _biosnicar.DATA_DIR / "OP_data" / "480band" / "luts" / "sea_ice.npz"
+)
+
+# Module-level cache for the sea-ice LUT interpolators
+_sea_ice_lut_interp = None
+
+
+def _load_sea_ice_lut():
+    """Lazy-load and cache 4-D RegularGridInterpolators for the sea-ice LUT."""
+    global _sea_ice_lut_interp
+    if _sea_ice_lut_interp is not None:
+        return _sea_ice_lut_interp
+
+    data = np.load(_SEA_ICE_LUT_PATH)
+    T_grid = data["T_grid"]          # shape (7,)  decreasing (−2 to −30)
+    S_grid = data["S_grid"]          # shape (6,)  increasing
+    rho_grid = data["rho_grid"]      # shape (4,)  increasing
+    bbl_grid = data["bubble_radius_grid"]  # shape (4,) increasing
+    tau = data["tau_per_m"]          # (7, 6, 4, 4, 480)
+    ssa = data["ssa"]
+    asm = data["asm"]
+
+    # RegularGridInterpolator needs strictly increasing axes; flip T.
+    T_asc = T_grid[::-1]
+    tau_asc = tau[::-1]
+    ssa_asc = ssa[::-1]
+    asm_asc = asm[::-1]
+
+    def _make_interp(arr):
+        return RegularGridInterpolator(
+            (T_asc, S_grid, rho_grid, bbl_grid),
+            arr,
+            method="linear",
+            bounds_error=False,
+            fill_value=None,
+        )
+
+    _sea_ice_lut_interp = (
+        _make_interp(tau_asc),
+        _make_interp(ssa_asc),
+        _make_interp(asm_asc),
+    )
+    return _sea_ice_lut_interp
+
+
+def _interpolate_sea_ice_lut(salinity_psu, temperature_C, density_kg_m3, bubble_radius_um):
+    """Interpolate sea-ice LUT to get (tau_per_m, ssa, g) at 480 bands.
+
+    Returns arrays of shape (480,) for tau_per_m, ssa, g.
+    """
+    interp_tau, interp_ssa, interp_asm = _load_sea_ice_lut()
+
+    # Load LUT to get grid bounds for clamping
+    data = np.load(_SEA_ICE_LUT_PATH)
+    T_min = data["T_grid"].min()
+    T_max = data["T_grid"].max()
+    S_min = data["S_grid"].min()
+    S_max = data["S_grid"].max()
+    rho_min = data["rho_grid"].min()
+    rho_max = data["rho_grid"].max()
+    bbl_min = data["bubble_radius_grid"].min()
+    bbl_max = data["bubble_radius_grid"].max()
+
+    T_c = float(np.clip(temperature_C, T_min, T_max))
+    S_c = float(np.clip(salinity_psu, S_min, S_max))
+    rho_c = float(np.clip(density_kg_m3, rho_min, rho_max))
+    bbl_c = float(np.clip(bubble_radius_um, bbl_min, bbl_max))
+
+    n_wvl = 480
+    pts = np.column_stack([
+        np.full(n_wvl, T_c),
+        np.full(n_wvl, S_c),
+        np.full(n_wvl, rho_c),
+        np.full(n_wvl, bbl_c),
+        np.arange(n_wvl, dtype=float),
+    ])
+
+    # The LUT axes are (T, S, rho, bbl); we need to include the wavelength
+    # band index. Since the LUT shape is (..., 480), we must loop or reshape.
+    # Simpler: query each of the 480 band slices. Use per-wavelength 4D query.
+    wvl_idx = np.arange(n_wvl)
+    tau_vals = np.array([
+        interp_tau(np.array([[T_c, S_c, rho_c, bbl_c]]))[0]
+        for _ in [None]
+    ] * n_wvl)  # placeholder; use vectorised form below
+
+    # Vectorised 4-D query: build (480,4) point array
+    query = np.column_stack([
+        np.full(n_wvl, T_c),
+        np.full(n_wvl, S_c),
+        np.full(n_wvl, rho_c),
+        np.full(n_wvl, bbl_c),
+    ])
+
+    # The LUT stores shape (nT, nS, nR, nB, 480). The interpolator was built
+    # over the first 4 axes at single wavelengths. We need to re-build
+    # interpolators that are called with a (1,4) point and return (480,).
+    # The current setup (built in _load_sea_ice_lut) uses a 4-D grid where
+    # the last dimension (480) is the output.  A RegularGridInterpolator with
+    # a 4-D points array (..., 4) returns scalar output per input point.
+    # We instead want vector output at one (T,S,rho,bbl) point.
+    #
+    # Solution: call with a single (1,4) point; the interpolator returns a
+    # (1,480) result because the LUT values axis is 480-wide. This works
+    # because scipy's RegularGridInterpolator supports multi-dimensional
+    # output values when the values array has extra trailing dims.
+
+    pt = np.array([[T_c, S_c, rho_c, bbl_c]])
+    tau_per_m = interp_tau(pt)[0]   # shape (480,)
+    ssa_vals = interp_ssa(pt)[0]
+    g_vals = interp_asm(pt)[0]
+
+    tau_per_m = np.maximum(tau_per_m, 0.0)
+    ssa_vals = np.clip(ssa_vals, 1e-8, 1.0 - 1e-8)
+    g_vals = np.clip(g_vals, -0.9999, 0.9999)
+
+    return tau_per_m, ssa_vals, g_vals
 
 
 def _ri_name(ice):
@@ -235,6 +355,31 @@ def get_layer_OPs(ice, model_config):
 
             ssa_snw[i, :] = ssa
 
+        # sea ice layer (brine inclusions, Maxwell-Garnett effective medium)
+        elif ice.layer_type[i] == 4:
+            S = getattr(ice, "sea_ice_salinity", [None])[i]
+            T = getattr(ice, "sea_ice_temperature", [None])[i]
+            bbl = getattr(ice, "sea_ice_bubble_radius", [None])[i]
+
+            if S is None or T is None or bbl is None:
+                raise ValueError(
+                    f"Layer {i} has layer_type=4 (sea ice) but sea_ice_salinity, "
+                    "sea_ice_temperature, or sea_ice_bubble_radius is None. "
+                    "Set these fields on the Ice object or via the YAML config."
+                )
+
+            tau_per_m, ssa_si, g_si = _interpolate_sea_ice_lut(
+                salinity_psu=S,
+                temperature_C=T,
+                density_kg_m3=ice.rho[i],
+                bubble_radius_um=bbl,
+            )
+            # Convert per-metre optical depth to mass extinction coefficient:
+            # mac = tau_per_m / rho  [m²/kg], so that mix_in_impurities gives
+            # tau_layer = L_snw * mac = rho * dz * (tau_per_m / rho) = tau_per_m * dz
+            mac_snw[i, :] = tau_per_m / ice.rho[i]
+            ssa_snw[i, :] = ssa_si
+            g_snw[i, :] = g_si
 
     return ssa_snw, g_snw, mac_snw
 

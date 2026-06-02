@@ -57,6 +57,14 @@ class Ice:
                          "refractive_index_water_273K_Rowe2020.csv")
         ).k.values
 
+        # Sea-ice per-layer parameters (layer_type=2).
+        # Defaults to None for each layer when not specified in config.
+        n = len(self.dz)
+        ice_sec = inputs.get("ICE", {})
+        self.sea_ice_salinity = ice_sec.get("SEA_ICE_SALINITY", [None] * n)
+        self.sea_ice_temperature = ice_sec.get("SEA_ICE_TEMPERATURE", [None] * n)
+        self.sea_ice_bubble_radius = ice_sec.get("SEA_ICE_BUBBLE_RADIUS", [None] * n)
+
         self.calculate_refractive_index(input_file)
 
     def calculate_refractive_index(self, input_file):

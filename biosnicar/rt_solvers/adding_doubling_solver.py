@@ -512,9 +512,12 @@ def define_constants_arrays(tau, g, ssa, illumination, ice, model_config):
     # first fresnel layer and load in the precalculated diffuse fresnel
     # reflection
     # (precalculated as large no. of gaussian points required for convergence)
-    if np.sum(np.array(ice.layer_type) == 1) > 0:
-        lyrfrsnl = ice.layer_type.index(1)
-
+    # layer_type=1: solid glacier ice with Fresnel surface
+    # layer_type=4: sea ice — also has an air-ice Fresnel interface at the top
+    fresnel_types = {1, 4}
+    fresnel_layers = [i for i, lt in enumerate(ice.layer_type) if lt in fresnel_types]
+    if fresnel_layers:
+        lyrfrsnl = fresnel_layers[0]
     else:
         lyrfrsnl = 9999999
 
