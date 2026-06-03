@@ -47,9 +47,13 @@ No effective medium theory is applied; each particle type contributes independen
 
 See Section 1.2.
 
+#### Type 5 in detail
+
+See Section 1.3.
+
 ### 1.2 Sea ice (layer_type = 4)
 
-Sea ice contains brine inclusions: pockets of concentrated liquid seawater that remain liquid below 0 °C. Their presence modifies the complex refractive index of the ice and therefore its optical properties. The sea ice model (v0.1 MVP) uses a three-step pipeline:
+Sea ice contains brine inclusions: pockets of concentrated liquid seawater that remain liquid below 0 °C. Their presence modifies the complex refractive index of the ice and therefore its optical properties. The model uses a three-step pipeline.
 
 **Step 1 — Brine volume fraction** (Cox & Weeks 1983).  
 Given bulk salinity S (psu) and temperature T (°C), the brine volume fraction ν_b is:
@@ -59,24 +63,46 @@ F1(T) = −4.732 − 22.45T − 0.6397T² − 0.01074T³     (−22.9 ≤ T ≤ 
 ν_b   = (S × ρ_i) / (F1 − ρ_i × S × F2)
 ```
 
-**Step 2 — Effective medium** (Maxwell-Garnett).  
-The complex permittivity of pure ice ε_ice and of brine ε_brine are combined at volume fraction ν_b:
+**Step 2 — Brine refractive index at the liquidus salinity**.  
+Brine inside sea ice pockets is at the **liquidus** (phase-equilibrium) salinity determined by temperature:
+
+```
+S_brine = −18.7 × T_C    (psu, capped at 250 psu near the NaCl eutectic)
+```
+
+At T = −10 °C, S_brine ≈ 187 psu — far above typical bulk ice salinity (6–12 psu). Using bulk salinity in RI calculations (as in v0.1) underestimates the brine-ice optical contrast by 23–47×.
+
+The brine real refractive index is computed using the full Quan & Fry (1995) wavelength-dependent formula at S_brine and T, applied to the 400–700 nm range with the salt contribution held fixed at its 700-nm value beyond the visible. Brine has no significant absorption above 400 nm (NaCl does not absorb in visible/NIR); k_brine ≈ k_water for λ > 0.4 µm.
+
+**Step 3 — Maxwell-Garnett effective medium**.  
+ε_brine and ε_ice are mixed at volume fraction ν_b:
 
 ```
 ε_eff = ε_ice × [ε_brine(1 + 2ν_b) + 2ε_ice(1 − ν_b)] /
                 [ε_brine(1 − ν_b)  + ε_ice(2 + ν_b)]
 ```
 
-The effective refractive index n_eff + ik_eff = √ε_eff determines the absorption coefficient of the ice+brine medium.
+Absorption comes from the imaginary part of n_eff = √ε_eff. Scattering comes from air bubbles via the `bubbly_air.npz` LUT. Results are pre-computed to `data/OP_data/480band/luts/sea_ice.npz` over T (7) × S (6) × density (4) × bubble_radius (4) = 672 grid points. Brine RI is also pre-computed to `data/OP_data/brine_rfidx.npz` over the 7-point temperature grid only (T dimension only; S is no longer needed since S_brine is determined by T).
 
-**Step 3 — Combined optical properties**.  
-Absorption comes from the imaginary part of n_eff. Scattering comes from air bubbles, using the existing `bubbly_air.npz` LUT; the air volume fraction is inferred from the density balance. The result is (τ, ω, g) at all 480 bands, stored in a pre-computed LUT at `data/OP_data/480band/luts/sea_ice.npz` covering temperature (7 points), salinity (6 points), density (4 points), and bubble radius (4 points) — 672 combinations total.
+Sea ice requires the **adding-doubling solver** (default). The Toon solver does not handle the Fresnel interface correctly.
 
-Sea ice requires the **adding-doubling solver** (the default). The Toon solver does not handle the Fresnel air-ice interface required for sea ice.
+Known approximations: Q&F (1995) extrapolated to S_brine > 40 psu; liquidus linear approximation; Maxwell-Garnett valid for ν_b < 0.3; bubble scattering uses pure-ice LUT (< 5% error). See [docs/sea_ice.md](sea_ice.md) for detail.
 
-Brine RI is computed from Rowe et al. (2020) liquid water data at 0 °C with linear salinity and temperature corrections (Quan & Fry 1995; Pegau et al. 1997).
+### 1.3 Melt ponds (layer_type = 5)
 
-Known MVP limitations: air bubble scattering uses the pure-ice LUT (~5% approximation); Maxwell-Garnett valid for ν_b < 0.3; brine RI calibrated at ~35 psu. See [docs/sea_ice.md](sea_ice.md) for full detail.
+A melt pond layer models a body of liquid water above sea ice. Optical properties are computed analytically from the Rowe et al. (2020) pure water k at 0 °C:
+
+```
+absorption:  α(λ) = 4π k_water(λ) / λ              [m⁻¹]
+scattering:  β(λ) ≈ 0.003 × (0.55/λ_µm)⁴ m⁻¹      [Rayleigh, for numerical stability]
+SSA:         ω ≈ β / (α + β) → 0 in NIR
+```
+
+Visible (< 700 nm): water is nearly transparent; most light reaches the ice below and reflects back up. NIR (> 700 nm): dominated by O-H bond absorption; completely opaque beyond ~1 cm depth at 1.5 µm.
+
+Set `rho=1000 kg/m³` (liquid water density) for pond layers. No Fresnel surface correction is applied at the air-pond boundary in the current implementation (~2% underestimate of surface reflection, acceptable for MVP).
+
+Known approximation: clear, particle-free water assumed. Real melt ponds contain algae, sediment, and dissolved organic matter that darken the visible range significantly. NIR predictions are robust; VIS is overestimated by ~0.2–0.4 relative to real summer Arctic ponds. See `docs/sea_ice.md` and `tests/validation_data/morassutti1995/` for full validation.
 
 ## 2. Neural Network Emulator
 

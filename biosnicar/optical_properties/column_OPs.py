@@ -381,6 +381,26 @@ def get_layer_OPs(ice, model_config):
             ssa_snw[i, :] = ssa_si
             g_snw[i, :] = g_si
 
+        # melt pond (liquid water layer — near-pure absorption, minimal scattering)
+        elif ice.layer_type[i] == 5:
+            # Absorption from liquid water imaginary RI (Rowe et al. 2020, 0°C).
+            # Melt pond water is near 0°C so the 273K reference is appropriate.
+            k_water = ice.ref_idx_im_water  # shape (480,), already loaded
+            lam_m   = model_config.wavelengths * 1e-6   # µm → m
+            abs_coeff = 4.0 * np.pi * k_water / lam_m  # m⁻¹
+
+            # Rayleigh-like scattering from molecular fluctuations in liquid water.
+            # β_w ≈ 0.003 × (0.55/λ_µm)⁴ m⁻¹ — very small but avoids ssa=0 singularities.
+            lam_um  = model_config.wavelengths
+            beta_w  = 0.003 * (0.55 / lam_um) ** 4   # m⁻¹
+
+            ext_coeff = abs_coeff + beta_w
+            rho_pond  = ice.rho[i]   # should be ~1000 kg/m³ for liquid water
+
+            mac_snw[i, :] = ext_coeff / rho_pond
+            ssa_snw[i, :] = np.clip(beta_w / ext_coeff, 1e-8, 1.0 - 1e-8)
+            g_snw[i, :]   = 0.0    # isotropic molecular scattering
+
     return ssa_snw, g_snw, mac_snw
 
 

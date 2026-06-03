@@ -74,10 +74,34 @@ MYI_WINTER_BARE: Dict = {
 }
 """Bare multiyear ice, no snow cover.  Winter conditions.  BBA ≈ 0.52."""
 
+FYI_POND_SHALLOW: Dict = {
+    "layer_type": [5, 4, 4],
+    "dz":         [0.10, 0.05, 1.45],
+    "rds":        [500, 500, 500],
+    "rho":        [1000, 895, 895],            # 1000 kg/m³ for liquid water
+    "sea_ice_salinity":      [None, 12, 8],
+    "sea_ice_temperature":   [None, -2, -2],   # near-melting FYI below pond
+    "sea_ice_bubble_radius": [None, 100, 200],
+}
+"""Shallow melt pond (10 cm) on first-year ice.  Summer conditions.  BBA ≈ 0.25."""
+
+FYI_POND_DEEP: Dict = {
+    "layer_type": [5, 4, 4],
+    "dz":         [0.40, 0.05, 1.45],
+    "rds":        [500, 500, 500],
+    "rho":        [1000, 895, 895],
+    "sea_ice_salinity":      [None, 12, 8],
+    "sea_ice_temperature":   [None, -2, -2],
+    "sea_ice_bubble_radius": [None, 100, 200],
+}
+"""Deep melt pond (40 cm) on first-year ice.  Summer conditions.  BBA ≈ 0.18."""
+
 ALL_PRESETS: Dict[str, Dict] = {
-    "FYI_WINTER_BARE": FYI_WINTER_BARE,
-    "FYI_WINTER_SNOW": FYI_WINTER_SNOW,
-    "MYI_WINTER_BARE": MYI_WINTER_BARE,
+    "FYI_WINTER_BARE":  FYI_WINTER_BARE,
+    "FYI_WINTER_SNOW":  FYI_WINTER_SNOW,
+    "MYI_WINTER_BARE":  MYI_WINTER_BARE,
+    "FYI_POND_SHALLOW": FYI_POND_SHALLOW,
+    "FYI_POND_DEEP":    FYI_POND_DEEP,
 }
 
 

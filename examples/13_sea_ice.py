@@ -265,3 +265,102 @@ if PLOT:
 
     plt.tight_layout()
     plt.show()
+
+
+# =============================================================================
+# 10. Melt ponds (layer_type=5)
+# =============================================================================
+print("\n" + "=" * 60)
+print("10. Melt ponds (layer_type=5)")
+print("=" * 60)
+print("  layer_type=5 is liquid water — near-zero SSA, strong NIR absorption.")
+print("  rho=1000 kg/m³.  Same run_model() syntax as any other layer type.")
+print()
+
+# 10a. Depth sweep
+print("  Pond depth sweep (summer FYI below, T=-5°C, S=8 psu):")
+print(f"  {'depth':>8}  {'BBA':>6}  {'VIS':>6}  {'NIR':>6}")
+print("  " + "-" * 32)
+pond_results = {}
+for depth in [0, 0.05, 0.10, 0.20, 0.30, 0.50]:
+    if depth == 0:
+        out = run_model(
+            solzen=60, layer_type=[4,4], dz=[0.05,1.45], rds=[500,500], rho=[895,895],
+            sea_ice_salinity=[12,8], sea_ice_temperature=[-5,-5], sea_ice_bubble_radius=[100,200],
+        )
+        label = "bare ice"
+    else:
+        out = run_model(
+            solzen=60,
+            layer_type=[5, 4, 4],
+            dz=[depth, 0.05, 1.45],
+            rds=[500, 500, 500],
+            rho=[1000, 895, 895],
+            sea_ice_salinity=[None, 12, 8],
+            sea_ice_temperature=[None, -5, -5],
+            sea_ice_bubble_radius=[None, 100, 200],
+        )
+        label = f"{int(depth*100)} cm"
+    pond_results[label] = out
+    print(f"  {label:>8}  {out.BBA:>6.3f}  {out.BBAVIS:>6.3f}  {out.BBANIR:>6.3f}")
+
+print()
+print("  Key: NIR drops sharply even for shallow ponds (water absorbs NIR strongly).")
+print("       VIS stays high (transparent water; ice underneath reflects).")
+
+# 10b. Preset shortcut
+print()
+print("  Using presets:")
+for name in ["FYI_POND_SHALLOW", "FYI_POND_DEEP"]:
+    out = run_model(preset=name, solzen=60)
+    print(f"    {name:<20}  BBA={out.BBA:.3f}  VIS={out.BBAVIS:.3f}  NIR={out.BBANIR:.3f}")
+
+# 10c. Comparison: bare ice → shallow pond → deep pond
+print()
+print("  Albedo profile: bare FYI → shallow pond → deep pond")
+bare = run_model(preset="FYI_WINTER_BARE", solzen=60)
+shallow = run_model(preset="FYI_POND_SHALLOW", solzen=60)
+deep    = run_model(preset="FYI_POND_DEEP",    solzen=60)
+for name, out in [("Bare FYI", bare), ("Shallow pond (10cm)", shallow), ("Deep pond (40cm)", deep)]:
+    print(f"    {name:<22}  BBA={out.BBA:.3f}  VIS={out.BBAVIS:.3f}  NIR={out.BBANIR:.3f}")
+
+
+if PLOT:
+    fig, axes = plt.subplots(1, 2, figsize=(13, 4))
+
+    # Panel 1: depth sweep spectra
+    ax = axes[0]
+    colors_pond = ["#555", "#2171b5", "#4292c6", "#6baed6", "#9ecae1", "#c6dbef"]
+    for i, (label, out) in enumerate(pond_results.items()):
+        ax.plot(WAVELENGTHS, out.albedo, lw=1.5, color=colors_pond[i],
+                label=f"{label}  BBA={out.BBA:.2f}")
+    ax.set_title("Melt pond depth sensitivity (T_ice=−5°C, SZA=60°)")
+    ax.set_xlabel("Wavelength (µm)"); ax.set_ylabel("Spectral albedo")
+    ax.set_xlim(0.3, 2.5); ax.set_ylim(0, 1.05)
+    ax.axvline(0.7, color="k", lw=0.5, ls=":", alpha=0.4)
+    ax.text(0.72, 0.95, "NIR→", fontsize=8, color="gray")
+    ax.legend(fontsize=8)
+
+    # Panel 2: NIR and VIS BBA vs depth — compare model to Morassutti (1995) obs
+    ax = axes[1]
+    depths  = [0, 5, 10, 20, 30, 50]  # cm
+    vis_mod = [bare.BBAVIS] + [pond_results.get(f"{d} cm", bare).BBAVIS for d in [5,10,20,30,50]]
+    nir_mod = [bare.BBANIR] + [pond_results.get(f"{d} cm", bare).BBANIR for d in [5,10,20,30,50]]
+
+    # Morassutti (1995) approximate observed values by depth bin
+    obs_depths = [2.5, 7.5, 15, 25, 40]   # bin midpoints cm
+    obs_vis    = [0.514, 0.363, 0.351, 0.333, 0.340]
+    obs_nir    = [0.224, 0.095, 0.058, 0.032, 0.035]
+
+    ax.plot(depths, vis_mod, "o-", color="#2171b5", lw=1.5, label="Model VIS")
+    ax.plot(depths, nir_mod, "s-", color="#d62728", lw=1.5, label="Model NIR")
+    ax.plot(obs_depths, obs_vis, "o--", color="#6baed6", lw=1.2, alpha=0.8, label="Obs VIS (Morassutti 1995)")
+    ax.plot(obs_depths, obs_nir, "s--", color="#fc8d59", lw=1.2, alpha=0.8, label="Obs NIR (Morassutti 1995)")
+    ax.set_xlabel("Pond depth (cm)"); ax.set_ylabel("Albedo (400-1000 nm)")
+    ax.set_title("Model vs observations — NIR matches, VIS overestimated\n"
+                 "(VIS gap: model assumes clear water + white ice bottom)")
+    ax.legend(fontsize=8); ax.grid(alpha=0.2)
+    ax.set_xlim(-1, 52)
+
+    plt.tight_layout()
+    plt.show()

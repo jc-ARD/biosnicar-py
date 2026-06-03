@@ -91,7 +91,8 @@ def run_model(
 
             - **layer_type** — 0=granular snow/ice, 1=solid glacier ice
               (Fresnel), 2=solid ice (no Fresnel), 3=mixed water/ice
-              spheres, **4=sea ice** (brine inclusions, Maxwell-Garnett)
+              spheres, **4=sea ice** (brine inclusions, Maxwell-Garnett),
+              **5=melt pond** (liquid water, set rho=1000 kg/m³)
             - **dz** — layer thickness (m)
             - **rho** — bulk density (kg/m³)
             - **rds** — grain/bubble radius (µm); not used for

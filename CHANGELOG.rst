@@ -5,6 +5,59 @@ All notable changes to this project will be documented in this file.
 The format is based on `Keep a Changelog <https://keepachangelog.com/en/1.0.0/>`_,
 and this project adheres to `Semantic Versioning <https://semver.org/spec/v2.0.0.html>`_.
 
+v0.2-sea-ice (2026-06-03)
+--------------------------
+
+Changed
+~~~~~~~
+- **Brine refractive index: critical physics fix** (``biosnicar/sea_ice/brine_optics.py``).
+
+  The v0.1 implementation computed brine RI at the *bulk ice salinity* (e.g. 8 psu)
+  when it should be computed at the *liquidus brine salinity* (e.g. 187 psu at −10 °C).
+  This underestimated the brine-ice optical contrast by 23–47× at typical sea ice
+  temperatures.  Consequences of the fix:
+
+  - ``compute_brine_rfidx()`` now uses ``brine_salinity_at_temp(T)`` (liquidus constraint)
+    internally.  The ``salinity_psu`` argument is accepted for backwards compatibility
+    but is ignored — it no longer has a physical role.
+  - Real part computed via the full wavelength-dependent Quan & Fry (1995) formula at
+    the liquidus salinity (400–700 nm), with the salt contribution held fixed at its
+    700-nm value in NIR.  Δn_re at −10 °C increases from 0.0016 to 0.037.
+  - Imaginary part spurious visible correction (``_K_VIS_ALPHA``) removed — NaCl has
+    no absorption above 400 nm.  UV ionic absorption term given a steeper decay
+    (25 µm⁻¹) so Cl⁻ contribution is negligible above 0.4 µm.
+  - Liquidus salinity capped at 250 psu (near NaCl eutectic at ~−21 °C).
+  - ``brine_rfidx.npz`` LUT restructured from (S, T, 480) to (T, 480) — S dimension
+    removed since brine RI is now a function of T only.
+  - Both LUTs (``brine_rfidx.npz`` and ``sea_ice.npz``) rebuilt.
+  - FYI_WINTER_BARE BBA: 0.555 → 0.506; MYI_WINTER_BARE: 0.514 → 0.488.  Changes
+    are physically expected and consistent with SHEBA observations.
+  - ``tests/test_brine_optics.py`` updated for new LUT shape and physics.
+
+Added
+~~~~~
+- **Melt pond support** (``layer_type=5``).
+
+  - ``biosnicar/optical_properties/column_OPs.py``: new ``layer_type=5`` branch
+    computes liquid water optical properties analytically from Rowe et al. (2020) k
+    at 0 °C.  Absorption α = 4π k/λ; near-zero scattering (Rayleigh-like term for
+    numerical stability); ω → 0 in NIR, ~0.01 in visible.  Set ``rho=1000 kg/m³``.
+  - ``biosnicar/sea_ice/presets.py``: two new pond presets
+    ``FYI_POND_SHALLOW`` (10 cm) and ``FYI_POND_DEEP`` (40 cm).
+  - ``tests/test_melt_pond.py``: 16 new tests covering physical correctness, NIR
+    comparison against Morassutti (1995), and regression checks.
+  - ``tests/validation_data/morassutti1995/validate_morassutti1995.py``: rewritten
+    to compare the melt pond model against Morassutti (1995) observations, with
+    per-depth-bin spectral and broadband comparisons and figures.
+  - ``examples/13_sea_ice.py`` updated with melt pond demonstration.
+  - ``docs/sea_ice.md`` and ``docs/METHODS.md`` updated with full physics documentation.
+
+Known limitations of melt pond model
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  - Clear, particle-free water assumed: VIS overestimated by ~0.2–0.4 vs real summer
+    ponds (dark bottoms from algae, sediment, DOM).  NIR is well-predicted.
+  - No Fresnel correction at air-water surface (~2% reflectance, acceptable for MVP).
+
 v0.1-sea-ice-mvp (2026-06-02)
 ------------------------------
 

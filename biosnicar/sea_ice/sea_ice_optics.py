@@ -111,8 +111,10 @@ def compute_sea_ice_optics(
     # --- 1. Brine volume fraction ---
     nu_b = compute_brine_volume(salinity_psu, temperature_C)
 
-    # --- 2. Brine complex RI ---
-    ri_brine = compute_brine_rfidx(salinity_psu, temperature_C)
+    # --- 2. Brine complex RI at the liquidus salinity for this temperature ---
+    # The brine inside sea ice pockets is at the phase-equilibrium (liquidus)
+    # salinity, determined by temperature alone.  Do NOT pass bulk salinity.
+    ri_brine = compute_brine_rfidx(temperature_C)
 
     # --- 3. Pure-ice complex RI ---
     ri_ice = _load_ice_ri(ri_variant)

@@ -27,18 +27,19 @@ Sea ice (`layer_type=4`) is closest to type 1 in structure — solid bulk ice wi
 
 ### Does
 - Computes spectral albedo (480 bands, 0.205–4.995 µm) for sea-ice columns with optional snow cover.
-- Models the effect of brine inclusions on optical properties via Maxwell-Garnett effective medium theory.
-- Accepts per-layer physical inputs: thickness, temperature, salinity, density, bubble radius.
-- Provides three pre-configured presets for common winter conditions.
-- Works with the existing BioSNICAR Python API and YAML configuration system.
-- Is fully backward-compatible: all existing terrestrial-ice functionality is unchanged.
+- Models brine inclusions via the liquidus brine salinity and Maxwell-Garnett effective medium.
+- Models melt ponds as liquid water layers (layer_type=5) with realistic water absorption.
+- Accepts per-layer physical inputs: thickness, temperature, salinity, density, bubble radius, pond depth.
+- Provides five pre-configured presets: three winter sea-ice types plus two melt pond depths.
+- Works with the existing BioSNICAR `run_model()` API — no new classes required.
+- Fully backward-compatible: all existing terrestrial-ice functionality unchanged.
 
 ### Doesn't (deferred to later versions)
-- **Melt ponds** (v0.2): summer pond albedo requires a separate water-layer treatment.
-- **Sea-ice algae** (v0.2): algal blooms in sea ice are not yet in the impurity database.
-- **Salty snow** (v0.2): snow on sea ice is treated as fresh in the MVP.
+- **Sea-ice algae** (v0.3): algal blooms in sea ice are not in the impurity database.
+- **Salty snow** (v0.3): snow on sea ice is treated as fresh.
+- **Pond bottom darkening** (v0.3): melt pond model assumes a white-ice bottom; real ponds are darkened by algae, sediment, and dissolved organic matter.
 - **Vertical T/S profiles** (v0.3): each layer uses a single T and S value.
-- **Antarctic-specific tuning** (v0.3): validation is against Arctic SHEBA data only.
+- **Antarctic-specific tuning** (v0.3): validation uses Arctic data only.
 - **Inverse retrieval** (v1.0): parameter retrieval from observations is not yet implemented.
 
 ---
@@ -63,14 +64,32 @@ For −22.9 ≤ T ≤ −2 °C:
 
 At T = −10 °C and S = 8 psu, ν_b ≈ 0.045 (4.5% of the ice is liquid brine). At T = −2 °C, ν_b can reach 25% or more.
 
-### Salinity-corrected brine refractive index
+### Brine refractive index — liquidus constraint
 
-Brine is concentrated seawater. Its complex refractive index n + ik is approximated starting from the pure liquid water RI (Rowe et al. 2020, already at the BioSNICAR 480-band grid) with linear corrections for salinity and temperature:
+A critical physical insight: brine inside sea ice is not at the bulk ice salinity. It is at the **liquidus (phase-equilibrium) salinity** determined by temperature alone:
 
-- **Real part**: Δn_re ≈ +2×10⁻⁴ per psu (Quan & Fry 1995)
-- **Imaginary part**: k_brine ≈ k_water × (1 + 5×10⁻⁴ × S)
+```
+S_brine ≈ −18.7 × T_C    (psu)    [linear liquidus approximation]
+```
 
-*Known limitation*: these corrections are calibrated for seawater at ~35 psu and extrapolated to brine concentrations up to ~200 psu. The approximation is adequate for the MVP target accuracy (~0.05 in broadband albedo) but should be replaced with direct brine RI measurements for higher-accuracy applications.
+At T = −10 °C this gives S_brine ≈ 187 psu — roughly 23× the typical bulk ice salinity of 8 psu. The v0.1 implementation mistakenly used the bulk salinity (8 psu) in the RI formula, making the brine-ice optical contrast 23–47× too small. This has been corrected in v0.2.
+
+**Real part** — Quan & Fry (1995) full wavelength-dependent formula applied at the liquidus salinity S_brine, capped at 250 psu (near the NaCl eutectic at ~−21 °C):
+
+```
+n(S_b, T, λ) = n₀ + (n₁ + n₂T + n₃T²)·S_b + n₄T²
+             + (n₅ + n₆·S_b + n₇·T)/λ + n₈/λ² + n₉/λ³
+```
+
+where λ is in nm. Formula covers 400–700 nm; salt contribution fixed at the 700-nm value in NIR (weakly wavelength-dependent beyond the visible). At T = −10 °C this gives Δn_re ≈ +0.037 vs the v0.1 value of +0.002 — a 23× increase.
+
+**Imaginary part** — NaCl has **no absorption above 400 nm**. The v0.1 multiplicative correction was physically wrong and has been removed. The corrected implementation adds only:
+1. A small UV ionic contribution (Cl⁻ electronic band, decaying to essentially zero by 0.4 µm)
+2. A temperature correction in the visible from Pegau et al. (1997)
+
+In NIR (> 700 nm), k_brine ≈ k_water — the dominant O-H overtone absorption bands of water are nearly independent of dissolved salt concentration.
+
+**Net effect**: the corrected brine RI has substantially larger real-part contrast with pure ice (driving slightly more absorption in the effective medium), but no spurious visible absorption. FYI BBA changes from ~0.56 (v0.1) to ~0.51 (v0.2), which is more physically consistent with SHEBA observations.
 
 ### Maxwell-Garnett effective medium
 
@@ -99,13 +118,28 @@ Scattering coefficients are looked up from the existing `bubbly_air.npz` LUT (pr
 
 ## Known approximations and their consequences
 
+### Sea ice (layer_type=4)
+
 | Approximation | Effect | When it matters |
 |---|---|---|
-| Brine RI extrapolated from seawater (35 psu) to brine (100–200 psu) | ±5–10% error in brine absorption | Very cold ice (T < −15 °C, where S_brine > 100 psu) |
+| Liquidus linear approximation S_b = −18.7T | ±5% error in S_brine at T < −15 °C (near eutectic) | Very cold ice |
+| Q&F (1995) real-part formula extrapolated above 40 psu | ~10% error in Δn_re at S_b > 100 psu | T < −5 °C |
+| Liquidus salinity capped at 250 psu | Underestimates real-part correction below −13 °C | Very cold ice |
 | Air bubble scattering uses pure-ice LUT | < 5% error in scattering | All conditions |
 | Maxwell-Garnett for spherical inclusions only | < 5% for ν_b < 0.15 | Near-melting ice (T > −3 °C) |
-| Snow layer treated as fresh water (no salt) | Overestimates snow albedo for salty snow | Snow-covered sea ice with brine wicking |
-| Single T and S per layer | Ignores vertical gradients within a layer | Thick layers or rapid T/S profiles |
+| Snow layer treated as fresh water | Overestimates snow albedo for salty snow | Snow on FYI |
+| Single T and S per layer | Ignores vertical gradients | Thick layers |
+
+### Melt ponds (layer_type=5)
+
+| Approximation | Effect | When it matters |
+|---|---|---|
+| Pure liquid water at 0 °C | Neglects temperature effect on water k (small) | All conditions |
+| Clear, particle-free water | Overestimates visible BBA by ~0.2–0.4 | All ponds |
+| White sea-ice pond bottom | Overestimates visible BBA | Most real ponds have dark bottoms from algae, sediment, or DOM |
+| No Fresnel correction at air-water surface | ~2% underestimate of surface reflection | Small effect |
+
+The melt pond model correctly predicts NIR albedo (dominated by water absorption, independent of bottom properties). Visible BBA is overestimated because real pond bottoms are darkened by biological and sedimentary material not yet in the model. The NIR is the most diagnostic band for pond comparison.
 
 ---
 
@@ -232,34 +266,126 @@ Bare first-year ice in winter. Two sea-ice layers (T=−25/−20°C, S=12/8 psu,
 First-year ice with 15 cm of snow (ρ=250 kg/m³, grain=200 µm). Calibrated against SHEBA April 1998 data (RMSE ≈ 0.025–0.038, 7/7 pass). Typical BBA: 0.75–0.85.
 
 ### `MYI_WINTER_BARE`
-Bare multiyear ice in winter. Two layers (T=−20/−8°C, S=1/3 psu, ρ=860/870 kg/m³, large bubbles 500/700 µm). Typical BBA: 0.50–0.55.
+Bare multiyear ice in winter. Two layers (T=−20/−8°C, S=1/3 psu, ρ=860/870 kg/m³, large bubbles 500/700 µm). Typical BBA: 0.49–0.52.
+
+### `FYI_POND_SHALLOW`
+Shallow melt pond (10 cm) on summer FYI. Typical BBA: 0.40–0.45, NIR < 0.15.
+
+### `FYI_POND_DEEP`
+Deep melt pond (40 cm) on summer FYI. Typical BBA: 0.28–0.32, NIR < 0.02.
+
+---
+
+## Melt ponds (layer_type=5)
+
+Melt ponds form when surface snow and ice melt in summer and the meltwater collects in topographic depressions. They can reduce surface albedo dramatically — a 20 cm deep pond has BBA ≈ 0.35, vs ~0.78 for snow-covered FYI.
+
+### Physics
+
+A melt pond layer is modelled as **liquid water with near-zero scattering**:
+
+```
+absorption coefficient:  α(λ) = 4π k_water(λ) / λ    [m⁻¹]
+scattering coefficient:  β(λ) ≈ 0.003 × (0.55/λ_µm)⁴ [m⁻¹]  (Rayleigh, for stability)
+single-scattering albedo: ω ≈ β / (α + β) → 0 in NIR, ~0.01 in visible
+```
+
+Water optical constants k(λ) come from Rowe et al. (2020) at 0 °C — appropriate for melt pond water (near 0 °C in summer). Key properties:
+- **Visible (400–700 nm)**: water is nearly transparent. Most light passes through and reflects from the ice below. Pond VIS ≈ ice_VIS × exp(−2α × depth).
+- **NIR (700–1000 nm)**: strong O-H absorption. A 5 cm pond reduces NIR by ~50%; a 20 cm pond reduces it by ~90%.
+- **SWIR (> 1000 nm)**: essentially opaque even at < 1 cm depth.
+
+### Usage
+
+```python
+from biosnicar import run_model
+
+# Melt pond via presets
+outputs = run_model(preset="FYI_POND_SHALLOW", solzen=60)
+outputs = run_model(preset="FYI_POND_DEEP",    solzen=60)
+
+# Custom pond depth — same flat-kwargs style as all other layer types
+outputs = run_model(
+    solzen=60,
+    layer_type=[5, 4, 4],         # pond on top of FYI
+    dz=[0.15, 0.05, 1.45],        # 15 cm pond
+    rds=[500, 500, 500],
+    rho=[1000, 895, 895],          # 1000 kg/m³ for liquid water
+    sea_ice_salinity=[None, 12, 8],
+    sea_ice_temperature=[None, -5, -5],   # summer FYI conditions
+    sea_ice_bubble_radius=[None, 100, 200],
+)
+print(f"BBA={outputs.BBA:.3f}  NIR={outputs.BBANIR:.3f}")
+```
+
+### Expected albedo vs pond depth
+
+| Depth | BBA | VIS (400–700 nm) | NIR (700–1000 nm) |
+|---|---|---|---|
+| 0 (bare FYI) | ~0.51 | ~0.73 | ~0.27 |
+| 5 cm | ~0.45 | ~0.72 | ~0.16 |
+| 10 cm | ~0.41 | ~0.70 | ~0.10 |
+| 20 cm | ~0.36 | ~0.66 | ~0.05 |
+| 40 cm | ~0.30 | ~0.58 | ~0.02 |
+
+*Model conditions: SZA=60°, summer FYI below pond. Assumes clear water and white-ice bottom.*
+
+### Validation against Morassutti (1995) — NIR
+
+NIR comparisons against Morassutti (1995) Canadian Arctic melt pond data (doi:10.7265/N55Q4T1C):
+
+| Depth bin | Observed NIR | Model NIR | Notes |
+|---|---|---|---|
+| 5–10 cm | ~0.10 | ~0.10 | Good agreement |
+| 10–20 cm | ~0.06 | ~0.05 | Good agreement |
+| 20–30 cm | ~0.03 | ~0.02 | Good agreement |
+| 0–5 cm (VIS) | ~0.51 | ~0.72 | Model too bright: dark pond bottoms not modelled |
+
+NIR is the most reliable diagnostic. VIS overestimation is a known and documented limitation of the clear-water, white-ice-bottom assumption. See `tests/validation_data/morassutti1995/` for the full validation script.
 
 ---
 
 ## Validation summary
 
-Qualitative comparison against Arctic observations (SHEBA campaign, Perovich et al. 2002):
+### Sea ice (winter, snow-covered and bare)
 
-| Condition | Observed BBA | Model BBA | Notes |
-|---|---|---|---|
-| FYI winter bare | 0.40–0.55 | ~0.44 | Good agreement |
-| Snow-covered FYI | 0.75–0.90 | ~0.78 | Good agreement |
-| MYI winter bare | 0.50–0.65 | ~0.51 | Good agreement |
+Validated against Grenfell & Light (2007) SHEBA spectral albedo, doi:10.5065/D6765CQ1.
+Spring snow (April–May 1998, ~76°N). See `docs/sea_ice_validation.md` for full results.
 
-*Note*: A formal validation against digitised SHEBA spectra was attempted but the NSIDC G02012 archive requires institutional access. The broadband values above are compared against published summary statistics. Spectral RMSE across the visible-NIR is estimated at < 0.08 based on the physical plausibility of the spectra. See `tests/validation_data/sheba/` for the validation infrastructure.
+| Condition | Observed BBA (400–1000 nm) | Model BBA | Spectral RMSE | Pass? |
+|---|---|---|---|---|
+| FYI snow-covered (Apr) | 0.912–0.935 | 0.934–0.941 | 0.023–0.031 | ✓ 7/7 |
+| FYI bare (Aug–Sep, summer ice) | 0.618–0.809 | ~0.56 | ~0.19 | n/a — season mismatch |
+| MYI bare (inferred) | 0.50–0.65 | ~0.49 | — | Qualitative |
+
+### Melt ponds
+
+Validated against Morassutti (1995) Canadian Arctic melt pond data (NSIDC G01169, doi:10.7265/N55Q4T1C). 504 records, summer 1994, Barrow Strait, Nunavut, 6 bands (400–1000 nm). See `tests/validation_data/morassutti1995/validate_morassutti1995.py`.
+
+| Depth bin | Observed NIR | Model NIR | Observed BBA | Model BBA | Notes |
+|---|---|---|---|---|---|
+| 5–10 cm | 0.095 | ~0.10 | 0.229 | ~0.41 | NIR ✓, VIS high (dark bottoms) |
+| 10–20 cm | 0.058 | ~0.05 | 0.205 | ~0.36 | NIR ✓, VIS high |
+| 20–30 cm | 0.032 | ~0.02 | 0.182 | ~0.33 | NIR ✓, VIS high |
+
+NIR validates well. BBA overestimated by ~0.15–0.18 because the model assumes clear water with white sea-ice bottom; real ponds have dark bottoms from algae and sediment (see *Known approximations*).
 
 ---
 
 ## References
 
 - Cox, G. F. N. & Weeks, W. F. (1983). Equations for determining the gas and brine volumes in sea-ice samples. *J. Glaciology*, 29(102), 306–316.
+- Grenfell, T. C. & Light, B. (2007). SHEBA Spectral Albedo. UCAR/NCAR EOL. doi:10.5065/D6765CQ1
 - Light, B. et al. (2004). Two-dimensional Monte Carlo model of radiative transfer in sea ice. *J. Geophys. Res.*, 109, C03028.
 - Maxwell Garnett, J. C. (1904). Colours in metal glasses and in metallic films. *Phil. Trans. R. Soc. Lond. A*, 203, 385–420.
+- Morassutti, M. (1995). Sea Ice Melt Pond Data from the Canadian Arctic. NSIDC G01169. doi:10.7265/N55Q4T1C
+- Pegau, W. S., Gray, D. & Zaneveld, J. R. V. (1997). Absorption and attenuation of visible and near-infrared light in water. *Limnol. Oceanogr.*, 42(3), 443–452.
 - Perovich, D. K. et al. (2002). Seasonal evolution of the albedo of multiyear Arctic sea ice. *J. Geophys. Res.*, 107(C10), 8044.
 - Picard, G. et al. (2016). Refinement of the ice absorption spectrum. *J. Glaciology*.
 - Quan, X. & Fry, E. S. (1995). Empirical equation for the refractive index of seawater. *Appl. Optics*, 34, 3477.
 - Rowe, P. M. et al. (2020). Refractive index of liquid water at 0 °C. *J. Geophys. Res.*, 125, e2019JD031822.
 - Sihvola, A. (1999). *Electromagnetic Mixing Formulas and Applications*. IEE.
+- Timco, G. W. & Frederking, R. M. W. (1996). A review of sea ice density. *Cold Reg. Sci. Tech.*, 24(1), 1–6.
 
 ---
 
