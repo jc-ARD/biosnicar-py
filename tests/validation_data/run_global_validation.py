@@ -6,9 +6,9 @@ Datasets
 1. Grenfell & Light (2007)  — SHEBA 1998, Arctic Ocean ~76°N
    UCAR/NCAR EOL 13.825, doi:10.5065/D6765CQ1
    Instrument: portable spectrometer
-   Spectral range: 400–1000 nm, ~2.6 nm resolution
+   Spectral range: 400–1000 nm (ALBV), 1100–2005 nm (ALBI)
    Period: April 8 – September 3, 1998
-   Surface types used: snow-covered FYI (Apr–May)
+   Surface types used: snow-covered FYI (Apr–May); paired VIS+IR for Jun+
 
 2. Smith et al. (2021)  — MOSAiC Leg 4, Arctic Ocean ~82°N
    Arctic Data Center, doi:10.18739/A2FT8DK8Z
@@ -17,24 +17,29 @@ Datasets
    Period: June 13 – September 19, 2020
    Surface types used: snow positions (surface_type='S'), quality-filtered
 
-Surface classification
-----------------------
-  SNOW   : snow-covered FYI; compared to FYI_WINTER_SNOW
-  ICE    : bare white ice (summer Grenfell only); compared to FYI/MYI bare
-  POND   : melt ponds; OUT OF SCOPE for v0.1 MVP — excluded
+Surface & season classification
+--------------------------------
+  spring_snow  : Grenfell Apr 8–Jun 2; Smith (none in this range)
+  early_june   : Smith Jun 13–22 (proto-ponds, metamorphosed snow)
+  summer_snow  : Smith Jun 24–Aug; heavily melted, large BBA error expected
+  refreeze     : Smith Sep 1+ (refreezing conditions, SNOWTARGET = fresh snow)
+  summer_ice   : Grenfell Aug–Sep bare white ice; season mismatch documented
+  ir_paired    : Grenfell ALBV+ALBI stitched (400–2005 nm) for Jun–Sep
+
+  SNOW surface → compared to FYI_WINTER_SNOW
+  ICE surface  → compared to FYI_WINTER_BARE
+  POND         → OUT OF SCOPE for v0.1 MVP, excluded
 
 Quality filtering
 -----------------
-  Grenfell: no per-measurement flag; use all spring dates.
-  Smith 2021: per-position "Change in incident (%)" — keep only positions
-              where change ≤ 10%.  Surface type must be 'S' (snow).
-              Exclude surface type 'S/P' (snow-pond boundary).
+  Grenfell: no per-measurement flag; use all dates.
+  Smith 2021: per-position "Change in incident (%)" ≤ 10%.
+              Surface type must be 'S' (not 'P' or 'S/P').
 
 SZA
 ---
-  Grenfell: noon SZA at 76°N, computed from solar declination.
-  Smith 2021: SZA computed from actual UTC measurement time and ship
-              latitude/longitude recorded in each file header.
+  Grenfell: noon SZA at 76°N from solar declination.
+  Smith 2021: exact SZA from UTC start time + ship lat/lon in file header.
 
 Usage
 -----
@@ -136,6 +141,93 @@ def _parse_albv(path: Path):
     alb = np.array([r[1] for r in rows])
     std = np.array([r[2] for r in rows])
     return wl, alb, std
+
+
+def _parse_albi(path: Path):
+    """Parse a Grenfell ALBI (infrared) file. Returns (wl_nm, wi_alb)."""
+    rows = []
+    for line in path.read_text().splitlines()[4:]:
+        parts = line.split(",")
+        try:
+            wl   = float(parts[0])
+            wi   = float(parts[1])
+            rows.append((wl, wi))
+        except (ValueError, IndexError):
+            continue
+    if not rows:
+        return None, None
+    wl  = np.array([r[0] for r in rows])
+    alb = np.clip(np.array([r[1] for r in rows]), 0.0, 1.05)
+    return wl, alb
+
+
+def _stitch_albv_albi(albv_path: Path, albi_path: Path):
+    """Stitch ALBV (400–1000 nm) and ALBI WI (1100–2005 nm) into one spectrum.
+
+    Returns (wl_nm, alb, std) where the gap 1000–1100 nm is bridged by
+    linear interpolation.  std is zero in the ALBI range (single averaged
+    column; no per-position spread available).
+    """
+    wl_v, alb_v, std_v = _parse_albv(albv_path)
+    wl_i, alb_i        = _parse_albi(albi_path)
+    if wl_v is None or wl_i is None:
+        return None, None, None
+
+    # Trim ALBV to 400–1000 nm, ALBI to 1105–2005 nm
+    m_v = (wl_v >= 400) & (wl_v <= 1000)
+    m_i = (wl_i >= 1105) & (wl_i <= 2005) & (~np.isnan(alb_i))
+    wl_v, alb_v, std_v = wl_v[m_v], alb_v[m_v], std_v[m_v]
+    wl_i, alb_i        = wl_i[m_i], alb_i[m_i]
+
+    # Bridge the 1000–1105 nm gap via linear interpolation
+    n_gap = 11
+    wl_gap  = np.linspace(1000, 1105, n_gap + 2)[1:-1]   # interior points
+    alb_gap = np.interp(wl_gap, [wl_v[-1], wl_i[0]], [alb_v[-1], alb_i[0]])
+    std_gap = np.zeros_like(wl_gap)
+
+    wl  = np.concatenate([wl_v,  wl_gap,  wl_i])
+    alb = np.concatenate([alb_v, alb_gap, alb_i])
+    std = np.concatenate([std_v, std_gap, np.zeros_like(alb_i)])
+    return wl, alb, std
+
+
+def load_grenfell_paired() -> List[ObsRecord]:
+    """Return extended-range (400–2005 nm) records from paired ALBV+ALBI files.
+
+    These cover all 33 dates from Jun 11 – Sep 3, 1998 where both VIS and IR
+    measurements exist.  The ALBI WI (white-ice) column is stitched with the
+    ALBV median-across-positions spectrum.  Records are tagged surface='ice'
+    and source='grenfell' with a note indicating the paired IR extension.
+    They extend the SWIR diagnostic range on the Grenfell dataset, giving a
+    direct comparison window for the Grenfell summer data similar to what
+    Smith 2021 provides at 1 nm resolution.
+    """
+    if not GRENFELL_DIR.exists():
+        return []
+
+    albv_files = {f.stem.split("_")[-1][4:]: f
+                  for f in GRENFELL_DIR.glob("*ALBV*.CSV")}
+    albi_files = {f.stem.split("_")[-1][4:]: f
+                  for f in GRENFELL_DIR.glob("*ALBI*.CSV")}
+    paired_codes = sorted(set(albv_files) & set(albi_files))
+
+    records = []
+    for code in paired_codes:
+        mm, dd = int(code[:2]), int(code[2:])
+        wl, alb, std = _stitch_albv_albi(albv_files[code], albi_files[code])
+        if wl is None:
+            continue
+        records.append(ObsRecord(
+            source="grenfell",
+            date=f"1998-{mm:02d}-{dd:02d}",
+            sza=_noon_sza_76n(mm, dd),
+            wl_nm=wl, alb=alb, alb_std=std,
+            n_spectra=-1, surface="ice",
+            sky="various",
+            lat=76.0, lon=-165.0,
+            notes="VIS+IR paired (400-2005 nm), WI albedo",
+        ))
+    return records
 
 
 def load_grenfell() -> List[ObsRecord]:
@@ -389,48 +481,77 @@ def _fmt(v, fmt=".3f"):
 
 
 def _season(r):
-    """Classify Smith records by season."""
+    """Classify records by season / comparability to winter model."""
     if r["source"] == "grenfell":
-        return "spring" if r["date"] <= "1998-06-02" else "summer_ice"
+        if r["date"] <= "1998-06-02":
+            return "spring"
+        if "VIS+IR paired" in r.get("notes", ""):
+            return "ir_paired"
+        return "summer_ice"
     # Smith
     if r["date"] <= "2020-06-22":
         return "early_june"
+    if r["date"] >= "2020-09-01":
+        return "refreeze"
     return "summer_snow"
 
 
-def print_results(results):
-    for surf in ("snow", "ice"):
-        subset = [r for r in results if r["surface"] == surf]
-        if not subset:
-            continue
-        label = "SNOW-COVERED FYI" if surf == "snow" else "SUMMER BARE ICE (season mismatch)"
-        print(f"\n{'='*90}")
-        print(f"{label}  (400–1000 nm window)")
-        print(f"{'='*90}")
-        print(f"  {'Source':<10}  {'Date':<12}  {'SZA':>5}  "
-              f"{'Obs BBA':>8}  {'Mod BBA':>8}  {'BBA Δ':>7}  "
-              f"{'RMSE all':>9}  {'Vis bias':>9}  {'NIR bias':>9}  "
-              f"{'SWIR RMSE':>10}  {'Pass?':>6}")
-        print("  " + "-"*100)
-        n_pass = 0
-        for r in subset:
-            p = "✓" if r["pass_bba"] and r["pass_rmse"] else ("?" if r["pass_bba"] is None else "✗")
-            if r["pass_bba"] and r["pass_rmse"]:
-                n_pass += 1
-            print(f"  {r['source']:<10}  {r['date']:<12}  {r['sza']:>5.1f}°  "
-                  f"  {_fmt(r['obs_bba'])}  {_fmt(r['mod_bba'])}  {_fmt(r['bba_diff'],'+.3f')}  "
-                  f"  {_fmt(r['rmse_all'])}  {_fmt(r['bias_vis'],'+.3f')}  "
-                  f"  {_fmt(r['bias_nir'],'+.3f')}  {_fmt(r['rmse_sw']):>10}  {p:>6}")
-
-        valid = [r for r in subset if r["pass_bba"] is not None]
+def _print_group(results, title, filter_fn, note=""):
+    subset = [r for r in results if filter_fn(r)]
+    if not subset:
+        return
+    hdr = f"  {'Source':<10}  {'Date':<12}  {'SZA':>5}  {'Obs BBA':>8}  {'Mod BBA':>8}  {'BBA Δ':>7}  {'RMSE':>6}  {'Vis Δ':>7}  {'NIR Δ':>7}  {'SWIR RMSE':>10}  {'Pass?':>6}"
+    print(f"\n{'='*96}")
+    print(title)
+    if note:
+        print(f"  {note}")
+    print(f"{'='*96}")
+    print(hdr)
+    print("  " + "-"*92)
+    n_pass = 0
+    for r in subset:
+        p = "✓" if r["pass_bba"] and r["pass_rmse"] else ("?" if r["pass_bba"] is None else "✗")
+        if r["pass_bba"] and r["pass_rmse"]:
+            n_pass += 1
+        print(f"  {r['source']:<10}  {r['date']:<12}  {r['sza']:>5.1f}°"
+              f"  {_fmt(r['obs_bba']):>9}  {_fmt(r['mod_bba']):>9}  {_fmt(r['bba_diff'],'+.3f'):>8}"
+              f"  {_fmt(r['rmse_all']):>7}  {_fmt(r['bias_vis'],'+.3f'):>8}  {_fmt(r['bias_nir'],'+.3f'):>8}"
+              f"  {_fmt(r['rmse_sw']):>11}  {p:>6}")
+    valid = [r for r in subset if r["pass_bba"] is not None]
+    if valid:
         print(f"\n  Pass (|BBA Δ|≤0.05 and RMSE≤0.10): {n_pass}/{len(valid)}")
-        if subset:
-            mean_rmse = np.nanmean([r["rmse_all"] for r in subset])
-            mean_bias = np.nanmean([r["bias_all"] for r in subset])
-            print(f"  Mean RMSE={mean_rmse:.3f}  Mean bias={mean_bias:+.3f}")
-            if any(not np.isnan(r["rmse_sw"]) for r in subset):
-                mean_sw = np.nanmean([r["rmse_sw"] for r in subset if not np.isnan(r["rmse_sw"])])
-                print(f"  Mean SWIR RMSE (1000–2400 nm, Smith only) = {mean_sw:.3f}")
+    mean_rmse = np.nanmean([r["rmse_all"] for r in subset])
+    mean_bias = np.nanmean([r["bias_all"] for r in subset])
+    print(f"  Mean RMSE={mean_rmse:.3f}  Mean bias={mean_bias:+.3f}")
+    swir_vals = [r["rmse_sw"] for r in subset if not np.isnan(r["rmse_sw"])]
+    if swir_vals:
+        print(f"  Mean SWIR RMSE (1000–2400 nm) = {np.mean(swir_vals):.3f}")
+
+
+def print_results(results):
+    _print_group(results, "SPRING SNOW  (Grenfell Apr–May, ~76°N)",
+                 lambda r: _season(r) == "spring",
+                 "Compared to FYI_WINTER_SNOW. Primary MVP validation.")
+
+    _print_group(results, "EARLY JUNE SNOW  (Smith Jun 13–22, ~82°N)",
+                 lambda r: _season(r) == "early_june",
+                 "Compared to FYI_WINTER_SNOW. Near melt onset; expect larger errors than spring.")
+
+    _print_group(results, "REFREEZE SNOW  (Smith Sep 1–19, ~82°N)",
+                 lambda r: _season(r) == "refreeze",
+                 "Compared to FYI_WINTER_SNOW. Refreezing conditions; SNOWTARGET = calibration fresh snow.")
+
+    _print_group(results, "SUMMER SNOW  (Smith Jun 24–Aug, ~82°N)  ── MELT SEASON MISMATCH",
+                 lambda r: _season(r) == "summer_snow",
+                 "Season mismatch: summer melt-season snow vs winter model. High errors expected.")
+
+    _print_group(results, "SUMMER BARE ICE  (Grenfell Aug–Sep, ~76°N)  ── SEASON MISMATCH",
+                 lambda r: _season(r) == "summer_ice",
+                 "Season mismatch: summer bare ice vs winter model. Documented for completeness.")
+
+    _print_group(results, "GRENFELL VIS+IR PAIRED  (400–2005 nm, Jun–Sep, ~76°N)  ── SWIR EXTENSION",
+                 lambda r: _season(r) == "ir_paired",
+                 "Compared to FYI_WINTER_BARE. Adds 1100–2005 nm window to Grenfell bare-ice comparison.")
 
 
 # ---------------------------------------------------------------------------

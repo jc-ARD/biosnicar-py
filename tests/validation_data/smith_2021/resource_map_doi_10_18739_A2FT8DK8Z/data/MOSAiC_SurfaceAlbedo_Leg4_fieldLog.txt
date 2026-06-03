@@ -1,0 +1,547 @@
+MOSAiC Leg 4
+Field log
+
+June 13
+"Ice station" ~ 30 nm from floe
+14:26 UTC Ian began ASD albedo line on Port side of ship. Mostly overcast but with slightly changing conditions, not ideal for optics. Snow thickness and Snow Micro Pen (SMP) used along line. 5-m spacing
+15:12 Laptop died after 100 m. Need to investigate battery life, which is better.
+PS122-4_44_39 (ASD)
+
+June 14 
+Day 2 of "Ice station" ~ 30 nm from floe
+11:20 UTC Began optics line on other side of melt pond on port side. ASD, followed by Ocean Optics, then quick surface characterization (photo & snow depth). Began quite clear, but then intermittent clouds moving over sun.. had to re-optimize frequently . (not ideal for optics) ~5-m spacing (Maddie on ASD)
+11:55 ended line at 65 m due to time constraints. 
+PS122-4_44_56 (ASD)
+
+June 19
+Day 1 on "Fortress" (MOSAiC CO)
+11:56 UTC began first albedo line (name TBD: Lemon Drop line) on FYI, west side of floe, just south of old ship's location. Lots of proto-ponds, relatively thin snow/slush layer (~10 cm). Interesting surface expressions - appears to be melting depth hoar. Amy took a few microCT of these areas. 5 m spacing (Maddie on ASD)
+12:38 ended first line. ASD 80-161
+PS122-4_44_106 (ASD)
+
+14:12 Began second albedo line (name TBD: Root Beer) on FYI, west side of floe, just north of old ship's location. Some thicker snow towards end of line between ridges; potentially some dirty/sediment-y snow towards start of line. 10 m spacing (Maddie on ASD)
+14:35 ended second line ASD 162-203
+PS122-4_44_107 (ASD)
+
+June 20
+12:11 Began ASD on 1st albedo line. Kipps followed slightly behind. Photos taken on Melinda's camera. Snow and water depth recorded along line. Maddie on ASD, Julia and Felix on Kipps. Kipps used similar to ASD, w/out tripod. Mostly CO-SDNV. 
+Ponds slightly refrozen from the day before (~1 cm ice) with a very light dusting of fresh snow over everything. 
+12:58 Ended ASD on 1st albedo line. Kipps finished just a few minutes behind. ASD 204-285
+PS122-4_44_108 (ASD) PS122-4_44_110 (Kipps)
+
+13:31 Began ASD on 2nd albedo line. Photos taken on Melinda's camera. No snow or water depth coincident with albedo along line, but Melinda made some point grain size observations and photos. Alternating between CO-SDV and SDNV. 
+14:01 Finished ASD on 2nd albedo line. ASD 286-367
+PS122-4_44_109 (ASD)
+
+
+June 21
+12:08 UTC Began ASD & Kipps on 2nd line (Root beer barrel line). Maddie on ASD, Felix on Kipps, Melinda taking notes. Sky: BC.
+12:51 Finished optics on RBB line. ASD 368-449
+PS122-4_44_149 (ASD) PS122-4_44_150 (Kipps)
+
+13:50 UTC Began optics on 1st line (Lemon drop line). Maddie on ASD, Felix on Kipps, Melinda taking notes. Sky: BC. Melinda took photos and snow observations. 
+14:27 Finished optics on LD line. ASD 450-533
+PS122-4_44_151 (ASD) PS122-4_44_261 (Kipps)
+
+June 22
+Optics on Lemon drop w/ simultaneous snow measurements. Maddie on ASD, Felix on Kipps, Melinda photos & snow depths. Amy & Evgenii did NIR snow camera and SMP every 20 meters. Melt ponds nearly fully frozen on surface, still some surface hoar and light snow (couple days old) on surfaces. Intended to begin GEM and Magnaprobe next to albedo line, but didn't happen due to connectivity issues with GEM. Line completed backwards (200-0 m) due to new road build from FYI coring to finish point. 
+10:34 UTC Began transects. Sky BC.
+11:26 UTC End transects 
+ASD 534-618 (excluding: 538)
+PS122-4_44_137 (Kipps) PS122-4_44_138 (ASD)
+
+June 24 
+Repeated optics on Lemon Drop line (as two days prior) due to large change in surface conditions. Melt ponds substantially expanded and melted, with snow apparently meling/draining. Sky: CO-SDNV
+7:56 UTC Began LD line from 0 position. Maddie on ASD, Felix on Kipps, Amy notes/photos (in Maddie's notebook)
+8:35 UTC Finished line. 
+ASD 619-700 
+PS122-4_44_158 (ASD) PS122-4_44_159 (Kipps)
+
+
+Note: Solar noon around 11:30 UTC/13:30 CEST/Local
+
+June 25
+(afternoon) Installed stakes at FYI drone ops area ("Drone Bones"). 9 stakes total in 'x' pattern. Approximately level area, with 1 stake already in pond and 1 clearly in thicker, rafted ice. May be slightly too close to the perimeter road to drone area.  
+
+June 26
+8:30 Two sequential castaway drops at ADCP hole, next to Reunion stakes deployment. Had to break through thin ice layer formed at bottom of hole! 
+PS122-4_44_182
+
+Afternoon: Optics. Sky: mostly CO-SDNV first line, CO-SDV end of first, intermittently on second. 
+12:18 UTC Began ASD (Maddie) and Kipps (Ian) on Lemon drop line. Felix on photos/notes. Ponds substantially expanded over line from 24th! Lots of open water, areas of remaining snow heavily changed/VERY large crystals. Really cool "jewel snow" ~165 m. 
+12:53 UTC Finished LD line. ASD 701-782
+PS122/4_44-178 (ASD) PS122/4_44-180 (kipps)
+
+13:27 UTC Began ASD (Maddie) and Kipps (Ian) on Root beer line. Amy on photos/notes. Some significant snow still remains towards end of line. 
+14:04 UTC Finished RB line. ASD 783-864
+PS122/4_44-179 (kipps) PS122/4_44-181 (ASD)
+
+June 27
+Scouting perimeter path for transect work - to right from ship, along Alli's ridge, old N Transect, to area bordering black monster location.  
+Optics at ROV FYI. ROV started transmittance measurements a few minutes ahead, done at 0.5-m depth. Sky: CO-SDV.
+11:54 UTC began transect of ROV grid/chocolate cross-roads. Maddie on ASD, Felix on Kipps, Amy notes/photos. 3 micro-CT samples
+12:29 UTC finished ROV/Choco x-roads. ASD 866-911, 913-925
+PS122/4_44-207 (ASD) PS122/4_44-210 (Kipps)
+
+June 28
+Morning: two Lidar scans (VZ6000) at optics area. 1 ~200 m on RB line, 2 between 0 on LD line and RB line. 
+
+Repeat optics at ROV FYI site, because there was a fresh layer of snow overnight! (<1 cm). Should be interesting to compare with day before to understand effect of fresh snow event on melting surface. 
+Sky: PC (not ideal for albedo, but mostly stable while measurements taken. ROV did transmittance measurements just prior at 0.5-m depth. Also took GPS coordinates of albedo stakes and Ilkka's ice markers (bamboo on surface) for collocation of obs. (gpx file)
+13:20 UTC began ASD transect on ROV area. Maddie ASD (photos after). 
+13:45 UTC Finished ROV transect. ASD 927-988, except 967-968
+PS122/4_44-211 (ASD)
+
+June 29
+Returned to old floe! Old albedo line near 4 DTCs and original ROV optics grid N transect loop. 
+9:50 UTC: began transect at stake #4 with ASD (Maddie) Kipps (Ian), notes and photos (Amy - w/ Amy's camera). 
+10:21 UTC ended transect at 18 on same floe. (Note that labels as 1-17 in notebook correspond to 4-20 in old labeling, used here) ASD 989-1018
+
+11:01 UTC: began ASD & kipps on last two points in optics line (19&20) (pictures w/ field cam)
+11:05 UTC: finished ASD & Kipps ASD 1019-1020,1022-23 (all except 1021)
+PS122/4_45-21 (ASD) PS122/4_45-22 (Kipps)
+
+~11:30 UTC: under-ice L-Arm measurements at #19 (same location as albedo) with Guilia Castellani's L-arm setup. Snow thickness at Larm cores location: 5cm, 3cm,5cm. Point measurement coincident with albedo, and spaced along 180˚. 
+~ 12:00 UTC: Optics core taken between points 19 & 20. Ice apparently similar to cores taken for chlorophyll at L-Arm location. 
+PSS122/4_45-215 (coring - SI_corer_9cm)
+
+June 30
+Morning: bearguard for stakes reading (Ian & Julia). Took photos of potential optical tunnel sites near Reunion stakes, north of ADCP hole. Optical tunnels could be installed straight N of end of stakes line.
+
+Afternoon: Albedo at optics lines. Maddie on ASD, Felix on Kipps, Debbie on notes/photos (field cam). Some of fresh snow from night of 27th still evident. 
+12:17 UTC Lemon drop line. First ~50 m probably useless due to really strongly changing cloud conditions, then became clear. Some trampling on 200 position... 
+13:04 UTC Finish LD line. ASD 1024-1105 (exclude 1106-1107)
+PS122/4_45-23 (ASD) PS122/4_45-24 (Kipps)
+
+13:38 UTC Root beer line. Fresh polar bear tracks/trampling all along albedo line, with some destruction of stakes and flag! Sky: BC for entirety of line
+14:28 UTC Finish RB line. ASD 1108-1190 (exclude 1152)
+PS122/4_45-25 (ASD) PS122/4_45-26 (Kipps) 
+
+
+July 1
+(morning on ship)
+Afternoon: test run of lead work at ROV lead area. Deployed castaway 9 times across lead, where 65 m wide. (every 5-10 m) Debbie took BGC/DMSP samples along transect and on paddle back. ROV did some diving around beginning of transect, with CT under the ice, and to near surface in lead (should compare!)
+11:59 UTC: First GoPro video
+12:29 UTC began profiling 
+13:32 UTC end profile
+PS122/4_45-52 (Castaway)
+PS122/4_45-186 (GoPro)
+
+July 2
+Morning: Scout albedo library sites (for 24-hr ops) w Melinda
+~10:30 UTC Installed 2 prototype 'optical tunnels' (45˚ angle, clear poly tubes) at 'Reunion stakes' - approximately level moderately ponded FYI, ~1.5 m thick. 1st under small pond (T01), 2nd under nearly uniform snow covered (T02). Not yet measured.
+Afternoon: cancelled optics due to rain. On ship, prepping spectral evolution and rod for tunnel measurements.
+
+
+July 3
+Albedo work (morning: tunnels, afternoon: FYI albedo lines) cancelled all day due to rain. :(
+
+July 4
+Morning: reading stakes (Drone Bones & Reunion Stakes) w/ Ian. Noted long pillars of snow/ice grains near pond edges at reunion stakes, and melt holes (from rain?). 
+Early afternoon: Optics at ROV area w/ ASD only (was supposed to do both over lunch, but miscommunication meant I wasn't able to get off ship). Maddie ASD, Amy notes and photos. 11:38 Start ASD transect
+12:16 End ASD transect
+Amy took CT samples at same locations as on June 28. 
+Late afternoon: Lidar on Optics grid. Brought generator out to meet Ian after batteries died halfway through first scan (200 m on RBB line). Connectivity issues required using ipad to start scans rather than laptop, but settings were not quite right and 3 completed scans have poor returns. 
+
+ASD 1191-1251 NOTE: 1191 file accidentally overwritten on July 5. (discard point - naned out in albedos csv)
+PS122/4_45-135
+
+July 5
+Afternoon albedo transect cancelled due to rain
+Afternoon: Set up snow on/off experiment in level area off stern of ship with Amy. 2 3x3m areas with 'gravel' snow grains. (STERN area, locations 1A and 1B)
+12:50 UTC Took albedo of both before ('clean', then to-be-cleared), then shoveled one off completely. Note: Shoveled one had piece of pink flag in middle of area before shoveling...
+13:20 UTC took albedo of both again ('clean', then cleared). 
+ASD accidentally overwrote first file from July 4! (1191)
+ASD 1251-1258
+PS122/4_45-136 (ASD)
+
+July 6
+Morning: stakes installation (Ian, Maddie, Julia, Luisa) on SYI side of Met City ("the Bean Poles"). 9 stakes, most ~3 m (from 2.4-3.5 ish). On other side of Met City from Reunion states, with thicker & clearly sedimented ice. Ponds at a few stakes
+Recorded GoPro timelapse of installation. Filmed by UFA team. 
+
+Afternoon: optics at FYI albedo lines. Maddie: ASD, Amy: Kipps, Antonia: photos (Amy's cam) & notes. Slow start due to ongoing issues with ASD power cable.
+Sky: mostly CO-SDNV, sometimes SDV
+11:53 started LD line. 
+13:00 finished LD line. 
+Amy did snow transect on LDL: NIR every 20 m, some surface CT, grain size photos.
+UAV group flew drone over lines with coincident albedo measurements (pyranometers) between finishing first line and while starting 2nd line.
+ASD 1259-1342 (excluding 1261, 1266)
+PS122/4_46_6 (ASD) PS122/4_46_7 (Kipps)
+
+14:20 started RB line.
+15:20 Finished RB line. Positions in notes didn't quite line up, but backed out that notes at 55m probably skipped.
+ASD 1343-1426 (excluding 1383-1384 - duplicate at 100 m??)
+PS122/4_46_8 (ASD) PS122/4_46_9 (Kipps)
+
+July 7
+
+ROV optics. ASD, Kipps, then notes & photos (all Maddie). Transmittance transect (w ROV at 0.5 m) started just before start of ASD transect. 
+Sky: CO-SDNV
+9:26 begin ASD transect. Some fresh footprints noted along beginning of albedo line... 
+10:00 UTC finish ASD transect. ASD 1427-1486 (skip 1487)
+10:05 UTC begin Kipps transect
+10:33 UTC finish Kipps transect
+PS122/4_46-23 (ASD) PS122/4_46-24 (Kipps)
+
+Afternoon: Optics lines at FYI area. Similar to day before, but surface seems more melted and warmer. 
+Sky: PC (sort of stable, but definitely not ideal)
+11:58 begin LDL transect with ASD (Ian) Kipps (Felix) notes/photos (Maddie). 
+12:32 finish LDL transect. Somehow added an extra measurement point between 100-120 (around 107?). Kept in data, but note that locations probably do not exactly match up with prior days. 
+ASD 1488-1571 (extra pair around 105-110 range... also, exclude 1572)
+PS122/4_46-25 (ASD) PS122/4_46-26 (Kipps)
+
+12:57 UTC: begin RBB transect with ASD (Felix) Kipps (Ian) notes/photos (Maddie). 
+13:31 ASD stopped working at 125 m due to issues with power cable (not connecting). last measurement is 1625
+13:51 finished transect with Kipps & notes/photos
+ASD 1573- 1625 (exclude 1607)
+PS122/4_46-27 (ASD) PS122/4_46-28 (Kipps)
+
+
+July 8
+
+Morning: Attempted ASD at 2 of 3 stakes locations for first time: "Drone Bones" (semi-deformed FYI) and "Reunion Stakes" (level FYI). Used Felix's (CAU) batteries & power cable and panasonic toughbook. Unfortunately, settings on RS3 on panasonic weren't right and data do not seem usable. 
+7:28 UTC begin ASD at Drone Bones
+7:35 finish ASD at Drone Bones (ASD 0-11)
+8:18 begin ASD at reunion stakes. 
+8:26 finish ASD at reunion stakes (ASD 12-27)
+9:10 UTC Tested Spectral Evolution reading in snow-covered optical tunnel (Tunnel1). Made readings at 6 depths to 
+PS122/4_46_185 (SpecEvol)
+
+Afternoon: Perimeter mass balance transect - Magnaprobing, w Melinda (GEM), Amy (snow sampling & notes), Harold, UFA team, Igor (BG). Windy, cool. 
+
+
+July 9
+Morning: Lead transect w Ilkka. Narrow lead towards ship from ROV area (prior lead closed up), only 15 m wide. Cloudy but low wind (calm on lead). 
+7:55 UTC first YSI measurements to estimate profile through halocline. 
+8:05 first Castaway drop. 
+PS122/4_46-102 (Castaway) PS122/4_46-103 (YSI)
+
+Afternoon: Lidar in FYI Optics grid. 3 successful scans! Ian, Julia (BG). Nice sunny/PC afternoon. 
+
+
+July 10-11
+24-hr sampling (Albedo!). 3 'locations': 
+Reunion Stakes (RS) visited every ~3 hrs. (1) intersection of stakes 203&205, pond. (2) intersection of stakes 203&206, raised area of SSL. (3) intersection of stakes 203&207, sediment mounds (4) intersection of stakes 203&211, part raised SSL, some uneven surface
+(5) stake 205 (6) stake 206, vertical grains & crack (7) stake 207, pond (8) stake 211, half uneven surface & level SSL
+Stern (STERN) visited every ~3 hrs. (1) A - clean area from July 5, B - shoveled area from July 5, with ~1cm standing water. (2) pond, very holey bottom (3) other end of same pond, but smoother bottom. (4) Dark pond, measurement centered over large white (previously crack). (5) A - clean level bare (SSL) ice, on slope, and B - shoveled off to observe SSL evolution. (6) very blue pond (7) very large tooth-like grains (old drained pond?) at edge of pond 6
+ROV transect, visited every ~6 hrs (with ROV transmittance & UAV albedo).
+
+10:35 STERN PS122/4_46-113 Setting up sites. Amy took notes and photos. 5B not yet shoveled. 
+11:04 ROV PS122/4_46-114 ROV optics transect & UAV albedo grid after
+12:02 RS PS122/4_46-115. Took photos of sites with phone. 
+13:13 STERN PS122/4_46-116. Tried to do some measurements from different angle, getting same location (BUT may not exactly match....) CO-SDV, foggy
+16:08 RS PS122/4_46-117 CO-SDV, foggy
+16:40 STERN PS122/4_46-118 CO-SDNV, foggy
+17:25 ROV PS122/4_46-119 ROV optics transect right before; UAV albedo grid just after.
+19:15 STERN PS122/4_46-120 Tried averaging 20 scans. Not clearly worth it, so switched back to 10. Some scans seem to not be good (didn't hold steady long enough?)
+20:02 RS PS122/4_46-121 Amy took notes, photos, depths at sights. NIR, microCT, delta18 samples at 1 (A&B) and 5 (A&B)
+22:00 RS PS122/4_46-122
+22:18 STERN PS122/4_46-123
+23:14 ROV PS122/4_46-125. CO-SDNV, visibility improving. ROV & UAV optics surveys after. 
+
+July 11
+01:22 STERN PS122/4_46-126. Ian did measurements, Melinda notes. In wrong order (& missed 7) Some seem to not be in exactly the same location. ASD 1958-1973
+01:58 RS PS122/4_46-127. Ian did measurements, Melinda notes. Some seem to not be in exactly the same location. Battery died after position 5. ASD 1974-1983
+04:07 RS PS122/4_46-128 CO-SDNV, good visibility, drizzly
+04:27 STERN PS122/4_46-129 CO-SDNV, good visibility, drizzly
+05:07 ROV PS122/4_46-130 Rain starting. Paused at 40 m, stopped at 100 m due to rain. No UAV flight due to rain. ROV optic transect ~during rain break. ..
+07:20 STERN PS122/4_46-131 CO-SDNV, good visibility, not raining! windy. 
+08:06 RS PS122/4_46-132 CO-SDNV, good visibility, not raining! windy. Amy took photos, samples (NIR images, delta18, microCT at 2+5)
+10:12 RS PS122/4_46-133
+10:31 STERN PS122/4_46-134
+10:58 ROV PS122/4_46-136 ROV did optics transect sometime during measurements. No UAV. 
+
+Lessons learned: (1) pick very uniform sites so exact aim of sensor is not so important. (2) preferably same person does all measurements to ensure consistency. (3) not necessary to average more than 10 scans. 
+
+July 12
+No science on ice. Ship had to reposition as a result of motion from ice pressure overnight. 
+
+July 13
+Morning: bear guard at FYI coring site.
+
+12:05 UTC begin transect lemon drop line. Appeared more white, refrozen and drained than previous visit! ASD (Maddie) Kipps & photos/notes (Amy). Snow transect, measurements ~20 m. 
+12:50 finish LD line. ASD 2192-2273
+PS122/4_47-42 (ASD) PS122/4_47-44 (Kipps)
+photos PS122/4_47-61
+
+14:04 UTC begin transect of Root Beer line. ASD only (Maddie) & photos/notes (Amy). 
+14:40 UTC finish RB line. ASD 2274-2355 
+PS122/4_47-45 (ASD) PS122/4_47-46 (Kipps) 
+photos PS122/4_47-61
+
+July 14
+Morning: L-Arm measurements with Giulia at FYI coring site. Coring (including optics core & IOP probe right next to) and snow pit at location day prior. 
+Used Trios Ramses (held out) to measure incident & reflected, then L-Arm to measure transmitted. Gradually scraped away at SSL in ~2x2 m area (4 times total), & re-measured surface & transmitted optics. 
+Photos on Giulia's camera on grains & surface. 
+SSL ~4.5 cm thick
+
+Lunch: Optics at ROV grid. Sky: CO-SDV. ROV behind schedule due to site maintenance; optics completed later in day. Ian took notes on snow & pond depth, and did GEM survey. Photos on field cam. GEM times: 0-100 m 10:19-10:35, 105-145 10:40-10:46
+10:00 UTC: Began ASD survey of Choco-Xroads
+10:29 UTC: Finished ASD survey of Choco-Xroads. ASD 2356-2415
+PS122/4_47-47 (ASD) 
+10:35 ish: Kipps survey of Choco-Xroads. 
+11:00 Finish Kipps survey
+PS122/4_47-48 (Kipps)
+ 
+11:00 ish: Took photos of all measurement points. 
+
+Afternoon: assisted Felix (& Tuija) with pond optics measurements, at 'Mystery Pond' near Met City. He took albedo point reading, then we measure pond depth & drilled to measure ice thickness.  
+(note: Ian & Luisa took YSI profiles in holes near Met City to capture variability of freshwater lens. PS122_4_47-174 (si_2iauger) PS122_4_47-196 (YSI))
+
+July 15
+All day: 4-DTC floe excursion (by foot, and kayak!). Most of albedo line no longer present - measured the 2 near the radiation station with ASD & Kipps. Sky: CO-SDV
+10:10 ASD sampling of two remaining albedo line points (19&20). ASD 2416-2419. Kipps shortly after
+PS122/4_47-49 (ASD) PS122/4_47-50 (Kipps) 
+
+10:32 UTC Photos (Amy's cam) & NIR photos at both. 
+Recovered ROV transponder, Amy did snow pit, redeployed snow buoy.
+PS122-4_47-77 (Photos from Amy's cam) 
+
+Castaway deployed in leads - 3 locations on 4 DTC floe, once in transponder recovery hole, at 1 location on way back towards Alli's ridge
+PS122/4_47-51 (Castaway)
+
+July 16
+Morning ice work cancelled due to polar bear
+
+Afternoon: Unable to visit albedo lines due to both polar bear in area & rain. Read met city area stakes (Reunion Stakes & Bean Poles) with Ian. 
+
+Sky: CO-SDNV
+12:50 UTC ASD measurements at Reunion Stakes (as from 24-hr). No reading at 5 (being used for start of fresh lens drilling). ASD 2420-2434
+PS122/4_47-80 (ASD)
+13:10 ASD measurements at Bean Poles (for first time). ASD 2434-2449
+PS122/4_47-81 (ASD)
+
+Helped Ian, Evgenii, Luisa with Castaway casts coincident with YSI profiles searching for fresh water lens. 
+12:46 first Castaway deployment in core hole near Met City
+13:37 last Castaway deployment 
+PS122/4_47-185 (Castaway)
+PS122_4_47-197 (YSI) PS122_4_47-173 (si_2iauger)
+
+14:26 UTC: ASD measurements at Stern area (as from 24-hr). Amy did NIR, mCT, images at 1, 5, 7. Pit at 5 nearly indistinguishable from undisturbed area.  
+14:44: end Stern area ASD. ASD 2450-2467
+PS122/4_47-82 (ASD)
+
+July 17
+Morning ice work cancelled due to polar bear
+
+Afternoon: cross-team lead survey. I did Castaway & YSI profiles by kayak (at multiple points in each lead), GoPro videos (died on first video in second lead). Also: upriser (Morven & Lianna - but drift was such that coming up under ice), water DMSP sampling (Steve), BGC sampling, ECO sampling of 'creamy' layer. Two lead locations
+12:31 UTC: Site A: 1st lead at end of LDL 0m, ~15 m wide, mix of 2nd year/ridge blocks. Visible creamy layer. 
+PS122/4_47-121 (Castaway) PS122/4_47-181 (YSI) PS122/4_47-182 (GoPro)
+14:14 UTC: Site B: 2nd lead to 'N' of RBB on transect, ~60m wide, mostly surrounded by level FYI, no visible creamy layer but lots of platelet ice formation around blocks. 
+PS122/4_47-122 (Castaway) PS122/4_47-183 (YSI) PS122/4_47-184 (GoPro) 
+Note: helicopter flight on same day may be useful for aerial context of surveyed leads. 
+
+Optics: Ian (Kipps) & Felix (ASD), Antonia notes/photos. 
+12:15 start Root beer line. Sky: CO-SDV
+13:05 finish Root beer line. Extra measurement around 117m (between 100 & 120).
+ASD 2470-2553 (exclude 2468,69)
+PS122/4_47-123 (ASD) PS122/4_47-124 (Kipps)
+
+13:14 start Lemon drop. Sky: CO-SDV turning to PC.
+14:10 finish Lemon drop. Extra measurement around 117m (between 100 & 120). 
+ASD 2554-2555, 2557-2500, 2601-2639 (exclude 2556, 2600)
+PS122/4_47-125 (ASD) PS122/4_47-126 (Kipps)
+
+July 18
+Morning ice work cancelled due to polar bear
+
+Afternoon: Cross-team destructive melt pond sampling. 
+11:50 UTC: ASD measurements at same points measured previously (1A&1B, then 2&3 from stern area), as well as 2 more over more bubbly/white areas. Pond now quite close to stern of ship. Felix's ocean optics in same locations. ECO & BGC water sampling, then Magnaprobe survey of pond - avoiding areas of samples (2&3). Cores collected from near point 2 - salinity & nutrients, methox, DIC, chlorophyll, Optics, microCT (top porous part, bottom puck)... optics core collected underneath where L-Arm measurements were taken. 
+False bottom present. ASD 2642-2651
+PS122/4_47-127 (ASD)
+PS122-4_47-156 (Photos from Amy)
+PS122/4_47-137 (coring - SI_corer_9cm)
+PS122/4_47-257 (YSI) 
+
+July 19
+Afternoon: drill hole, false bottom measurements, YSI transect from Met City to Alli's Ridge (searching for fresh water lens) with Ian (drilling), Luisa (measuring), me doing YSI. Did not really identify fresh lens. False bottom not present closer to Alli's Ridge, despite thin ice.  
+PS122_4_47-172 (si_2iauger)
+PS122_4_47-198 (YSI)
+
+Evening: measurements of 2 optical tunnels @ Reunion Stakes w/ Lianna
+17:41 UTC Begin measurements of tunnel 1 (under bare ice). Some condensation inside of tube. Medium sized melt well around tunnel. 
+Scans 1-9. 
+17:59 UTC Begin measurements of tunnel 2 (in melt pond). Large melt well around tunnel. Removed ablation shield after measurements. Challenging to decide where 'ice' begins... measured ice surface level with tube at ~70cm, but tunnel actually under ice beginning ~40 cm. 
+Scans 10-17. 
+Took photos of tunnels.
+PS122/4_47-159 (SpecEvol)
+
+July 20
+Afternoon: started Ecolodge Scattering Pit ('Boptics') with Amy. Sky: CO-SDNV
+11:45 UTC ASD measurements over both 'clean' (A) and 'disturbed' (B) area prior to snow work and clearing. Measured from each corner starting from Stbd-stern corner (1) in clockwise direction. ASD 2652-2667
+Amy did NIR, small snow pit, microCT samples, in each area.
+13:13 finished clearing 
+13:21 UTC ASD measurements of both areas (A and B). ASD 2668-2683
+PS122/4_48-6 (ASD) PS122-4_48-41 (Photos)
+
+July 21
+Morning: helped Ian with stakes - Drone Bones, Reunion Stakes, Bean Poles. 
+
+ROV optics. Ian did GEM survey. No Kipps transect due to time. Photos and notes on depths taken. Many ponds starting to melt through, etc. 
+9:32 UTC Start ROV ASD transect.
+10:09 UTC Finish ROV ASD transect.
+ASD 2684-2719, 2722-2745 (exclude 2720-21)
+PS122/4_48-87 (ASD)
+
+Afternoon: Albedo lines. Maddie (ASD), Amy (Kipps, snow survey), Zoe (notes, photos), Lianna (BG). Visited RBB first, then LDL. 
+12:00 UTC begin RBB transect with ASD and Kipps.
+12:45 UTC: finish RBB
+ASD 2746-2827
+PS122/4_48-88 (ASD) PS122/4_48-89 (Kipps)
+
+12:55 UTC: begin LDL with Kipps, then ASD.
+13:46 UTC: finish LDL.
+ASD 2829-2910 (skip 2828)
+PS122/4_48-90 (ASD) PS122/4_48-91 (Kipps)
+
+Amy did snow transect (NIR, uCT) along LDL afterwards. Mass balance transect visited LDL but not RBB. 
+
+15:02: ASD at Boptics/SSL removal experiment pit near Ecolodge. Amy did NIR & uCT. 
+ASD 2911-2926
+PS122/4_48-92 (ASD) PS122-4_48-42 (Photos)
+
+July 22
+Lead sampling day. 
+Site C: Between FYI ROV & Drone-ville. Maddie (Castaway & YSI), Melinda (Notes & GoPro). 
+7:58 UTC: Begin YSI profile
+8:02 UTC: Begin first Castaway profile
+8:07 Begin GoPro video
+8:53 UTC: Begin last Castaway profile
+9:05 Last YSI measurements
+PS122/4_48-199 (YSI) PS122/4_48-200 (Castaway) PS122/4_48-201 (GoPro)
+
+Site A: Beginning of LDL albedo line. Maddie (Castaway & YSI), Katia (Notes & GoPro). 
+10:00 UTC: Begin YSI profiling
+10:11 UTC: Begin first Castaway profile
+10:16 Begin first GoPro video
+11:40 Last YSI measurements
+11:42 UTC: Begin last Castaway profile
+PS122/4_48-202 (YSI) PS122/4_48-203 (Castaway) PS122/4_48-204 (GoPro)
+
+Site D: Near Alli's ridge, just a bit north of site B. Maddie (Castaway & YSI), Julia (Notes & GoPro). 3 upriser casts.
+13:19 UTC: Begin YSI profiling
+13:23 UTC: Begin first Castaway profile
+13:28 UTC: Begin first GoPro video
+15:03 UTC: Begin last Castaway profile
+15:10 UTC: last YSI profiling
+PS122/4_48-205 (YSI) PS122/4_48-206 (Castaway) PS122/4_48-207 (GoPro)
+
+Note: helicopter ALS survey in evening. Likely useful for matching up shape of leads & type of surrounding ice. 
+
+July 23
+Morning: ASD at Boptics SSL pit near Ecolodge. Amy did NIR, CT samples. 
+07:27 UTC: Begin ASD measurements. ASD 2927-2942
+PS122/4_48-93 (ASD)
+
+Afternoon: Albedo lines with Julia (ASD), Ian (Kipps), Maddie (notes/photos). Couldn't complete both lines due to polar bear on floe. 
+1209 UTC: Started RBB line. Sky: CO-SDNV. Surface appeared whiter, possibly due to sun previous day. 
+Started turning Sunnier (CO-SDV, to PC) partway through line, resulting in some saturation, etc. 
+1310 UTC: Finished RBB line, headed back to ship b/c of polar bear.
+ASD 2943-3014, 3016-3025 (skip 3015)
+PS122/4_48-94 (ASD) PS122/4_48-95 (Kipps)
+
+July 24
+
+Morning: ASD at Boptics/SSL removal at Ecolodge. Amy and Giulia did 'snow pit' and L-Arm measurements after. Photos from Amy.
+714 UTC: start ASD measurements
+722 UTC: finish ASD measurements. ASD 3026-3041
+PS122/4_48-150 (ASD) PS122-4_48-100 (Photos)
+
+Albedo at Lemon drop line (not done yesterday due to evacuation for PB). Maddie (ASD), Felix (Kipps), Melinda (notes/photos). Melinda & Felix completed mass balance transect while Maddie did NIR images. Sky: CO-SDNV
+810 UTC: start LDL
+850 UTC: finish LDL. ASD 3042-3123 
+PS122/4_48-151 (ASD) PS122/4_48-212 (Kipps)
+
+Afternoon: Lead sampling at "Site D" near Alli's Ridge. 
+IMB deployed in lead. Bruncin IMB ser no 43, Device URN: buoy: bruncin_imb043. Sensorweb: 2020M27
+80.1980 N, 0.5554 W, at 12:03:58 UTC. On edge next to ridge (N of Alli's Ridge, Lead "Site D"). Photos 742-752. ~14 sensors are above water surface. 
+(OLD: PS122/4_48-224(IMB) changed to continuous... )
+PS122/4_43-178 (IMB)
+
+Kayak lead upper ocean TS profiles: Maddie (YSI, Castaway), Melinda (notes & GoPro), then Saga (notes only). Worked clockwise around floe towards ship. 
+12:30 UTC: Begin YSI profiling
+12:36 UTC: Begin first Castaway profile
+12:36 UTC: Recording with GoPro 
+13:53 UTC: Begin last Castaway profile
+14:00 UTC: Finish YSI profiling
+PS122/4_48-208 (YSI) PS122/4_48-209 (Castaway) PS122/4_48-210 (GoPro)
+
+July 25
+
+Morning: Albedo at stakes. ASD (Maddie) Sky: CO-SDV, Surface slightly frozen (small ponds have thin ice lid). Note: spectralon plate has small scratch in center
+7:43 UTC: ASD measurements at Drone Bones (DB). (First time) 
+PS122/4_48-152 (ASD)
+8:29 UTC: ASD measurements at Reunion Stakes (RS)
+PS122/4_48-153 (ASD)
+8:57 UTC: ASD measurements at Bean Poles (BP)
+PS122/4_48-154 (ASD)
+
+Afternoon: Drill lines and coring on FYI to understand false bottom distribution. Drill line from SIMBA to Drone Bones Stakes. Ben (coring), Luisa (measurements), Ian (drilling), Lianna (BG), Maddie (coring/GoPro). 
+4 cores taken on SIMBA side of ridge, 2 cores taken on Drone Bones side of ridge (preferentially where false bottoms seen). Bottom 10 cm, false bottoms, void water, under-ice water and MP water sampled for salinity and dO18. 
+GoPro videos taken in 3 locations where cores had false bottoms. 
+12:25 UTC: Start first GoPro video
+PS122/4_48-211 (GoPro) PS122_4_48-165 (si_2iauger)
+PS122/4_48-158 (Cores - SI_corer_9cm)
+
+July 26
+
+Afternoon: no work on ice. (Helped/sightseeing at Remote Sensing sight, then beginning freight organization on ship)
+
+July 27
+Morning: 
+07:36 UTC: ASD At Ecolodge Scattering Experiment ('Boptics') site. Amy did NIR, uCT samples, snow meas. ASD 3169-3184. Photos on field cam & from Amy
+PS122/4_49-49 (ASD) PSS122/4_49-7 (Photos from Amy)
+8:50 UTC: ASD at FYI coring site. Position 1 at Snowpit (Amy) location, working towards left. Called back to ship due to fog (coring not completed - half core saved as 'Optics core'). Cored on Wednesday (July 29). Photos from Amy.
+ASD 3185-3192
+PS122/4_49-50 (ASD) PSS122/4_49-8 (Photos)
+
+Afternoon: Albedo lines. 
+Destructive sampling of RBB line. Maddie (ASD), Ian (Kipps), Felix (Ocean Optics), Tuija (notes/photos). NIR images at all points to somewhere around 160-180 (Amy & Julia). Drill for thickness to ~100 m (Luisa). Laura (BG). Cores from 5m and 85m points in ponds (Ian & Maddie). GoPro in core holes (Maddie). 
+Hope to return for core at 110, maybe some level SSL locations (200?), and remainder of drilling. 
+14:35 UTC: Began albedo transect. 
+15:31 UTC: finish albedo transect. ASD 3193-3274
+16:28 UTC: Begin GoPro recording 
+PS122/4_49-51 (ASD) PS122/4_49-52 (Kipps) 
+PS122/4_49-66 (GoPro) PSS122/4_49-26 (si_2iauger Thickness) 
+PS122/4_49-121 (Cores - SI_corer_9cm)
+
+July 28
+Morning: (Lead sampling cancelled due to fog) 
+Albedo at ROV Choco X-Roads. ASD, Kipps, Photos (Maddie). Sky: CO-SDV. First ROV day at new location (away from edge). Many of ponds melting through and expanding into previously bare ice areas... 
+7:43 UTC: Begin ASD transect
+8:21 Finish ASD transect. ASD 3275-3334
+PS122/4_49-53 (ASD)
+8:39 Begin Kipps transect
+9:03 Finish Kipps transect 
+PS122/4_49-54 (Kipps)
+Took photos of all points. No surface measurements (or GEM, due to fog)
+
+Afternoon: Attempted lead sampling at Site D, but got minimal measurements because we were called back due to fog. 
+1 set of YSI measurements and Castaway cast at intended BGC sampling location. 
+12:25 UTC: YSI profiling
+12:27 UTC: GoPro video in lead
+12:32 UTC: Begin Castaway cast
+PS122/4_49-68 (YSI) PS122/4_49-69 (Castaway) PS122/4_49-70 (GoPro)
+
+July 29
+Morning: Stakes reading and dynamics buoy recoveries with Ian. 
+
+Afternoon: Albedo lines - measurements on LDL, finished destructive sampling on RBB. Sky: CO-SDNV
+11:52 UTC: started LDL transect. ASD (Maddie), Kipps (Ian), Notes/photos (Luisa). 
+12:24 UTC: finished LDL transect. ASD 3335-3416
+PS122/4_49-55 (ASD) PS122/4_49-56 (Kipps)
+Finished thickness drilling on RBB (100-200). YSI measurements at point locations (where thin) and extra locations from 0 to lead edge. Freshwater lens observed under melt pond from 5-15 on line. GoPro again at 5 m and in lead.
+13:00 UTC: Approximate time of first YSI measurements
+14:18 UTC: Begin recording with GoPro (once in melt pond core hole, once in lead)
+PS122/4_49-71 (YSI) PS122/4_49-72 (GoPro)
+(si_2iauger)
+GPS waypoints along both lines (gpx files, typed up and added to floemap folder)
+
+July 30
+Morning: Stakes reading with Ian (& intended to read optical tunnels). Read Drone Bones, then called back due to fog.
+Afternoon: cancelled due to 3 polar bears & fog. 
+
+Cracks appearing between ship and Met City and ROV area. 
+
+July 31
+Floe breakup overnight. On ice work no longer possible, and sites not located due to fog. Recovered met hut, then went to old CO to do recoveries. 

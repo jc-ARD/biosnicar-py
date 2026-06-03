@@ -158,6 +158,7 @@ class SeaIceColumn:
         sza_deg: float = 60.0,
         atmosphere: str = "sub_arctic_winter",
         sky: str = "clear",
+        snow_grain_radius_um: Optional[float] = None,
     ) -> AlbedoResult:
         """Run the BioSNICAR adding-doubling RT model and return albedo.
 
@@ -168,6 +169,19 @@ class SeaIceColumn:
                         'sub_arctic_winter' (default), 'sub_arctic_summer',
                         'summit', 'high_mountain', 'tropical'.
             sky:        'clear' (direct beam) or 'cloudy' (diffuse only).
+            snow_grain_radius_um: Override the snow layer grain radius (µm)
+                for this call only — does not mutate the column.  If None,
+                uses the value baked into each SnowLayer (preset default
+                is 200 µm = fresh snow).  Typical seasonal values for
+                Arctic sea-ice snow:
+
+                  ~200–250 µm  April     cold, old, settled snow
+                  ~300–400 µm  May       warming; metamorphism accelerating
+                  ~400–600 µm  June      near-melt onset; large rounded grains
+                  ~600–900 µm  refreeze  new snow on old ice (Sep–Oct)
+
+                Sensitivity: each +100 µm reduces visible BBA by roughly
+                0.005–0.010 and NIR BBA by ~0.005.
 
         Returns:
             AlbedoResult with .spectrum, .broadband, .visible, .nir.
@@ -190,7 +204,8 @@ class SeaIceColumn:
                 dz.append(lyr.thickness_m)
                 layer_type.append(0)            # granular snow
                 rho.append(lyr.density_kg_m3)
-                rds.append(int(lyr.grain_radius_um))
+                _grain = snow_grain_radius_um if snow_grain_radius_um is not None else lyr.grain_radius_um
+                rds.append(int(_grain))
                 shp.append(0)
                 cdom.append(0)
                 water.append(0)
