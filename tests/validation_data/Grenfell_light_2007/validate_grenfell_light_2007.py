@@ -104,7 +104,7 @@ HERE = Path(__file__).parent
 REPO = HERE.parents[2]
 sys.path.insert(0, str(REPO))
 
-from biosnicar.sea_ice.api import SeaIceColumn, SeaIceLayer, SnowLayer
+from biosnicar import run_model as _run_model
 from biosnicar.sea_ice.presets import FYI_WINTER_BARE, FYI_WINTER_SNOW, MYI_WINTER_BARE
 
 SNICAR_WVL_UM = np.arange(0.205, 4.999, 0.01)
@@ -124,26 +124,28 @@ DATE_FLAGS = {
 
 def build_default_column(sza, sky="clear"):
     """FYI_WINTER_SNOW preset as shipped — used as baseline."""
-    col = SeaIceColumn.from_preset(FYI_WINTER_SNOW)
-    return col.compute_albedo(sza_deg=sza, sky=sky)
+    return _run_model(preset=FYI_WINTER_SNOW, solzen=sza,
+                      direct=1 if sky == "clear" else 0)
 
 
 def build_aligned_column(sza, sky="clear"):
     """Config aligned to SHEBA spring-snow conditions.
 
     Key changes from default preset:
-      - grain_radius_um: 200 → 400  (old/metamorphosed spring snow)
-      - snow density: 300 → 250 kg/m³  (windpacked Arctic snow)
-      - ice T bulk: -10 → -20 °C  (April Arctic FYI)
+      - rds[0]: 200 → 400 µm  (old/metamorphosed spring snow)
+      - rho[0]: 300 → 250 kg/m³  (windpacked Arctic snow)
+      - ice T bulk: -25/-20 °C  (April Arctic FYI)
     """
-    col = SeaIceColumn(layers=[
-        SnowLayer(thickness_m=0.15, density_kg_m3=250, grain_radius_um=400),
-        SeaIceLayer(thickness_m=0.05, temperature_C=-25, salinity_psu=12,
-                    density_kg_m3=920, bubble_radius_um=100),
-        SeaIceLayer(thickness_m=1.45, temperature_C=-20, salinity_psu=8,
-                    density_kg_m3=915, bubble_radius_um=200),
-    ])
-    return col.compute_albedo(sza_deg=sza, sky=sky)
+    return _run_model(
+        solzen=sza, direct=1 if sky == "clear" else 0,
+        layer_type=[0, 4, 4],
+        dz=[0.15, 0.05, 1.45],
+        rds=[400, 500, 500],        # 400 µm grain for spring snow
+        rho=[250, 895, 895],
+        sea_ice_salinity=[None, 12, 8],
+        sea_ice_temperature=[None, -25, -20],
+        sea_ice_bubble_radius=[None, 100, 200],
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -260,8 +262,8 @@ def run_spring(entries):
         r_aln = build_aligned_column(sza)
 
         def stats_for(r):
-            mod = interp_model(r.spectrum, wls)
-            flx = np.maximum(interp_model(r.outputs.flx_slr, wls), 1e-30)
+            mod = interp_model(r.albedo, wls)
+            flx = np.maximum(interp_model(r.flx_slr, wls), 1e-30)
             rmse, bias = spectral_stats(wls, alb, mod)
             rmse_vis, bias_vis = spectral_stats(wls, alb, mod, 400, 700)
             rmse_nir, bias_nir = spectral_stats(wls, alb, mod, 700, 1000)
@@ -303,12 +305,12 @@ def run_summer(entries):
         sza = e["sza"]
         row = dict(date=e["date"], sza=sza,
                    obs_wl=wls, obs_alb=alb, obs_std=alb_std)
-        r_ref = SeaIceColumn.from_preset(FYI_WINTER_BARE).compute_albedo(sza_deg=sza)
-        flx = np.maximum(interp_model(r_ref.outputs.flx_slr, wls), 1e-30)
+        r_ref = _run_model(preset=FYI_WINTER_BARE, solzen=sza)
+        flx = np.maximum(interp_model(r_ref.flx_slr, wls), 1e-30)
         row["obs_bba"] = flux_bba(wls, alb, flx)
         for preset, label in [(FYI_WINTER_BARE, "FYI"), (MYI_WINTER_BARE, "MYI")]:
-            r = SeaIceColumn.from_preset(preset).compute_albedo(sza_deg=sza)
-            mod = interp_model(r.spectrum, wls)
+            r = _run_model(preset=preset, solzen=sza)
+            mod = interp_model(r.albedo, wls)
             rmse, bias = spectral_stats(wls, alb, mod)
             row[f"{label}_mod"] = mod
             row[f"{label}_rmse"] = rmse
@@ -488,15 +490,17 @@ def make_plots(spring_rows, summer_rows, save_dir=None, show=True):
     def grain_rmse(rds, entries, lo=400, hi=700):
         rmses = []
         for r in entries:
-            col = SeaIceColumn(layers=[
-                SnowLayer(thickness_m=0.15, density_kg_m3=250, grain_radius_um=rds),
-                SeaIceLayer(thickness_m=0.05, temperature_C=-25, salinity_psu=12,
-                            density_kg_m3=920, bubble_radius_um=100),
-                SeaIceLayer(thickness_m=1.45, temperature_C=-20, salinity_psu=8,
-                            density_kg_m3=915, bubble_radius_um=200),
-            ])
-            res = col.compute_albedo(sza_deg=r["sza"])
-            mod = interp_model(res.spectrum, r["obs_wl"])
+            res = _run_model(
+                solzen=r["sza"],
+                layer_type=[0, 4, 4],
+                dz=[0.15, 0.05, 1.45],
+                rds=[rds, 500, 500],
+                rho=[250, 895, 895],
+                sea_ice_salinity=[None, 12, 8],
+                sea_ice_temperature=[None, -25, -20],
+                sea_ice_bubble_radius=[None, 100, 200],
+            )
+            mod = interp_model(res.albedo, r["obs_wl"])
             rmse, _ = spectral_stats(r["obs_wl"], r["obs_alb"], mod, lo, hi)
             rmses.append(rmse)
         return np.mean(rmses)
@@ -588,15 +592,15 @@ def run_sweep(spring_rows):
     for rds in grain_radii:
         rmse_v = rmse_n = rmse_a = 0
         for r in april:
-            col = SeaIceColumn(layers=[
-                SnowLayer(thickness_m=0.15, density_kg_m3=250, grain_radius_um=rds),
-                SeaIceLayer(thickness_m=0.05, temperature_C=-25, salinity_psu=12,
-                            density_kg_m3=920, bubble_radius_um=100),
-                SeaIceLayer(thickness_m=1.45, temperature_C=-20, salinity_psu=8,
-                            density_kg_m3=915, bubble_radius_um=200),
-            ])
-            res = col.compute_albedo(sza_deg=r["sza"])
-            mod = interp_model(res.spectrum, r["obs_wl"])
+            res = _run_model(
+                solzen=r["sza"],
+                layer_type=[0, 4, 4], dz=[0.15, 0.05, 1.45],
+                rds=[rds, 500, 500], rho=[250, 895, 895],
+                sea_ice_salinity=[None, 12, 8],
+                sea_ice_temperature=[None, -25, -20],
+                sea_ice_bubble_radius=[None, 100, 200],
+            )
+            mod = interp_model(res.albedo, r["obs_wl"])
             rv, _ = spectral_stats(r["obs_wl"], r["obs_alb"], mod, 400, 700)
             rn, _ = spectral_stats(r["obs_wl"], r["obs_alb"], mod, 700, 1000)
             ra, _ = spectral_stats(r["obs_wl"], r["obs_alb"], mod, 400, 1000)
@@ -612,15 +616,15 @@ def run_sweep(spring_rows):
         rmse_v = rmse_n = 0
         for r in april:
             sza = max(1, min(89, r["sza"] + offset))
-            col = SeaIceColumn(layers=[
-                SnowLayer(thickness_m=0.15, density_kg_m3=250, grain_radius_um=400),
-                SeaIceLayer(thickness_m=0.05, temperature_C=-25, salinity_psu=12,
-                            density_kg_m3=920, bubble_radius_um=100),
-                SeaIceLayer(thickness_m=1.45, temperature_C=-20, salinity_psu=8,
-                            density_kg_m3=915, bubble_radius_um=200),
-            ])
-            res = col.compute_albedo(sza_deg=sza)
-            mod = interp_model(res.spectrum, r["obs_wl"])
+            res = _run_model(
+                solzen=sza,
+                layer_type=[0, 4, 4], dz=[0.15, 0.05, 1.45],
+                rds=[400, 500, 500], rho=[250, 895, 895],
+                sea_ice_salinity=[None, 12, 8],
+                sea_ice_temperature=[None, -25, -20],
+                sea_ice_bubble_radius=[None, 100, 200],
+            )
+            mod = interp_model(res.albedo, r["obs_wl"])
             rv, _ = spectral_stats(r["obs_wl"], r["obs_alb"], mod, 400, 700)
             rn, _ = spectral_stats(r["obs_wl"], r["obs_alb"], mod, 700, 1000)
             rmse_v += rv; rmse_n += rn

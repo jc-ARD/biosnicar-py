@@ -49,13 +49,16 @@ def run_model(
     solver="adding-doubling",
     validate=False,
     plot=False,
+    preset=None,
     **overrides,
 ):
     """Run the BioSNICAR forward model and return outputs.
 
+    Single entry point for both terrestrial and sea-ice configurations.
     Builds model objects from *input_file*, applies any keyword *overrides*
-    to ice/illumination/impurity parameters, then runs the full pipeline
-    (optical properties -> impurity mixing -> radiative transfer).
+    (and optional *preset*) to ice/illumination/impurity parameters, then
+    runs the full pipeline (optical properties → impurity mixing →
+    radiative transfer).
 
     Args:
         input_file: Path to YAML config or ``"default"`` for the bundled
@@ -63,46 +66,98 @@ def run_model(
         solver: ``"adding-doubling"`` (default) or ``"toon"``.
         validate: If True, run input validation before the forward model.
         plot: If True, display a spectral albedo plot after the run.
+        preset: Sea-ice preset to use as a base configuration. Either a
+            string name (``"FYI_WINTER_BARE"``, ``"FYI_WINTER_SNOW"``,
+            ``"MYI_WINTER_BARE"``) or a preset dict imported from
+            ``biosnicar.sea_ice.presets``.  Any additional ``**overrides``
+            are merged on top of the preset, taking precedence.
+            Example::
+
+                outputs = run_model(preset="FYI_WINTER_BARE", solzen=70)
+                outputs = run_model(preset=FYI_WINTER_SNOW, solzen=60,
+                                    black_carbon=500)
+
         **overrides: Parameter overrides applied before running the model.
-            Supported keys:
 
-            - **solzen** (*float*) — solar zenith angle (degrees)
-            - **direct** (*int*) — 1 for direct beam, 0 for diffuse
-            - **incoming** (*int*) — irradiance spectrum index (0–6)
-            - **rds** (*int | list*) — grain/bubble radius (µm)
-            - **rho** (*int | list*) — layer density (kg/m³)
-            - **dz** (*float | list*) — layer thickness (m)
-            - **lwc** (*float | list*) — liquid water content
-            - **layer_type** (*int | list*) — 0=grains, 1=solid ice, etc.
-            - **shp** (*int | list*) — grain shape
-            - **grain_ar** (*float | list*) — grain aspect ratio
-            - **cdom** (*float | list*) — CDOM concentration
-            - **water** (*float | list*) — liquid water coating radius
-            - **hex_side** (*int | list*) — hexagonal column side length
-            - **hex_length** (*int | list*) — hexagonal column length
-            - **shp_fctr** (*float | list*) — shape factor
-            - **black_carbon** (*float | list*) — black carbon conc (ppb)
-            - **snow_algae** (*float | list*) — snow algae conc (cells/mL)
-            - **glacier_algae** (*float | list*) — glacier algae conc
-              (cells/mL)
+            Illumination:
 
-            Impurity names correspond to YAML keys in ``inputs.yaml``.
-            Scalar values are broadcast to ``[value, 0, ...]``.
+            - **solzen** (*float*) — solar zenith angle (degrees, 1–89)
+            - **direct** (*int*) — 1 for direct beam, 0 for diffuse/cloudy
+            - **incoming** (*int*) — irradiance spectrum index (0–6):
+              0=mid-lat winter, 1=mid-lat summer, 2=sub-Arctic winter,
+              3=sub-Arctic summer, 4=summit, 5=high mountain, 6=tropical
 
-            Legacy ``impurity_{i}_conc`` syntax is still accepted but
-            deprecated.
+            Ice structure (all accept scalar or per-layer list):
 
-            All ice parameters are broadcast to all layers if a scalar is
-            passed, or applied directly if a list.
+            - **layer_type** — 0=granular snow/ice, 1=solid glacier ice
+              (Fresnel), 2=solid ice (no Fresnel), 3=mixed water/ice
+              spheres, **4=sea ice** (brine inclusions, Maxwell-Garnett)
+            - **dz** — layer thickness (m)
+            - **rho** — bulk density (kg/m³)
+            - **rds** — grain/bubble radius (µm); not used for
+              ``layer_type=4`` (sea ice), pass ``None`` or any value
+            - **lwc** — liquid water content (volume fraction)
+            - **shp** — grain shape (0=sphere, 1=spheroid, 2=hex plate,
+              3=Koch snowflake, 4=hex prism)
+            - **grain_ar**, **shp_fctr** — asphericity parameters
+            - **cdom** — CDOM flag (0/1, types 1/2 only)
+            - **water** — liquid water coating radius (µm, type 0 only)
+            - **hex_side**, **hex_length** — hexagonal prism dimensions
+
+            Sea ice (required when ``layer_type=4``; use ``None`` for
+            non-sea-ice layers in the same column):
+
+            - **sea_ice_salinity** (*float | list*) — bulk salinity (psu)
+            - **sea_ice_temperature** (*float | list*) — temperature (°C,
+              must be in [−44, −2])
+            - **sea_ice_bubble_radius** (*float | list*) — effective air-
+              bubble radius (µm, typically 100–1000)
+
+            Impurities (scalar = apply to first layer only; list = per-layer):
+
+            - **black_carbon** (*float | list*) — black carbon (ppb)
+            - **snow_algae** (*float | list*) — snow algae (cells/mL)
+            - **glacier_algae** (*float | list*) — glacier algae (cells/mL)
 
     Returns:
-        :class:`~biosnicar.classes.outputs.Outputs` with albedo, BBA,
-        absorbed fluxes, etc.
+        :class:`~biosnicar.classes.outputs.Outputs` with ``.BBA``,
+        ``.BBAVIS``, ``.BBANIR``, ``.albedo`` (480-band spectrum), and
+        convenience aliases ``.broadband``, ``.visible``, ``.nir``,
+        ``.spectrum``, ``.wavelengths``.  Also provides
+        ``.to_platform()``, ``.plot()``, and subsurface-light methods.
+
+    Examples::
+
+        # Terrestrial glacier ice
+        outputs = run_model(solzen=50, layer_type=1, rds=500, rho=700)
+
+        # Snow on sea ice — identical style, just add sea-ice params
+        outputs = run_model(
+            solzen=60,
+            layer_type=[0, 4, 4],
+            dz=[0.15, 0.05, 1.45],
+            rds=[200, None, None],
+            rho=[300, 895, 895],
+            sea_ice_salinity=[None, 12, 8],
+            sea_ice_temperature=[None, -25, -20],
+            sea_ice_bubble_radius=[None, 100, 200],
+            black_carbon=500,
+        )
+
+        # Both outputs use the same attribute names
+        print(outputs.BBA)          # or outputs.broadband
+        print(outputs.albedo)       # or outputs.spectrum
+        outputs.to_platform("sentinel2")
 
     Raises:
-        ValueError: If *solver* is not recognised or an override key is
-            unknown.
+        ValueError: If *solver* or *preset* name is not recognised, or an
+            override key is unknown.
     """
+    # Expand preset into base overrides (explicit kwargs take precedence)
+    if preset is not None:
+        from biosnicar.sea_ice.presets import _resolve_preset
+        overrides = {**_resolve_preset(preset), **overrides}
+
     # Resolve "default" to actual path so it can be reused in recalculations
     if input_file == "default":
         from pathlib import Path
@@ -191,6 +246,14 @@ def _apply_overrides(overrides, ice, illumination, impurities, input_file):
 
         # Ice broadcast keys
         elif key in _ICE_BROADCAST_KEYS:
+            # rds=None is valid for layer_type=4 (sea ice) layers where rds
+            # is unused.  Substitute a harmless dummy so downstream code
+            # never receives None in ice.rds.
+            if key == "rds":
+                if isinstance(value, list):
+                    value = [500 if v is None else v for v in value]
+                elif value is None:
+                    value = 500
             if isinstance(value, list):
                 setattr(ice, key, value)
             else:

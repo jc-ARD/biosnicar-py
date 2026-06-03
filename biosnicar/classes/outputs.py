@@ -45,6 +45,37 @@ class Outputs:
         self._wavelengths = None
         self._L_snw = None
 
+    # ------------------------------------------------------------------
+    # Aliases so sea-ice and terrestrial code use the same attribute names.
+    # These are read-only properties; the canonical names (BBA, albedo, …)
+    # remain the authoritative storage.
+    # ------------------------------------------------------------------
+
+    @property
+    def spectrum(self):
+        """Spectral albedo array (480 bands, 0.205–4.995 µm). Alias for .albedo."""
+        return self.albedo
+
+    @property
+    def broadband(self):
+        """Flux-weighted broadband albedo. Alias for .BBA."""
+        return self.BBA
+
+    @property
+    def visible(self):
+        """Flux-weighted visible broadband albedo. Alias for .BBAVIS."""
+        return self.BBAVIS
+
+    @property
+    def nir(self):
+        """Flux-weighted NIR broadband albedo. Alias for .BBANIR."""
+        return self.BBANIR
+
+    @property
+    def wavelengths(self):
+        """Wavelength grid in µm (0.205–4.995, step 0.01). Shape (480,)."""
+        return np.arange(0.205, 4.999, 0.01)
+
     def to_platform(self, platform):
         """Convolve spectral albedo onto platform bands.
 

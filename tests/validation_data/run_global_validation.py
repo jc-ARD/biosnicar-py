@@ -65,7 +65,7 @@ from scipy.interpolate import interp1d
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
 
-from biosnicar.sea_ice.api import SeaIceColumn
+from biosnicar import run_model as _run_model_si
 from biosnicar.sea_ice.presets import FYI_WINTER_BARE, FYI_WINTER_SNOW, MYI_WINTER_BARE
 
 # ---------------------------------------------------------------------------
@@ -429,14 +429,14 @@ def compare_records(records: List[ObsRecord]) -> list:
         sza = int(round(max(1, min(89, rec.sza))))
 
         if rec.surface == "snow":
-            r = SeaIceColumn.from_preset(FYI_WINTER_SNOW).compute_albedo(sza_deg=sza)
+            r = _run_model_si(preset=FYI_WINTER_SNOW, solzen=sza)
             preset_label = "FYI_WINTER_SNOW"
         else:
-            r = SeaIceColumn.from_preset(FYI_WINTER_BARE).compute_albedo(sza_deg=sza)
+            r = _run_model_si(preset=FYI_WINTER_BARE, solzen=sza)
             preset_label = "FYI_WINTER_BARE"
 
-        mod = _interp_model(r.spectrum, rec.wl_nm)
-        flx = np.maximum(_interp_model(r.outputs.flx_slr, rec.wl_nm), 1e-30)
+        mod = _interp_model(r.albedo, rec.wl_nm)
+        flx = np.maximum(_interp_model(r.flx_slr, rec.wl_nm), 1e-30)
 
         # Common window (both datasets have 400–1000 nm)
         rmse_vis, bias_vis = _stats(rec.wl_nm, rec.alb, mod, 400, 700)
@@ -573,10 +573,11 @@ def make_plots(results, save_dir=None, show=False):
         return "#2c7bb6" if src == "smith" else "#d7191c"
 
     # ── Fig 1: Full spectral comparison — snow, coloured by source ───────────
-    grenfell_snow = [r for r in snow if r["source"] == "grenfell"]
-    # Split Smith into early-June (comparable) and summer (melt-season)
-    smith_early   = [r for r in snow if r["source"] == "smith" and r["date"] <= "2020-06-22"]
-    smith_summer  = [r for r in snow if r["source"] == "smith" and r["date"] > "2020-06-22"]
+    grenfell_snow  = [r for r in snow if r["source"] == "grenfell"]
+    smith_early    = [r for r in snow if r["source"] == "smith" and r["date"] <= "2020-06-22"]
+    smith_refreeze = [r for r in snow if r["source"] == "smith" and r["date"] >= "2020-09-01"]
+    smith_summer   = [r for r in snow if r["source"] == "smith"
+                      and "2020-06-22" < r["date"] < "2020-09-01"]
 
     # Common reference grid for model envelope (1 nm)
     _wl_ref = np.arange(400, 1001, 1.0)
@@ -608,7 +609,13 @@ def make_plots(results, save_dir=None, show=False):
     for r in smith_summer:
         m = (r["_wl"] >= 400) & (r["_wl"] <= 1000)
         ax.plot(r["_wl"][m], r["_obs"][m], color="#888", lw=0.5, alpha=0.3,
-                label="Smith summer (Jun 24+) — melt season" if r == smith_summer[0] else "_")
+                label="Smith summer (Jun 24–Aug) — melt season" if r == smith_summer[0] else "_")
+    for r in smith_refreeze:
+        m = (r["_wl"] >= 400) & (r["_wl"] <= 1000)
+        ax.fill_between(r["_wl"][m], np.maximum((r["_obs"]-r["_std"])[m], 0),
+                        (r["_obs"]+r["_std"])[m], color="#2ca02c", alpha=0.06)
+        ax.plot(r["_wl"][m], r["_obs"][m], color="#2ca02c", lw=0.7, alpha=0.65,
+                label="Smith Sep refreeze (SNOWTARGET)" if r == smith_refreeze[0] else "_")
     # Model envelope on common grid
     mod_on_ref = np.vstack([_on_ref(r) for r in grenfell_snow + smith_early])
     ax.fill_between(_wl_ref, mod_on_ref.min(0), mod_on_ref.max(0),
@@ -647,7 +654,8 @@ def make_plots(results, save_dir=None, show=False):
     for lo, hi, label in [(1350, 1450, "H₂O"), (1800, 2050, "H₂O")]:
         ax.axvspan(lo, hi, color="lightblue", alpha=0.25, label=label if lo == 1350 else "_")
     from matplotlib.patches import Patch
-    ax.legend(handles=[Patch(color=_c("smith"), label="Smith snow"),
+    ax.legend(handles=[Patch(color=_c("smith"), label="Smith snow (all)"),
+                       Patch(color="#2ca02c", label="Smith Sep refreeze"),
                        Patch(color="k", alpha=0.3, label="Model"),
                        Patch(color="lightblue", alpha=0.5, label="H₂O absorption")],
               fontsize=8)
@@ -735,24 +743,35 @@ def make_plots(results, save_dir=None, show=False):
         plt.show()
     plt.close(fig)
 
-    # ── Fig 4: SWIR performance (Smith only, 1000–2400 nm) ───────────────────
-    smith_snow_only = [r for r in snow if r["source"] == "smith"]
+    # ── Fig 4: SWIR comparison — Smith snow + Grenfell paired IR ─────────────
+    # Use early-June Smith (most comparable) + Grenfell VIS+IR paired records
+    grenfell_ir = [r for r in results if _season(r) == "ir_paired"]
+    swir_records = (smith_early + smith_refreeze + grenfell_ir)[:8]
+    smith_snow_only = swir_records  # repurpose variable for fig generation below
     if smith_snow_only:
         n = min(len(smith_snow_only), 8)
         fig, axes = plt.subplots(2, 4, figsize=(16, 6), sharex=True, sharey=True)
-        fig.suptitle("Smith MOSAiC: model vs observed in SWIR (1000–2400 nm)\n"
-                     "FYI_WINTER_SNOW — this spectral range unavailable in Grenfell dataset",
+        fig.suptitle("SWIR comparison: Smith snow (350–2400 nm) and Grenfell paired VIS+IR (400–2005 nm)\n"
+                     "FYI_WINTER_SNOW / FYI_WINTER_BARE  —  extended NIR/SWIR window",
                      fontsize=10)
         for i, (ax, r) in enumerate(zip(axes.flat, smith_snow_only[:n])):
-            m = (r["_wl"] >= 1000) & (r["_wl"] <= 2400)
+            src_col = _c(r["source"]) if r["source"] == "smith" else "#d62728"
+            hi_wl = 2400 if r["_wl"].max() > 2000 else 2005
+            m = (r["_wl"] >= 1000) & (r["_wl"] <= hi_wl)
+            if m.sum() == 0:
+                ax.set_title(f"{r['date'][5:]} (no SWIR)", fontsize=8)
+                continue
             ax.fill_between(r["_wl"][m],
                             np.maximum((r["_obs"] - r["_std"])[m], 0),
                             np.minimum((r["_obs"] + r["_std"])[m], 1),
-                            color=_c("smith"), alpha=0.2)
-            ax.plot(r["_wl"][m], r["_obs"][m], color=_c("smith"), lw=1.2, label="Obs")
+                            color=src_col, alpha=0.2)
+            ax.plot(r["_wl"][m], r["_obs"][m], color=src_col, lw=1.2, label="Obs")
             ax.plot(r["_wl"][m], r["_mod"][m], "k--", lw=1.2, label="Model")
-            rmse_sw = _stats(r["_wl"], r["_obs"], r["_mod"], 1000, 2400)[0]
-            ax.set_title(f"{r['date'][5:]}  n={r['n_spectra']}\n"
+            lo_sw = 1000
+            hi_sw = min(hi_wl, 2400)
+            rmse_sw = _stats(r["_wl"], r["_obs"], r["_mod"], lo_sw, hi_sw)[0]
+            src_tag = f"({'Smith' if r['source']=='smith' else 'Grenfell IR'})"
+            ax.set_title(f"{r['date'][5:]} {src_tag}\n"
                          f"SWIR RMSE={rmse_sw:.3f}", fontsize=8)
             ax.set_ylim(0, 0.7)
             if i == 0:
@@ -1000,13 +1019,17 @@ def main():
 
     print("Loading Grenfell & Light (2007) SHEBA…", flush=True)
     grenfell = load_grenfell()
-    print(f"  {len(grenfell)} records loaded")
+    print(f"  {len(grenfell)} records (ALBV only)")
+
+    print("Loading Grenfell ALBV+ALBI paired records…", flush=True)
+    grenfell_ir = load_grenfell_paired()
+    print(f"  {len(grenfell_ir)} paired VIS+IR records (400–2005 nm)")
 
     print("Loading Smith et al. (2021) MOSAiC Leg 4…", flush=True)
     smith = load_smith()
     print(f"  {len(smith)} records loaded")
 
-    all_records = grenfell + smith
+    all_records = grenfell + grenfell_ir + smith
     print(f"\nTotal records: {len(all_records)}")
 
     print("Running model comparisons…", flush=True)

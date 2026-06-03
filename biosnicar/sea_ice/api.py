@@ -1,294 +1,306 @@
-"""High-level Python API for constructing and running sea-ice columns.
+"""Sea ice API — compatibility shims only.
 
-Quickstart::
+The primary interface for sea ice is :func:`biosnicar.run_model`, using
+``layer_type=4`` layers with ``sea_ice_salinity``, ``sea_ice_temperature``,
+and ``sea_ice_bubble_radius`` parameters, or the ``preset`` shortcut::
 
-    from biosnicar.sea_ice.api import SeaIceColumn, SeaIceLayer
-    from biosnicar.sea_ice.presets import FYI_WINTER_BARE
+    from biosnicar import run_model, FYI_WINTER_BARE, FYI_WINTER_SNOW
 
-    # From a preset
-    col = SeaIceColumn.from_preset(FYI_WINTER_BARE)
-    result = col.compute_albedo(sza_deg=60)
-    print(f"Broadband albedo: {result.broadband:.3f}")
+    # By preset name
+    outputs = run_model(preset="FYI_WINTER_BARE", solzen=60)
 
-    # Custom column
-    col = SeaIceColumn(layers=[
-        SeaIceLayer(thickness_m=0.05, temperature_C=-20, salinity_psu=10,
-                    density_kg_m3=920, bubble_radius_um=100),
-        SeaIceLayer(thickness_m=1.5, temperature_C=-10, salinity_psu=6,
-                    density_kg_m3=910, bubble_radius_um=200),
-    ])
-    result = col.compute_albedo(sza_deg=55, sky="cloudy")
+    # By preset dict
+    outputs = run_model(preset=FYI_WINTER_BARE, solzen=60, black_carbon=500)
 
-Note on snow layers (MVP limitation)
---------------------------------------
-SnowLayer is treated as fresh (salinity = 0) snow in the MVP. Sea ice with
-salty snow is deferred to v0.2.  The adding-doubling solver requires
-layer_type=1 (granular snow) for snow layers; the snow is placed on top of
-the sea ice column.
+    # Fully explicit — same style as terrestrial ice
+    outputs = run_model(
+        solzen=60, direct=1, incoming=2,
+        layer_type=[0, 4, 4],
+        dz=[0.15, 0.05, 1.45],
+        rds=[200, None, None],
+        rho=[300, 895, 895],
+        sea_ice_salinity=[None, 12, 8],
+        sea_ice_temperature=[None, -25, -20],
+        sea_ice_bubble_radius=[None, 100, 200],
+        black_carbon=500,
+    )
+
+    # All outputs have the same attributes as terrestrial ice
+    print(outputs.BBA)           # broadband albedo
+    print(outputs.albedo)        # 480-band spectral albedo
+    outputs.to_platform("sentinel2")
+
+The classes in this module (``SeaIceColumn``, ``SeaIceLayer``,
+``SnowLayer``, ``AlbedoResult``) are **deprecated** and will be removed
+in v0.3.  They delegate internally to ``run_model()`` and exist only to
+keep existing code working during the transition.
 """
 
-from dataclasses import dataclass, field
-from pathlib import Path
+import warnings
 from typing import List, Optional, Union
 
 import numpy as np
 
-from biosnicar.sea_ice.presets import SeaIcePreset, SeaIceLayerSpec, SnowLayerSpec
-
-# Atmosphere index → YAML incoming index mapping
-_ATMOSPHERE_MAP = {
-    "mid_lat_winter": 0,
-    "mid_lat_summer": 1,
-    "sub_arctic_winter": 2,
-    "sub_arctic_summer": 3,
-    "summit": 4,
-    "high_mountain": 5,
-    "tropical": 6,
-}
+from biosnicar.sea_ice.presets import (
+    FYI_WINTER_BARE,
+    FYI_WINTER_SNOW,
+    MYI_WINTER_BARE,
+    _resolve_preset,
+)
 
 
-@dataclass
+# ---------------------------------------------------------------------------
+# Deprecated layer descriptors
+# ---------------------------------------------------------------------------
+
 class SnowLayer:
-    """Fresh snow layer above sea ice.
+    """Deprecated. Pass dz/rho/rds directly to run_model()."""
 
-    MVP limitation: treated as pure fresh-water snow (no brine wicking).
-    Salty snow is deferred to v0.2.
-    """
-    thickness_m: float
-    density_kg_m3: float
-    grain_radius_um: float
+    def __init__(self, thickness_m: float, density_kg_m3: float, grain_radius_um: float):
+        warnings.warn(
+            "SnowLayer is deprecated. Pass dz, rho, rds directly to run_model(). "
+            "See docs/sea_ice.md for the updated API.",
+            DeprecationWarning, stacklevel=2,
+        )
+        self.thickness_m     = thickness_m
+        self.density_kg_m3   = density_kg_m3
+        self.grain_radius_um = grain_radius_um
 
 
-@dataclass
 class SeaIceLayer:
-    """Single sea-ice layer with brine inclusions.
+    """Deprecated. Pass sea_ice_* kwargs directly to run_model()."""
 
-    Attributes:
-        thickness_m:     Layer thickness in metres.
-        temperature_C:   Temperature (°C, must be in [-44, -2]).
-        salinity_psu:    Bulk salinity (psu, 0–15 typical).
-        density_kg_m3:   Bulk density (kg/m³, 870–920 typical).
-        bubble_radius_um: Effective air-bubble radius (μm, 100–1000).
-        layer_class:     Informational tag ('FYI' or 'MYI').
-    """
-    thickness_m: float
-    temperature_C: float
-    salinity_psu: float
-    density_kg_m3: float = 915.0
-    bubble_radius_um: float = 200.0
-    layer_class: str = "FYI"
+    def __init__(
+        self,
+        thickness_m: float,
+        temperature_C: float,
+        salinity_psu: float,
+        density_kg_m3: float = 895.0,
+        bubble_radius_um: float = 200.0,
+        layer_class: str = "FYI",
+    ):
+        warnings.warn(
+            "SeaIceLayer is deprecated. Pass sea_ice_temperature, "
+            "sea_ice_salinity, sea_ice_bubble_radius directly to run_model(). "
+            "See docs/sea_ice.md for the updated API.",
+            DeprecationWarning, stacklevel=2,
+        )
+        self.thickness_m     = thickness_m
+        self.temperature_C   = temperature_C
+        self.salinity_psu    = salinity_psu
+        self.density_kg_m3   = density_kg_m3
+        self.bubble_radius_um = bubble_radius_um
+        self.layer_class     = layer_class
 
 
-@dataclass
+# ---------------------------------------------------------------------------
+# Deprecated AlbedoResult — run_model() now returns Outputs directly
+# ---------------------------------------------------------------------------
+
 class AlbedoResult:
-    """Result of a sea-ice albedo calculation.
+    """Deprecated wrapper. run_model() now returns Outputs directly.
 
-    Attributes:
-        spectrum:     Spectral albedo array of length 480 (0.205–4.995 μm).
-        wavelengths:  Wavelength grid in μm, length 480.
-        broadband:    Flux-weighted broadband albedo.
-        visible:      Flux-weighted visible (0.205–0.75 μm) albedo.
-        nir:          Flux-weighted NIR (0.75–4.995 μm) albedo.
-        outputs:      Raw BioSNICAR Outputs object (for advanced users).
+    Outputs has all the same attributes: .BBA / .broadband, .BBAVIS /
+    .visible, .BBANIR / .nir, .albedo / .spectrum, .wavelengths,
+    .to_platform(), .plot(), etc.
     """
-    spectrum: np.ndarray
-    wavelengths: np.ndarray
-    broadband: float
-    visible: float
-    nir: float
-    outputs: object   # biosnicar.classes.outputs.Outputs
+
+    def __init__(self, outputs):
+        warnings.warn(
+            "AlbedoResult is deprecated. run_model() and "
+            "SeaIceColumn.compute_albedo() now return an Outputs object "
+            "with .BBA / .broadband, .albedo / .spectrum attributes. "
+            "See docs/sea_ice.md.",
+            DeprecationWarning, stacklevel=2,
+        )
+        self._outputs = outputs
+
+    @property
+    def spectrum(self):
+        return self._outputs.albedo
+
+    @property
+    def wavelengths(self):
+        return np.arange(0.205, 4.999, 0.01)
+
+    @property
+    def broadband(self):
+        return self._outputs.BBA
+
+    @property
+    def visible(self):
+        return self._outputs.BBAVIS
+
+    @property
+    def nir(self):
+        return self._outputs.BBANIR
+
+    @property
+    def outputs(self):
+        return self._outputs
 
     def __repr__(self):
         return (
             f"AlbedoResult(broadband={self.broadband:.3f}, "
-            f"visible={self.visible:.3f}, nir={self.nir:.3f})"
+            f"visible={self.visible:.3f}, nir={self.nir:.3f}) [deprecated]"
         )
 
 
+# ---------------------------------------------------------------------------
+# Deprecated SeaIceColumn
+# ---------------------------------------------------------------------------
+
 class SeaIceColumn:
-    """A sea-ice column with optional snow cover.
+    """Deprecated. Use run_model(preset=...) or run_model(**flat_kwargs).
 
-    Layers are ordered top-to-bottom.  A snow layer (if present) is prepended
-    as a granular-snow (layer_type=0) layer above the sea-ice layers
-    (layer_type=4).
+    This class is kept for backwards compatibility only and will be
+    removed in v0.3.  It delegates internally to run_model().
 
-    Args:
-        layers: List of SeaIceLayer (and optionally a leading SnowLayer).
+    Migration guide
+    ---------------
+    Old::
+
+        col = SeaIceColumn.from_preset(FYI_WINTER_BARE)
+        result = col.compute_albedo(sza_deg=60)
+        print(result.broadband)
+
+    New::
+
+        from biosnicar import run_model, FYI_WINTER_BARE
+        outputs = run_model(preset=FYI_WINTER_BARE, solzen=60)
+        print(outputs.BBA)   # or outputs.broadband
     """
 
-    def __init__(self, layers: List[Union[SeaIceLayer, SnowLayer]]):
+    def __init__(self, layers: List[Union[SnowLayer, SeaIceLayer]]):
+        warnings.warn(
+            "SeaIceColumn is deprecated. Use run_model(preset=...) or "
+            "run_model(**flat_kwargs) instead. See docs/sea_ice.md.",
+            DeprecationWarning, stacklevel=2,
+        )
         self.layers = layers
 
-    # ------------------------------------------------------------------
-    # Constructors
-    # ------------------------------------------------------------------
-
     @classmethod
-    def from_preset(cls, preset: SeaIcePreset) -> "SeaIceColumn":
-        """Build a SeaIceColumn from a SeaIcePreset."""
-        layer_list: List[Union[SeaIceLayer, SnowLayer]] = []
-        if preset.snow_layer is not None:
-            sl = preset.snow_layer
-            layer_list.append(
-                SnowLayer(
-                    thickness_m=sl.thickness_m,
-                    density_kg_m3=sl.density_kg_m3,
-                    grain_radius_um=sl.grain_radius_um,
-                )
-            )
-        for spec in preset.ice_layers:
-            layer_list.append(
-                SeaIceLayer(
-                    thickness_m=spec.thickness_m,
-                    temperature_C=spec.temperature_C,
-                    salinity_psu=spec.salinity_psu,
-                    density_kg_m3=spec.density_kg_m3,
-                    bubble_radius_um=spec.bubble_radius_um,
-                    layer_class=spec.layer_class,
-                )
-            )
-        return cls(layer_list)
-
-    # ------------------------------------------------------------------
-    # Forward model
-    # ------------------------------------------------------------------
+    def from_preset(cls, preset) -> "SeaIceColumn":
+        """Deprecated. Use run_model(preset=...) instead."""
+        warnings.warn(
+            "SeaIceColumn.from_preset() is deprecated. "
+            "Use run_model(preset=...) instead.",
+            DeprecationWarning, stacklevel=2,
+        )
+        # Build a SeaIceColumn from a preset dict without triggering the
+        # SnowLayer/SeaIceLayer deprecation warnings internally.
+        obj = object.__new__(cls)
+        obj._preset_kwargs = _resolve_preset(preset)
+        obj.layers = []   # unused, but kept for attribute access
+        return obj
 
     def compute_albedo(
         self,
-        sza_deg: float = 60.0,
-        atmosphere: str = "sub_arctic_winter",
-        sky: str = "clear",
+        solzen: float = 60.0,
+        direct: int = 1,
+        incoming: int = 2,
         snow_grain_radius_um: Optional[float] = None,
-    ) -> AlbedoResult:
-        """Run the BioSNICAR adding-doubling RT model and return albedo.
+        # Legacy parameter names — accepted with deprecation warnings
+        sza_deg: Optional[float] = None,
+        sky: Optional[str] = None,
+        atmosphere: Optional[str] = None,
+        # Impurities
+        black_carbon: float = 0,
+        snow_algae: float = 0,
+        glacier_algae: float = 0,
+        dust: float = 0,
+    ):
+        """Deprecated. Use run_model() directly.
 
-        Args:
-            sza_deg:    Solar zenith angle in degrees (0–89).
-            atmosphere: Atmospheric profile name.  One of:
-                        'mid_lat_winter', 'mid_lat_summer',
-                        'sub_arctic_winter' (default), 'sub_arctic_summer',
-                        'summit', 'high_mountain', 'tropical'.
-            sky:        'clear' (direct beam) or 'cloudy' (diffuse only).
-            snow_grain_radius_um: Override the snow layer grain radius (µm)
-                for this call only — does not mutate the column.  If None,
-                uses the value baked into each SnowLayer (preset default
-                is 200 µm = fresh snow).  Typical seasonal values for
-                Arctic sea-ice snow:
-
-                  ~200–250 µm  April     cold, old, settled snow
-                  ~300–400 µm  May       warming; metamorphism accelerating
-                  ~400–600 µm  June      near-melt onset; large rounded grains
-                  ~600–900 µm  refreeze  new snow on old ice (Sep–Oct)
-
-                Sensitivity: each +100 µm reduces visible BBA by roughly
-                0.005–0.010 and NIR BBA by ~0.005.
-
-        Returns:
-            AlbedoResult with .spectrum, .broadband, .visible, .nir.
+        Returns an Outputs object (same as run_model).
         """
-        from biosnicar.drivers.setup_snicar import setup_snicar
-        from biosnicar.optical_properties.column_OPs import get_layer_OPs, mix_in_impurities
-        from biosnicar.rt_solvers.adding_doubling_solver import adding_doubling_solver
-
-        incoming = _ATMOSPHERE_MAP.get(atmosphere, 2)
-        direct = 1 if sky == "clear" else 0
-
-        # ---- Build lists for BioSNICAR Ice object ----
-        dz, layer_type, rho = [], [], []
-        rds, shp, cdom, water = [], [], [], []
-        hex_side, hex_length, shp_fctr, grain_ar, lwc = [], [], [], [], []
-        sea_salinity, sea_temperature, sea_bubble = [], [], []
-
-        for lyr in self.layers:
-            if isinstance(lyr, SnowLayer):
-                dz.append(lyr.thickness_m)
-                layer_type.append(0)            # granular snow
-                rho.append(lyr.density_kg_m3)
-                _grain = snow_grain_radius_um if snow_grain_radius_um is not None else lyr.grain_radius_um
-                rds.append(int(_grain))
-                shp.append(0)
-                cdom.append(0)
-                water.append(0)
-                hex_side.append(10000)
-                hex_length.append(10000)
-                shp_fctr.append(0)
-                grain_ar.append(0)
-                lwc.append(0)
-                sea_salinity.append(None)
-                sea_temperature.append(None)
-                sea_bubble.append(None)
-            elif isinstance(lyr, SeaIceLayer):
-                dz.append(lyr.thickness_m)
-                layer_type.append(4)            # sea ice
-                rho.append(lyr.density_kg_m3)
-                rds.append(500)                 # not used for layer_type=4
-                shp.append(0)
-                cdom.append(0)
-                water.append(0)
-                hex_side.append(10000)
-                hex_length.append(10000)
-                shp_fctr.append(0)
-                grain_ar.append(0)
-                lwc.append(0)
-                sea_salinity.append(lyr.salinity_psu)
-                sea_temperature.append(lyr.temperature_C)
-                sea_bubble.append(lyr.bubble_radius_um)
-            else:
-                raise TypeError(f"Unknown layer type: {type(lyr)}")
-
-        # ---- Setup BioSNICAR objects from default config ----
-        input_file = str(
-            Path(__file__).resolve().parent.parent / "inputs.yaml"
-        )
-        ice, illumination, rt_config, model_config, plot_config, impurities = (
-            setup_snicar(input_file)
+        warnings.warn(
+            "SeaIceColumn.compute_albedo() is deprecated. "
+            "Use run_model(preset=..., solzen=...) instead.",
+            DeprecationWarning, stacklevel=2,
         )
 
-        # Overwrite ice attributes
-        ice.nbr_lyr = len(dz)
-        ice.dz = dz
-        ice.layer_type = layer_type
-        ice.rho = rho
-        ice.rds = rds
-        ice.shp = shp
-        ice.cdom = cdom
-        ice.water = water
-        ice.hex_side = hex_side
-        ice.hex_length = hex_length
-        ice.shp_fctr = shp_fctr
-        ice.grain_ar = grain_ar
-        ice.lwc = lwc
-        ice.lwc_pct_bbl = [0] * len(dz)
-        ice.sea_ice_salinity = sea_salinity
-        ice.sea_ice_temperature = sea_temperature
-        ice.sea_ice_bubble_radius = sea_bubble
+        # Resolve legacy parameter names
+        if sza_deg is not None:
+            warnings.warn("sza_deg is deprecated; use solzen", DeprecationWarning, stacklevel=2)
+            solzen = sza_deg
+        if sky is not None:
+            warnings.warn(
+                "sky='clear/cloudy' is deprecated; use direct=1 or direct=0",
+                DeprecationWarning, stacklevel=2,
+            )
+            direct = 1 if sky == "clear" else 0
+        if atmosphere is not None:
+            _atm_map = {
+                "mid_lat_winter": 0, "mid_lat_summer": 1,
+                "sub_arctic_winter": 2, "sub_arctic_summer": 3,
+                "summit": 4, "high_mountain": 5, "tropical": 6,
+            }
+            warnings.warn(
+                "atmosphere='...' is deprecated; use incoming=<int 0-6>",
+                DeprecationWarning, stacklevel=2,
+            )
+            incoming = _atm_map.get(atmosphere, 2)
 
-        # Zero all impurity concentrations
-        for imp in impurities:
-            imp.conc = [0] * len(dz)
+        from biosnicar.drivers.run_model import run_model as _run_model
 
-        # Override illumination
-        illumination.solzen = sza_deg
-        illumination.direct = direct
-        illumination.incoming = incoming
-        illumination.calculate_irradiance()
+        # Build kwargs: start from preset (if from_preset was used) or layers
+        if hasattr(self, "_preset_kwargs"):
+            kwargs = self._preset_kwargs.copy()
+        else:
+            kwargs = _layers_to_kwargs(self.layers)
 
-        # Recalculate refractive indices (needed after layer_type change)
-        ice.calculate_refractive_index(input_file)
+        # Apply snow grain radius override if provided
+        if snow_grain_radius_um is not None and "rds" in kwargs:
+            rds = kwargs["rds"]
+            lt  = kwargs.get("layer_type", [0])
+            kwargs["rds"] = [
+                int(snow_grain_radius_um) if t == 0 else r
+                for r, t in zip(rds, lt)
+            ]
 
-        # ---- Run RT ----
-        ssa_snw, g_snw, mac_snw = get_layer_OPs(ice, model_config)
-        tau, ssa, g, L_snw = mix_in_impurities(
-            ssa_snw, g_snw, mac_snw, ice, impurities, model_config
-        )
-        outputs = adding_doubling_solver(tau, ssa, g, L_snw, ice, illumination, model_config)
+        # Illumination + impurities
+        kwargs.update(solzen=solzen, direct=direct, incoming=incoming)
+        if black_carbon:   kwargs["black_carbon"]  = black_carbon
+        if snow_algae:     kwargs["snow_algae"]    = snow_algae
+        if glacier_algae:  kwargs["glacier_algae"] = glacier_algae
+        if dust:           kwargs["dust"]          = dust
 
-        wvl = model_config.wavelengths
-        return AlbedoResult(
-            spectrum=np.array(outputs.albedo),
-            wavelengths=wvl,
-            broadband=float(outputs.BBA),
-            visible=float(outputs.BBAVIS),
-            nir=float(outputs.BBANIR),
-            outputs=outputs,
-        )
+        return _run_model(**kwargs)
+
+
+# ---------------------------------------------------------------------------
+# Internal helper: convert deprecated layer objects to run_model kwargs
+# ---------------------------------------------------------------------------
+
+def _layers_to_kwargs(layers: List[Union[SnowLayer, SeaIceLayer]]) -> dict:
+    """Convert a list of SnowLayer/SeaIceLayer to flat run_model kwargs."""
+    dz, lt, rho, rds = [], [], [], []
+    s_sal, s_temp, s_bbl = [], [], []
+
+    for lyr in layers:
+        if isinstance(lyr, SnowLayer):
+            dz.append(lyr.thickness_m)
+            lt.append(0)
+            rho.append(lyr.density_kg_m3)
+            rds.append(int(lyr.grain_radius_um))
+            s_sal.append(None)
+            s_temp.append(None)
+            s_bbl.append(None)
+        elif isinstance(lyr, SeaIceLayer):
+            dz.append(lyr.thickness_m)
+            lt.append(4)
+            rho.append(lyr.density_kg_m3)
+            rds.append(500)   # unused for layer_type=4
+            s_sal.append(lyr.salinity_psu)
+            s_temp.append(lyr.temperature_C)
+            s_bbl.append(lyr.bubble_radius_um)
+        else:
+            raise TypeError(f"Unknown layer type: {type(lyr)}")
+
+    return dict(
+        layer_type=lt, dz=dz, rds=rds, rho=rho,
+        sea_ice_salinity=s_sal,
+        sea_ice_temperature=s_temp,
+        sea_ice_bubble_radius=s_bbl,
+    )

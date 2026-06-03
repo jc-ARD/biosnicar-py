@@ -1,278 +1,267 @@
 #!/usr/bin/env python3
-"""Sea ice albedo — demo of the biosnicar.sea_ice extension.
+"""Sea ice albedo — demonstration of the BioSNICAR sea ice extension.
 
-Covers:
-  1. Using built-in presets (FYI bare, FYI snow-covered, MYI bare)
-  2. Building a custom column layer by layer
-  3. Sensitivity to salinity and temperature
-  4. Sensitivity to solar zenith angle
-  5. Effect of snow cover thickness
-  6. Comparing sea ice types side-by-side
+Sea ice is accessed through the same run_model() entry point as
+terrestrial ice, using layer_type=4 layers with three additional
+per-layer parameters:
+  - sea_ice_salinity     (psu)
+  - sea_ice_temperature  (°C, in [-44, -2])
+  - sea_ice_bubble_radius (µm)
 
-Layer type mapping reminder
----------------------------
-  0 — granular snow / ice grains
-  1 — solid glacier ice with Fresnel reflection
-  4 — sea ice (layer_type=4, NOT 2 — that was already taken)
+Switching between glacier ice and sea ice is a single parameter change:
 
-Note: sea ice requires the adding-doubling solver (default). The Toon solver
-does not handle the Fresnel air-ice interface needed for sea ice correctly.
+  # Glacier ice (layer_type=1)
+  outputs = run_model(solzen=60, layer_type=1, rds=500, rho=700)
+
+  # Sea ice (layer_type=4) — identical call style
+  outputs = run_model(
+      solzen=60,
+      layer_type=[4, 4],
+      dz=[0.05, 1.45],
+      rds=[500, 500],         # not used for sea ice; any value works
+      rho=[895, 895],
+      sea_ice_salinity=[12, 8],
+      sea_ice_temperature=[-25, -20],
+      sea_ice_bubble_radius=[100, 200],
+  )
+
+  # Both return the same Outputs object with .BBA, .albedo, .to_platform() …
+
+Built-in presets are available as dicts via:
+  from biosnicar import run_model, FYI_WINTER_BARE, FYI_WINTER_SNOW, MYI_WINTER_BARE
+  outputs = run_model(preset=FYI_WINTER_BARE, solzen=60)
 """
 
 import numpy as np
 import matplotlib.pyplot as plt
 
-from biosnicar.sea_ice.api import SeaIceColumn, SeaIceLayer, SnowLayer
-from biosnicar.sea_ice.presets import FYI_WINTER_BARE, FYI_WINTER_SNOW, MYI_WINTER_BARE
+from biosnicar import run_model, FYI_WINTER_BARE, FYI_WINTER_SNOW, MYI_WINTER_BARE
+from biosnicar.sea_ice.presets import ALL_PRESETS
 
-WAVELENGTHS = np.arange(0.205, 4.999, 0.01)  # 480-band grid, μm
-PLOT = True  # set False to suppress figures
+WAVELENGTHS = np.arange(0.205, 4.999, 0.01)   # 480-band grid, µm
+PLOT = True
 
 
 # =============================================================================
-# 1. Built-in presets
+# 1. Built-in presets — quickest way to get started
 # =============================================================================
 print("=" * 60)
 print("1. Built-in presets (SZA=60°, sub-Arctic winter, clear sky)")
 print("=" * 60)
 
-results = {}
-for preset in [FYI_WINTER_BARE, FYI_WINTER_SNOW, MYI_WINTER_BARE]:
-    col = SeaIceColumn.from_preset(preset)
-    r = col.compute_albedo(sza_deg=60, atmosphere="sub_arctic_winter", sky="clear")
-    results[preset.name] = r
-    print(
-        f"  {preset.name:<22}  BBA={r.broadband:.3f}"
-        f"  VIS={r.visible:.3f}  NIR={r.nir:.3f}"
+for name in ["FYI_WINTER_BARE", "FYI_WINTER_SNOW", "MYI_WINTER_BARE"]:
+    out = run_model(preset=name, solzen=60)
+    print(f"  {name:<22}  BBA={out.BBA:.3f}  VIS={out.BBAVIS:.3f}  NIR={out.BBANIR:.3f}")
+
+
+# =============================================================================
+# 2. Preset as a dict — same object, can be merged with overrides
+# =============================================================================
+print("\n" + "=" * 60)
+print("2. Preset + override (e.g. add black carbon to snow-covered FYI)")
+print("=" * 60)
+
+clean = run_model(preset=FYI_WINTER_SNOW, solzen=60)
+dirty = run_model(preset=FYI_WINTER_SNOW, solzen=60, black_carbon=1000)
+print(f"  Clean ice:  BBA={clean.BBA:.3f}")
+print(f"  +1000 ppb BC: BBA={dirty.BBA:.3f}  (reduction: {clean.BBA - dirty.BBA:.3f})")
+
+
+# =============================================================================
+# 3. Fully explicit — identical syntax to terrestrial ice
+# =============================================================================
+print("\n" + "=" * 60)
+print("3. Fully explicit flat kwargs — same style as terrestrial ice")
+print("=" * 60)
+
+# Snow on sea ice — compare with glacier ice on same call structure
+glacier_outputs = run_model(
+    solzen=60,
+    layer_type=[0, 1],
+    dz=[0.15, 1.5],
+    rds=[200, 500],
+    rho=[300, 700],
+)
+
+seaice_outputs = run_model(
+    solzen=60,
+    layer_type=[0, 4, 4],          # snow layer + two sea ice layers
+    dz=[0.15, 0.05, 1.45],
+    rds=[200, 500, 500],            # rds unused for layer_type=4
+    rho=[300, 895, 895],
+    sea_ice_salinity=[None, 12, 8], # None for snow layer
+    sea_ice_temperature=[None, -25, -20],
+    sea_ice_bubble_radius=[None, 100, 200],
+)
+
+print(f"  Snow on glacier ice:  BBA={glacier_outputs.BBA:.3f}")
+print(f"  Snow on sea ice:      BBA={seaice_outputs.BBA:.3f}")
+print(f"  Same Outputs object:  {type(glacier_outputs).__name__} == {type(seaice_outputs).__name__}")
+
+
+# =============================================================================
+# 4. Outputs attributes are identical for all ice types
+# =============================================================================
+print("\n" + "=" * 60)
+print("4. Outputs — same attribute names for terrestrial and sea ice")
+print("=" * 60)
+
+terr = run_model(solzen=60, layer_type=1, rds=500, rho=700, dz=1.5)
+seai = run_model(preset=FYI_WINTER_BARE, solzen=60)
+
+print(f"  Terrestrial: BBA={terr.BBA:.3f}  (alias: broadband={terr.broadband:.3f})")
+print(f"  Sea ice:     BBA={seai.BBA:.3f}  (alias: broadband={seai.broadband:.3f})")
+print(f"  Albedo shapes: {terr.albedo.shape} == {seai.albedo.shape}")
+print(f"  Spectrum alias: {np.array_equal(seai.albedo, seai.spectrum)}")
+# Band convolution works identically
+s2_terr = terr.to_platform("sentinel2")
+s2_seai = seai.to_platform("sentinel2")
+print(f"  Sentinel-2 B3: glacier={s2_terr.B3:.3f}  sea ice={s2_seai.B3:.3f}")
+
+
+# =============================================================================
+# 5. Sensitivity analysis
+# =============================================================================
+print("\n" + "=" * 60)
+print("5. Sensitivity to sea ice salinity and temperature")
+print("=" * 60)
+
+print("  Salinity (T=−10°C, rho=910, bbl=300 µm):")
+for S in [1, 4, 8, 12]:
+    out = run_model(
+        solzen=60,
+        layer_type=4, dz=1.5, rds=500, rho=910,
+        sea_ice_salinity=S, sea_ice_temperature=-10, sea_ice_bubble_radius=300,
     )
+    print(f"    S={S:2d} psu  BBA={out.BBA:.3f}  VIS={out.BBAVIS:.3f}  NIR={out.BBANIR:.3f}")
 
-if PLOT:
-    fig, ax = plt.subplots(figsize=(9, 4))
-    colors = {"FYI_WINTER_BARE": "firebrick", "FYI_WINTER_SNOW": "steelblue",
-              "MYI_WINTER_BARE": "darkorange"}
-    for name, r in results.items():
-        ax.plot(WAVELENGTHS, r.spectrum, lw=1.8, label=f"{name}  BBA={r.broadband:.2f}",
-                color=colors[name])
-    ax.set_xlabel("Wavelength (µm)")
-    ax.set_ylabel("Spectral albedo")
-    ax.set_xlim(0.3, 2.5)
-    ax.set_ylim(0, 1.05)
-    ax.axvline(0.75, color="k", ls="--", lw=0.7, alpha=0.4, label="VIS/NIR boundary")
-    ax.legend(fontsize=9)
-    ax.set_title("Sea ice presets — SZA=60°")
-    fig.tight_layout()
-    plt.show()
+print("  Temperature (S=8 psu, rho=910, bbl=300 µm):")
+for T in [-2, -5, -10, -20, -30]:
+    out = run_model(
+        solzen=60,
+        layer_type=4, dz=1.5, rds=500, rho=910,
+        sea_ice_salinity=8, sea_ice_temperature=T, sea_ice_bubble_radius=300,
+    )
+    print(f"    T={T:3d}°C   BBA={out.BBA:.3f}  VIS={out.BBAVIS:.3f}  NIR={out.BBANIR:.3f}")
 
 
 # =============================================================================
-# 2. Custom column
+# 6. Solar zenith angle
 # =============================================================================
 print("\n" + "=" * 60)
-print("2. Custom column with snow + two sea-ice layers")
+print("6. Solar zenith angle sweep — FYI bare")
 print("=" * 60)
 
-custom_col = SeaIceColumn(layers=[
-    # Thin snow layer (fresh water in MVP; salty snow deferred to v0.2)
-    SnowLayer(thickness_m=0.08, density_kg_m3=280, grain_radius_um=150),
-    # Cold, saline FYI surface
-    SeaIceLayer(
-        thickness_m=0.10,
-        temperature_C=-22,
-        salinity_psu=10,
-        density_kg_m3=918,
-        bubble_radius_um=120,
-        layer_class="FYI",
-    ),
-    # Warmer bulk ice
-    SeaIceLayer(
-        thickness_m=1.80,
-        temperature_C=-8,
-        salinity_psu=5,
-        density_kg_m3=912,
-        bubble_radius_um=250,
-        layer_class="FYI",
-    ),
-])
-
-r_custom = custom_col.compute_albedo(sza_deg=65, sky="clear")
-print(f"  Custom 3-layer column:   BBA={r_custom.broadband:.3f}"
-      f"  VIS={r_custom.visible:.3f}  NIR={r_custom.nir:.3f}")
-
-
-# =============================================================================
-# 3. Sensitivity to salinity
-# =============================================================================
-print("\n" + "=" * 60)
-print("3. Salinity sensitivity (T=−10°C, rho=910 kg/m³, bbl=300 µm)")
-print("=" * 60)
-
-salinities = [1, 4, 8, 12]
-sal_results = {}
-for S in salinities:
-    col = SeaIceColumn(layers=[
-        SeaIceLayer(thickness_m=1.5, temperature_C=-10, salinity_psu=S,
-                    density_kg_m3=910, bubble_radius_um=300)
-    ])
-    r = col.compute_albedo(sza_deg=60)
-    sal_results[S] = r
-    print(f"  S={S:2d} psu  BBA={r.broadband:.3f}  VIS={r.visible:.3f}  NIR={r.nir:.3f}")
-
-
-# =============================================================================
-# 4. Sensitivity to temperature
-# =============================================================================
-print("\n" + "=" * 60)
-print("4. Temperature sensitivity (S=8 psu, rho=910 kg/m³, bbl=300 µm)")
-print("=" * 60)
-
-temperatures = [-2, -5, -10, -20, -30]
-temp_results = {}
-for T in temperatures:
-    col = SeaIceColumn(layers=[
-        SeaIceLayer(thickness_m=1.5, temperature_C=T, salinity_psu=8,
-                    density_kg_m3=910, bubble_radius_um=300)
-    ])
-    r = col.compute_albedo(sza_deg=60)
-    temp_results[T] = r
-    print(f"  T={T:3d} °C  BBA={r.broadband:.3f}  VIS={r.visible:.3f}  NIR={r.nir:.3f}")
-
-if PLOT:
-    fig, axes = plt.subplots(1, 2, figsize=(13, 4))
-
-    ax = axes[0]
-    cmap = plt.cm.plasma_r
-    for idx, (S, r) in enumerate(sal_results.items()):
-        ax.plot(WAVELENGTHS, r.spectrum, lw=1.5,
-                color=cmap(idx / len(sal_results)),
-                label=f"S={S} psu  (BBA={r.broadband:.2f})")
-    ax.set_xlim(0.3, 2.5); ax.set_ylim(0, 1.05)
-    ax.set_xlabel("Wavelength (µm)"); ax.set_ylabel("Spectral albedo")
-    ax.set_title("Salinity sensitivity (T=−10°C)")
-    ax.legend(fontsize=9)
-
-    ax = axes[1]
-    cmap2 = plt.cm.cool
-    for idx, (T, r) in enumerate(temp_results.items()):
-        ax.plot(WAVELENGTHS, r.spectrum, lw=1.5,
-                color=cmap2(idx / len(temp_results)),
-                label=f"T={T}°C  (BBA={r.broadband:.2f})")
-    ax.set_xlim(0.3, 2.5); ax.set_ylim(0, 1.05)
-    ax.set_xlabel("Wavelength (µm)"); ax.set_ylabel("Spectral albedo")
-    ax.set_title("Temperature sensitivity (S=8 psu)")
-    ax.legend(fontsize=9)
-
-    fig.tight_layout()
-    plt.show()
-
-
-# =============================================================================
-# 5. Solar zenith angle
-# =============================================================================
-print("\n" + "=" * 60)
-print("5. Solar zenith angle (FYI_WINTER_BARE)")
-print("=" * 60)
-
-sza_results = {}
 for sza in [30, 45, 60, 75, 85]:
-    col = SeaIceColumn.from_preset(FYI_WINTER_BARE)
-    r = col.compute_albedo(sza_deg=sza)
-    sza_results[sza] = r
-    print(f"  SZA={sza:2d}°  BBA={r.broadband:.3f}  VIS={r.visible:.3f}  NIR={r.nir:.3f}")
-
-if PLOT:
-    fig, ax = plt.subplots(figsize=(9, 4))
-    cmap3 = plt.cm.viridis
-    for idx, (sza, r) in enumerate(sza_results.items()):
-        ax.plot(WAVELENGTHS, r.spectrum, lw=1.5,
-                color=cmap3(idx / len(sza_results)),
-                label=f"SZA={sza}°  BBA={r.broadband:.2f}")
-    ax.set_xlim(0.3, 2.5); ax.set_ylim(0, 1.05)
-    ax.set_xlabel("Wavelength (µm)"); ax.set_ylabel("Spectral albedo")
-    ax.set_title("SZA sensitivity — FYI bare")
-    ax.legend(fontsize=9)
-    fig.tight_layout()
-    plt.show()
+    out = run_model(preset=FYI_WINTER_BARE, solzen=sza)
+    print(f"  SZA={sza:2d}°  BBA={out.BBA:.3f}  VIS={out.BBAVIS:.3f}  NIR={out.BBANIR:.3f}")
 
 
 # =============================================================================
-# 6. Snow cover thickness
+# 7. Snow cover thickness sweep
 # =============================================================================
 print("\n" + "=" * 60)
-print("6. Snow cover thickness on FYI (SZA=60°)")
+print("7. Snow thickness on FYI (SZA=60°)")
 print("=" * 60)
 
-snow_thicknesses = [0, 0.05, 0.10, 0.20, 0.40]
-snow_results = {}
-for dz in snow_thicknesses:
-    if dz == 0:
-        col = SeaIceColumn.from_preset(FYI_WINTER_BARE)
+for dz_snow in [0, 0.05, 0.10, 0.20, 0.40]:
+    if dz_snow == 0:
+        out = run_model(preset=FYI_WINTER_BARE, solzen=60)
+        label = "  bare"
     else:
-        col = SeaIceColumn(layers=[
-            SnowLayer(thickness_m=dz, density_kg_m3=300, grain_radius_um=200),
-            SeaIceLayer(thickness_m=0.05, temperature_C=-25, salinity_psu=12,
-                        density_kg_m3=920, bubble_radius_um=100),
-            SeaIceLayer(thickness_m=1.45, temperature_C=-10, salinity_psu=8,
-                        density_kg_m3=915, bubble_radius_um=200),
-        ])
-    r = col.compute_albedo(sza_deg=60)
-    snow_results[dz] = r
-    label = f"{int(dz*100):3d} cm"
-    print(f"  Snow={label}  BBA={r.broadband:.3f}  VIS={r.visible:.3f}  NIR={r.nir:.3f}")
-
-if PLOT:
-    fig, axes = plt.subplots(1, 2, figsize=(13, 4))
-
-    ax = axes[0]
-    cmap4 = plt.cm.YlGnBu
-    for idx, (dz, r) in enumerate(snow_results.items()):
-        label = f"0 cm (bare)" if dz == 0 else f"{int(dz*100)} cm"
-        ax.plot(WAVELENGTHS, r.spectrum, lw=1.5,
-                color=cmap4(0.2 + 0.7 * idx / max(1, len(snow_results) - 1)),
-                label=f"snow={label}  BBA={r.broadband:.2f}")
-    ax.set_xlim(0.3, 2.5); ax.set_ylim(0, 1.05)
-    ax.set_xlabel("Wavelength (µm)"); ax.set_ylabel("Spectral albedo")
-    ax.set_title("Snow thickness sensitivity")
-    ax.legend(fontsize=9)
-
-    # BBA vs snow thickness summary bar
-    ax = axes[1]
-    labels = [f"{int(dz*100)} cm" if dz > 0 else "bare" for dz in snow_thicknesses]
-    bbas = [r.broadband for r in snow_results.values()]
-    ax.bar(labels, bbas, color="steelblue", edgecolor="white", linewidth=0.5)
-    ax.set_xlabel("Snow thickness")
-    ax.set_ylabel("Broadband albedo")
-    ax.set_ylim(0, 1.0)
-    ax.set_title("BBA vs snow depth")
-    ax.axhline(bbas[0], color="firebrick", ls="--", lw=1, label="bare ice BBA")
-    ax.legend(fontsize=9)
-
-    fig.tight_layout()
-    plt.show()
+        out = run_model(
+            solzen=60,
+            layer_type=[0, 4, 4],
+            dz=[dz_snow, 0.05, 1.45],
+            rds=[200, 500, 500],
+            rho=[250, 895, 895],
+            sea_ice_salinity=[None, 12, 8],
+            sea_ice_temperature=[None, -25, -20],
+            sea_ice_bubble_radius=[None, 100, 200],
+        )
+        label = f"{int(dz_snow * 100):3d} cm"
+    print(f"  Snow={label}  BBA={out.BBA:.3f}  VIS={out.BBAVIS:.3f}  NIR={out.BBANIR:.3f}")
 
 
 # =============================================================================
-# 7. Direct vs diffuse sky
+# 8. Clear vs overcast sky
 # =============================================================================
 print("\n" + "=" * 60)
-print("7. Clear sky vs overcast — FYI bare, SZA=60°")
+print("8. Clear (direct=1) vs overcast (direct=0)")
 print("=" * 60)
 
-for sky in ["clear", "cloudy"]:
-    col = SeaIceColumn.from_preset(FYI_WINTER_BARE)
-    r = col.compute_albedo(sza_deg=60, sky=sky)
-    print(f"  {sky:7s}  BBA={r.broadband:.3f}  VIS={r.visible:.3f}  NIR={r.nir:.3f}")
+for direct, label in [(1, "clear"), (0, "overcast")]:
+    out = run_model(preset=FYI_WINTER_BARE, solzen=60, direct=direct)
+    print(f"  {label:8s}  BBA={out.BBA:.3f}  VIS={out.BBAVIS:.3f}  NIR={out.BBANIR:.3f}")
 
 
 # =============================================================================
-# 8. Summary table
+# 9. Summary table
 # =============================================================================
 print("\n" + "=" * 60)
-print("8. Summary: all presets × SZA")
+print("9. Summary: all presets × SZA")
 print("=" * 60)
 print(f"  {'Preset':<22}  {'SZA':>4}  {'BBA':>6}  {'VIS':>6}  {'NIR':>6}")
 print("  " + "-" * 48)
-for preset in [FYI_WINTER_BARE, FYI_WINTER_SNOW, MYI_WINTER_BARE]:
+for name in ["FYI_WINTER_BARE", "FYI_WINTER_SNOW", "MYI_WINTER_BARE"]:
     for sza in [45, 60, 75]:
-        col = SeaIceColumn.from_preset(preset)
-        r = col.compute_albedo(sza_deg=sza)
-        print(f"  {preset.name:<22}  {sza:>4}°  {r.broadband:>6.3f}  {r.visible:>6.3f}  {r.nir:>6.3f}")
+        out = run_model(preset=name, solzen=sza)
+        print(f"  {name:<22}  {sza:>4}°  {out.BBA:>6.3f}  {out.BBAVIS:>6.3f}  {out.BBANIR:>6.3f}")
+
+
+# =============================================================================
+# Plots
+# =============================================================================
+if PLOT:
+    fig, axes = plt.subplots(1, 3, figsize=(14, 4))
+
+    # Panel 1: Three presets
+    ax = axes[0]
+    for name, color in [("FYI_WINTER_BARE", "firebrick"),
+                         ("FYI_WINTER_SNOW", "steelblue"),
+                         ("MYI_WINTER_BARE", "darkorange")]:
+        out = run_model(preset=name, solzen=60)
+        ax.plot(WAVELENGTHS, out.albedo, lw=1.8, color=color,
+                label=f"{name}  BBA={out.BBA:.2f}")
+    ax.set_title("Built-in presets (SZA=60°)")
+    ax.set_xlabel("Wavelength (µm)"); ax.set_ylabel("Spectral albedo")
+    ax.set_xlim(0.3, 2.5); ax.set_ylim(0, 1.05)
+    ax.legend(fontsize=8); ax.axvline(0.75, color="k", lw=0.5, ls=":", alpha=0.4)
+
+    # Panel 2: Salinity sensitivity
+    ax = axes[1]
+    import matplotlib.cm as cm
+    cmap = cm.plasma_r
+    for i, S in enumerate([1, 4, 8, 12]):
+        out = run_model(solzen=60, layer_type=4, dz=1.5, rds=500, rho=910,
+                        sea_ice_salinity=S, sea_ice_temperature=-10,
+                        sea_ice_bubble_radius=300)
+        ax.plot(WAVELENGTHS, out.albedo, lw=1.5, color=cmap(i / 3),
+                label=f"S={S} psu  BBA={out.BBA:.2f}")
+    ax.set_title("Salinity sensitivity (T=−10°C)")
+    ax.set_xlabel("Wavelength (µm)")
+    ax.set_xlim(0.3, 2.5); ax.set_ylim(0, 1.05); ax.legend(fontsize=8)
+
+    # Panel 3: Snow thickness
+    ax = axes[2]
+    cmap2 = cm.YlGnBu
+    for i, dz_snow in enumerate([0, 0.05, 0.10, 0.20, 0.40]):
+        if dz_snow == 0:
+            out = run_model(preset=FYI_WINTER_BARE, solzen=60)
+            label = "bare"
+        else:
+            out = run_model(solzen=60, layer_type=[0,4,4],
+                            dz=[dz_snow,0.05,1.45], rds=[200,500,500],
+                            rho=[250,895,895], sea_ice_salinity=[None,12,8],
+                            sea_ice_temperature=[None,-25,-20],
+                            sea_ice_bubble_radius=[None,100,200])
+            label = f"{int(dz_snow*100)} cm"
+        ax.plot(WAVELENGTHS, out.albedo, lw=1.5,
+                color=cmap2(0.2 + 0.7 * i / 4),
+                label=f"snow={label}  BBA={out.BBA:.2f}")
+    ax.set_title("Snow thickness (SZA=60°)")
+    ax.set_xlabel("Wavelength (µm)")
+    ax.set_xlim(0.3, 2.5); ax.set_ylim(0, 1.05); ax.legend(fontsize=8)
+
+    plt.tight_layout()
+    plt.show()
