@@ -1,0 +1,54 @@
+{
+  "dataset": "Sea Ice Melt Pond Data from the Canadian Arctic",
+  "citation": "Morassutti, M. (1995). NSIDC G01169. https://doi.org/10.7265/N55Q4T1C",
+  "location": "Barrow Strait, Nunavut, Canada (near Cornwallis Island, ~74\u00b0N)",
+  "period": "27 May \u2013 26 Jun 1994 (Julian days 147\u2013177)",
+  "n_records": 504,
+  "spectral_bands_um": {
+    "broadband": [
+      0.4,
+      1.0
+    ],
+    "visible": [
+      0.4,
+      0.7
+    ],
+    "nir": [
+      0.7,
+      1.0
+    ],
+    "b1_blue": [
+      0.4,
+      0.5
+    ],
+    "b2_green": [
+      0.5,
+      0.6
+    ],
+    "b3_red": [
+      0.6,
+      0.7
+    ],
+    "b4_nir1": [
+      0.7,
+      0.8
+    ],
+    "b5_nir2": [
+      0.8,
+      0.9
+    ],
+    "b6_nir3": [
+      0.9,
+      1.0
+    ]
+  },
+  "surface_type": "MELT PONDS \u2014 not bare winter sea ice",
+  "mvp_validation_suitability": "LOW \u2014 melt ponds are explicitly out of scope for BioSNICAR v0.1 MVP. Use for future v0.2 melt pond development.",
+  "bare_ice_proxy_records": 24,
+  "bare_ice_proxy_filter": "pond_depth <= 0.05 m AND bba_400_1000 >= 0.40",
+  "notes": [
+    "Spectral range 400\u20131000 nm only; BioSNICAR operates 205\u20135000 nm.",
+    "Ice type codes 1/2/3 not fully documented (table 5 truncated in PDF).",
+    "For MVP validation, obtain: Perovich et al. 2002 (JGR) SHEBA bare ice, or Light et al. 2008 (J Geophys Res) first-year ice lab spectra."
+  ]
+}

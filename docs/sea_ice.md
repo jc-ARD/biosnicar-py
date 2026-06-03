@@ -5,6 +5,24 @@
 
 ---
 
+## How sea ice relates to the other layer types
+
+BioSNICAR uses a `layer_type` integer per layer to select the optical-property model. The full set is:
+
+| `layer_type` | Physical model | Fresnel surface |
+|---|---|---|
+| 0 | Granular snow or ice — discrete grains in air | No |
+| 1 | Solid bubbly glacier ice + Fresnel air-ice surface | **Yes** |
+| 2 | Solid bubbly glacier ice, no Fresnel correction | No |
+| 3 | Granular water/ice sphere mixture (slush) | No |
+| **4** | **Sea ice — brine inclusions via Maxwell-Garnett** | **Yes** |
+
+Types 1 and 2 are the same optical model (bulk ice matrix, absorption from `k_ice`, scattering from air/water bubble LUTs) — the only difference is that type 1 triggers the Fresnel surface reflection in the solver and type 2 does not. Type 3 is a different physical picture altogether: discrete spheres of ice and water in air, combined by linear volume-fraction mixing, with no effective medium theory.
+
+Sea ice (`layer_type=4`) is closest to type 1 in structure — solid bulk ice with inclusions and a Fresnel surface — but replaces the pure-ice absorption with an effective medium calculation that accounts for brine pockets. It adds three required per-layer inputs (`sea_ice_temperature`, `sea_ice_salinity`, `sea_ice_bubble_radius`) and draws from a separate pre-computed LUT. See [docs/METHODS.md](METHODS.md) for the full layer-type reference.
+
+---
+
 ## What this extension does and doesn't do
 
 ### Does

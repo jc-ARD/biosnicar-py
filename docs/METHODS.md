@@ -13,15 +13,39 @@ The forward model accepts physical parameters including bubble effective radius 
 
 ### 1.1 Layer types
 
-Each layer in the column is assigned a `layer_type` integer that selects the optical-property calculation path:
+Each layer in the column is assigned a `layer_type` integer that selects the optical-property calculation path in `column_OPs.py` and controls whether the adding-doubling solver applies a Fresnel reflection correction at that layer's upper boundary.
 
-| `layer_type` | Description |
-|---|---|
-| 0 | Granular snow or ice — spherical, spheroidal, hexagonal plate, or Koch snowflake grains |
-| 1 | Solid bubbly glacier ice — bulk ice medium with air inclusions; Fresnel reflection at the air-ice boundary |
-| 2 | Solid bubbly glacier ice — same as 1 but without Fresnel correction |
-| 3 | Mixed water/ice spheres — interspersed liquid water and ice grains |
-| 4 | **Sea ice** — brine inclusions via Maxwell-Garnett effective medium (v0.1, see Section 1.2) |
+| `layer_type` | Physical model | Fresnel surface | Primary data |
+|---|---|---|---|
+| 0 | Granular snow or ice — discrete grains | No | `luts/ice_sphere_*.npz`, `luts/hex_*.npz` |
+| 1 | Solid bubbly glacier ice — bulk ice + air/water inclusions | **Yes** | `bubbly_air.npz`, `rfidx_ice.npz` |
+| 2 | Solid bubbly glacier ice — identical to type 1 optically | No | Same as type 1 |
+| 3 | Granular water/ice sphere mixture | No | `luts/ice_sphere_*.npz`, `luts/water_sphere.npz` |
+| 4 | Sea ice — brine inclusions via Maxwell-Garnett | **Yes** | `luts/sea_ice.npz`, `brine_rfidx.npz` |
+
+#### Types 1 and 2 in detail
+
+Types 1 and 2 produce **identical optical properties** — they share the same code branch in `column_OPs.py`. The only difference is that type 1 sets `lyrfrsnl` (the Fresnel layer index in the solver) to that layer's position, while type 2 leaves it unset (effectively no surface reflection).
+
+The physical model is a bulk solid ice matrix with sub-wavelength inclusions. Absorption comes from the imaginary part of the ice refractive index via Beer-Lambert: `abs_cff_mss = 4π k / (λ ρ_ice)`, with `k` loaded from `rfidx_ice.npz` (variants: Warren 1984, Warren & Brandt 2008, Picard 2016). Scattering comes from inclusions:
+
+- **No liquid water** (`lwc=0`): air bubble scattering from `bubbly_air.npz` — pre-computed Mie for air spheres in ice, 549 radii (10–25,000 µm), indexed by `rds`.
+- **With liquid water** (`lwc>0`): `lwc_pct_bbl` splits liquid water into discrete water bubbles (scattering, from `bubbly_water.npz`) and matrix water mixed into the ice (absorption only, from `refractive_index_water_273K_Rowe2020.csv`). Asymmetry parameter `g` is the scattering-coefficient-weighted average of both bubble types.
+- **CDOM** (`cdom=1`): overrides `k_ice` in the visible (bands 3–54) with `max(k_ice, k_cdom)`, where `k_cdom` comes from `k_cdom_240_750.csv` (measured polar meltwater absorption spectrum).
+
+Use type 1 for bare glacier ice with a physically smooth air-ice surface. Use type 2 when the Fresnel interface is already handled by an overlying layer, or to isolate the Fresnel contribution.
+
+#### Type 3 in detail
+
+A different physical model: a **granular suspension** of discrete ice spheres and water spheres in air — appropriate for slush or heavily melting ice where individual grains and droplets coexist as separate particles. No Fresnel correction; no CDOM.
+
+Optical properties are a volume-fraction-weighted linear mix of ice sphere and water sphere Mie results, both from LUTs indexed by `rds` (30–5,000 µm). The same radius is used for both sphere types. Volume fractions: `vlm_frac_ice = (rho − lwc×1000) / 917`; `lwc` is the water fraction. The inferred air fraction is computed but not used — it is implicitly absorbed into the bulk density denominator.
+
+No effective medium theory is applied; each particle type contributes independently.
+
+#### Type 4 in detail
+
+See Section 1.2.
 
 ### 1.2 Sea ice (layer_type = 4)
 
