@@ -16,7 +16,7 @@ RTM:
 
 ICE:
   DZ: [0.02, 1]  # thickness of each vertical layer (unit : m)
-  LAYER_TYPE: [1,1]  # 0: ice spheres, 1: solid ice w/frsnl, 2: w/out frsnl, 3: interspersed water/ice spheres
+  LAYER_TYPE: [1,1]  # 0: ice spheres, 1: solid ice w/frsnl, 2: w/out frsnl, 3: interspersed water/ice spheres, 4: sea ice (SSL+DL+IL), 5: melt pond
   CDOM: [0, 0]  # Only for layer type :: 1
   RHO: [700, 700]  # density of each layer (unit : kg m-3)
   RF: 2

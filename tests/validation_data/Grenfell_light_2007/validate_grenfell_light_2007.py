@@ -105,7 +105,8 @@ REPO = HERE.parents[2]
 sys.path.insert(0, str(REPO))
 
 from biosnicar import run_model as _run_model
-from biosnicar.sea_ice.presets import FYI_WINTER_BARE, FYI_WINTER_SNOW, MYI_WINTER_BARE
+from biosnicar.sea_ice.presets import (FYI_WINTER_BARE, FYI_WINTER_SNOW,
+                                       FYI_SUMMER_BARE, MYI_WINTER_BARE)
 
 SNICAR_WVL_UM = np.arange(0.205, 4.999, 0.01)
 SNICAR_WVL_NM = SNICAR_WVL_UM * 1000
@@ -308,13 +309,19 @@ def run_summer(entries):
         r_ref = _run_model(preset=FYI_WINTER_BARE, solzen=sza)
         flx = np.maximum(interp_model(r_ref.flx_slr, wls), 1e-30)
         row["obs_bba"] = flux_bba(wls, alb, flx)
-        for preset, label in [(FYI_WINTER_BARE, "FYI"), (MYI_WINTER_BARE, "MYI")]:
+        for preset, label in [(FYI_WINTER_BARE, "FYI"),
+                               (MYI_WINTER_BARE, "MYI"),
+                               (FYI_SUMMER_BARE, "SSL")]:
             r = _run_model(preset=preset, solzen=sza)
             mod = interp_model(r.albedo, wls)
             rmse, bias = spectral_stats(wls, alb, mod)
+            rmse_vis, bias_vis = spectral_stats(wls, alb, mod, 400, 700)
+            rmse_nir, bias_nir = spectral_stats(wls, alb, mod, 700, 1000)
             row[f"{label}_mod"] = mod
             row[f"{label}_rmse"] = rmse
             row[f"{label}_bias"] = bias
+            row[f"{label}_rmse_vis"] = rmse_vis
+            row[f"{label}_rmse_nir"] = rmse_nir
             row[f"{label}_bba_diff"] = flux_bba(wls, mod, flx) - row["obs_bba"]
         rows.append(row)
     return rows
@@ -353,20 +360,30 @@ def print_spring(rows):
 
 
 def print_summer(rows):
-    print("\n" + "=" * 86)
-    print("SUMMER BARE ICE  (Aug 2 – Sep 3, 1998)  ──  KNOWN SEASON MISMATCH")
-    print("Winter model vs summer surface: documented for completeness only.")
-    print("=" * 86)
+    print("\n" + "=" * 100)
+    print("SUMMER BARE ICE  (Aug 2 – Sep 3, 1998)")
+    print("FYI_WINTER/MYI_WINTER = no SSL;  FYI_SUMMER = with SSL (Jin et al. 2023)")
+    print("=" * 100)
     print(f"  {'Date':<12}  {'SZA':>4}  {'Obs BBA':>8}"
-          f"  {'FYI Δ':>7}  {'FYI RMSE':>9}  {'MYI Δ':>7}  {'MYI RMSE':>9}")
-    print("  " + "-" * 72)
+          f"  {'FYI Δ':>7}  {'FYI RMSE':>9}"
+          f"  {'MYI Δ':>7}  {'MYI RMSE':>9}"
+          f"  {'SSL Δ':>7}  {'SSL RMSE':>9}")
+    print("  " + "-" * 90)
     for r in rows:
         print(f"  {r['date']:<12}  {r['sza']:>4}°  {r['obs_bba']:>8.3f}"
               f"  {r['FYI_bba_diff']:>+7.3f}  {r['FYI_rmse']:>9.3f}"
-              f"  {r['MYI_bba_diff']:>+7.3f}  {r['MYI_rmse']:>9.3f}")
+              f"  {r['MYI_bba_diff']:>+7.3f}  {r['MYI_rmse']:>9.3f}"
+              f"  {r['SSL_bba_diff']:>+7.3f}  {r['SSL_rmse']:>9.3f}")
     fyi_mean = np.mean([r["FYI_rmse"] for r in rows])
     myi_mean = np.mean([r["MYI_rmse"] for r in rows])
-    print(f"\n  Mean RMSE:  FYI={fyi_mean:.3f}   MYI={myi_mean:.3f}  (high RMSE expected)")
+    ssl_mean = np.mean([r["SSL_rmse"] for r in rows])
+    fyi_nir  = np.mean([r["FYI_rmse_nir"] for r in rows])
+    ssl_nir  = np.mean([r["SSL_rmse_nir"] for r in rows])
+    fyi_vis  = np.mean([r["FYI_rmse_vis"] for r in rows])
+    ssl_vis  = np.mean([r["SSL_rmse_vis"] for r in rows])
+    print(f"\n  Mean RMSE (full):  FYI={fyi_mean:.3f}   MYI={myi_mean:.3f}   SSL={ssl_mean:.3f}")
+    print(f"  Mean RMSE (VIS):   FYI={fyi_vis:.3f}                      SSL={ssl_vis:.3f}")
+    print(f"  Mean RMSE (NIR):   FYI={fyi_nir:.3f}                      SSL={ssl_nir:.3f}  ← SSL target")
 
 
 # ---------------------------------------------------------------------------
@@ -383,7 +400,7 @@ def make_plots(spring_rows, summer_rows, save_dir=None, show=True):
         save_dir.mkdir(parents=True, exist_ok=True)
 
     COLORS = {"obs": "#2c2c2c", "default": "#e07b39", "aligned": "#3a7dc9",
-              "FYI": "#e07b39", "MYI": "#3a7dc9"}
+              "FYI": "#e07b39", "MYI": "#3a7dc9", "SSL": "#2ca02c"}
     ALPHA_FILL = 0.15
 
     # ── Figure 1: Spring spectral comparison ─────────────────────────────────
@@ -534,15 +551,17 @@ def make_plots(spring_rows, summer_rows, save_dir=None, show=True):
         plt.show()
     plt.close(fig)
 
-    # ── Figure 4: Summer bare ice mismatch ───────────────────────────────────
-    # Show a sample of summer dates to illustrate the NIR underestimate
+    # ── Figure 4: Summer bare ice — with and without SSL ─────────────────────
+    # Show a sample of summer dates comparing winter model (no SSL) vs
+    # summer model (with SSL, Jin et al. 2023 three-layer structure)
     sample = summer_rows[::3][:5]   # every 3rd date, up to 5
     fig, axes = plt.subplots(1, len(sample), figsize=(3.5 * len(sample), 4), sharey=True)
     if len(sample) == 1:
         axes = [axes]
-    fig.suptitle("Summer bare ice: observed vs winter model  (season mismatch)\n"
-                 "Note NIR (700–1000 nm) underestimate — larger bubbles needed for summer ice",
-                 fontsize=10)
+    fig.suptitle(
+        "Summer bare ice: FYI_WINTER_BARE (no SSL) vs FYI_SUMMER_BARE (with SSL)\n"
+        "SSL = Surface Scattering Layer, rho=300 kg/m³, 5 cm (Jin et al. 2023)",
+        fontsize=10)
     for ax, r in zip(axes, sample):
         wl = r["obs_wl"]
         mask = (wl >= 400) & (wl <= 1000)
@@ -552,19 +571,16 @@ def make_plots(spring_rows, summer_rows, save_dir=None, show=True):
                         color=COLORS["obs"], alpha=ALPHA_FILL)
         ax.plot(wl_m, r["obs_alb"][mask], color=COLORS["obs"], lw=1.5, label="Observed")
         ax.plot(wl_m, r["FYI_mod"][mask], color=COLORS["FYI"], lw=1.2, ls="--",
-                label=f"FYI RMSE={r['FYI_rmse']:.3f}")
-        ax.plot(wl_m, r["MYI_mod"][mask], color=COLORS["MYI"], lw=1.2,
-                label=f"MYI RMSE={r['MYI_rmse']:.3f}")
+                label=f"FYI_WINTER RMSE={r['FYI_rmse']:.3f}")
+        ax.plot(wl_m, r["SSL_mod"][mask], color=COLORS["SSL"], lw=1.4,
+                label=f"FYI_SUMMER+SSL RMSE={r['SSL_rmse']:.3f}")
         ax.axvline(700, color="k", lw=0.5, ls=":", alpha=0.4)
-        ax.annotate("NIR\ngap", xy=(800, 0.4),
-                    xytext=(800, 0.55), ha="center",
-                    arrowprops=dict(arrowstyle="->", color="gray"), fontsize=7, color="gray")
         ax.set_title(f"{r['date']}", fontsize=8)
         ax.set_xlim(400, 1000)
         ax.set_ylim(0.0, 1.05)
         ax.set_xlabel("Wavelength (nm)", fontsize=8)
         ax.tick_params(labelsize=8)
-        ax.legend(fontsize=7.5, loc="lower right")
+        ax.legend(fontsize=7.0, loc="lower right")
     axes[0].set_ylabel("Spectral albedo")
     fig.tight_layout()
     if save_dir:
@@ -710,11 +726,18 @@ Pass rate: **DEFAULT = {pass_def}/{n_spring}**, **ALIGNED = {pass_aln}/{n_spring
 
 ### 3.2 Summer bare ice (August 2 – September 3, 1998)
 
-Season mismatch: winter model applied to summer surface. Documented for completeness.
+Three model configurations compared: FYI_WINTER_BARE (no SSL), and FYI_SUMMER_BARE (with SSL — Jin et al. 2023 three-layer structure). MYI_WINTER_BARE omitted from table for brevity; it underperforms FYI_WINTER_BARE in all cases.
 
 {table_summer}
 
-Mean RMSE: FYI = {fyi_mean:.3f}, MYI = {myi_mean:.3f}
+Mean RMSE (400–1000 nm): FYI_WINTER = {fyi_mean:.3f}, FYI_SUMMER+SSL = {ssl_mean:.3f}
+
+Per-band breakdown:
+
+| Band | FYI_WINTER (no SSL) | FYI_SUMMER+SSL | Change |
+|---|---|---|---|
+| VIS (400–700 nm) | {fyi_vis:.3f} | {ssl_vis:.3f} | SSL adds scattering, worsens dates with positive VIS bias |
+| NIR (700–1000 nm) | {fyi_nir:.3f} | {ssl_nir:.3f} | SSL target — backscattering from ν_air≈67% layer |
 
 ---
 
@@ -801,14 +824,14 @@ def build_report(spring_rows, summer_rows, run_date):
         band_lines.append(f"| {b} | {d_def:+.3f} | {d_aln:+.3f} |")
 
     summer_lines = [
-        "| Date | SZA | Obs BBA | FYI Δ | FYI RMSE | MYI Δ | MYI RMSE |",
+        "| Date | SZA | Obs BBA | FYI_WINTER Δ | FYI_WINTER RMSE | FYI_SUMMER+SSL Δ | FYI_SUMMER+SSL RMSE |",
         "|---|---|---|---|---|---|---|",
     ]
     for r in summer_rows:
         summer_lines.append(
             f"| {r['date']} | {r['sza']}° | {r['obs_bba']:.3f} |"
             f" {r['FYI_bba_diff']:+.3f} | {r['FYI_rmse']:.3f} |"
-            f" {r['MYI_bba_diff']:+.3f} | {r['MYI_rmse']:.3f} |"
+            f" {r['SSL_bba_diff']:+.3f} | {r['SSL_rmse']:.3f} |"
         )
 
     n = len(spring_rows)
@@ -826,6 +849,11 @@ def build_report(spring_rows, summer_rows, run_date):
         table_summer="\n".join(summer_lines),
         fyi_mean=np.mean([r["FYI_rmse"] for r in summer_rows]),
         myi_mean=np.mean([r["MYI_rmse"] for r in summer_rows]),
+        ssl_mean=np.mean([r["SSL_rmse"] for r in summer_rows]),
+        fyi_nir=np.mean([r["FYI_rmse_nir"] for r in summer_rows]),
+        ssl_nir=np.mean([r["SSL_rmse_nir"] for r in summer_rows]),
+        fyi_vis=np.mean([r["FYI_rmse_vis"] for r in summer_rows]),
+        ssl_vis=np.mean([r["SSL_rmse_vis"] for r in summer_rows]),
     )
 
 

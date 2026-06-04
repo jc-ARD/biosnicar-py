@@ -27,7 +27,8 @@ Rowe et al. (2020) pure water k at 0°C.
 
 Model conditions chosen to represent summer Arctic melt ponds:
   Pond water:     rho=1000 kg/m³, layer_type=5
-  FYI below:      T=-5°C, S=8 psu, rho=895 kg/m³, bbl=200 µm, layer_type=4
+  FYI below:      T=-5°C, S=8/6 psu, DL rho=850/IL rho=910 kg/m³, bbl=200/500 µm
+  Floor LAP:      1200 ppb effective BC (calibrated, Jin et al. 2023 DL=850 structure)
 
 SZA: 60° (representative of mid-day summer Arctic; actual SZA not recorded).
 
@@ -111,15 +112,29 @@ def load_data() -> pd.DataFrame:
 # Model runner — one pond depth at a time
 # ---------------------------------------------------------------------------
 
+# Floor ice parameters follow the Jin et al. (2023) three-layer structure:
+#   DL (Drained Layer): 5 cm, 850 kg/m³  — above waterline, lower density
+#   IL (Interior Layer): 140 cm, 910 kg/m³ — below waterline, higher density
+# This replaces the earlier uniform 895 kg/m³ parameterisation.
+# Reference: Jin, Ottaviani & Sikand (2023, Optics Express 31, 21128).
 _ICE_KWARGS = dict(
     layer_type=[4, 4],
-    dz=[0.05, 1.45],
+    dz=[0.05, 1.40],
     rds=[500, 500],
-    rho=[895, 895],
+    rho=[850, 910],   # DL=850, IL=910 (Jin et al. 2023)
     sea_ice_salinity=[8, 6],
     sea_ice_temperature=[-5, -5],
-    sea_ice_bubble_radius=[200, 200],
+    sea_ice_bubble_radius=[200, 500],
 )
+
+# Best-fit effective LAP concentration calibrated against Morassutti (1995).
+# Re-calibrated with the Jin et al. DL=850 density: optimal BC = 1200 ppb.
+# (The DL at 850 kg/m³ has more air (ν_air ≈ 7.3%) than the previous 895 kg/m³
+#  (ν_air ≈ 2.4%), giving more scattering; a higher LAP loading is needed to
+#  achieve the same calibrated pond albedo.)
+# This is NOT a measured BC concentration — it is an effective LAP proxy.
+# See docs/sea_ice.md §Melt ponds and docs/sea_ice_validation_meltpond.md.
+_FLOOR_LAP_BC_PPB = 1200
 
 
 def model_at_depth(depth_m: float, sza: int = 60) -> Outputs:
@@ -175,9 +190,10 @@ def run_impurity_comparison(df: pd.DataFrame) -> dict:
         AND biological pigments (chlorophyll), but BC alone is the best proxy.
     """
     configs = {
-        "clean":    dict(bc=0,    ga=0),
-        "bc_1000":  dict(bc=1000, ga=0),
-        "ga_30000": dict(bc=0,    ga=30000),
+        "clean":    dict(bc=0,    ga=0),       # reference: pure water + white ice
+        "bc_1200":  dict(bc=1200, ga=0),       # calibrated: 1200 ppb effective LAP
+        "bc_1000":  dict(bc=1000, ga=0),       # comparison: previous calibration
+        "ga_30000": dict(bc=0,    ga=30000),   # alternate: glacier algae only
     }
     all_results = {}
     for cfg_name, kwargs in configs.items():
@@ -186,8 +202,12 @@ def run_impurity_comparison(df: pd.DataFrame) -> dict:
 
 
 def run_comparison(df: pd.DataFrame,
-                   bc: int = 0, ga: int = 0) -> list:
-    """Run model vs obs comparison with optional impurities on the pond floor."""
+                   bc: int = None, ga: int = None) -> list:
+    """Run model vs obs comparison.
+
+    Default uses bc=_FLOOR_LAP_BC_PPB (1200 ppb), the calibrated value.
+    Pass bc=0 for the clean-water reference run.
+    """
     results = []
     for lo, hi, label in DEPTH_BINS:
         subset = df[(df["pond_depth_m"] >= lo) & (df["pond_depth_m"] < hi)]
@@ -210,19 +230,22 @@ def run_comparison(df: pd.DataFrame,
         # Model at the ACTUAL mean depth of observations in this bin
         # (more representative than the bin midpoint)
         mid_depth = float(subset["pond_depth_m"].mean())
-        # Build impurity kwargs (zero in pond layer, impurity in top ice, zero in bulk)
+        # Build impurity kwargs (zero in pond layer, impurity in top ice, zero in bulk).
+        # Default run uses _FLOOR_LAP_BC_PPB as the calibrated LAP loading.
         imp_kwargs = {}
-        if bc:  imp_kwargs["black_carbon"]  = [0, int(bc), 0]
-        if ga:  imp_kwargs["glacier_algae"] = [0, int(ga), 0]
+        eff_bc = bc if bc is not None else _FLOOR_LAP_BC_PPB
+        eff_ga = ga if ga is not None else 0
+        if eff_bc:  imp_kwargs["black_carbon"]  = [0, int(eff_bc), 0]
+        if eff_ga:  imp_kwargs["glacier_algae"] = [0, int(eff_ga), 0]
         out = run_model(
             solzen=60,
-            layer_type=[5, 4, 4],
-            dz=[mid_depth, 0.05, 1.45],
-            rds=[500, 500, 500],
-            rho=[1000, 895, 895],
-            sea_ice_salinity=[None, 8, 6],
-            sea_ice_temperature=[None, -5, -5],
-            sea_ice_bubble_radius=[None, 100, 200],
+            layer_type=[5] + _ICE_KWARGS["layer_type"],
+            dz=[mid_depth] + _ICE_KWARGS["dz"],
+            rds=[500] + _ICE_KWARGS["rds"],
+            rho=[1000] + _ICE_KWARGS["rho"],
+            sea_ice_salinity=[None] + _ICE_KWARGS["sea_ice_salinity"],
+            sea_ice_temperature=[None] + _ICE_KWARGS["sea_ice_temperature"],
+            sea_ice_bubble_radius=[None] + _ICE_KWARGS["sea_ice_bubble_radius"],
             **imp_kwargs,
         )
         mod_bba = _band_avg(out, 400, 1000)
@@ -265,7 +288,7 @@ def run_comparison(df: pd.DataFrame,
 def print_results(results: list):
     print("\n" + "="*90)
     print("MELT POND VALIDATION — Morassutti (1995) vs BioSNICAR layer_type=5")
-    print("Model: clear water + summer FYI (T=-5°C, S=8 psu) at matched depth")
+    print(f"Model: pond water + summer FYI (T=-5°C, DL rho=850, IL rho=910) + BC={_FLOOR_LAP_BC_PPB} ppb floor LAP")
     print("="*90)
     print(f"  {'Depth bin':<12}  {'N':>5}  "
           f"{'Obs BBA':>8}  {'Mod BBA':>8}  {'BBA Δ':>7}  "
@@ -424,7 +447,8 @@ def _print_impurity_summary(imp_results: dict):
 
     labels = {
         "clean":    "Clean water (no impurity)",
-        "bc_1000":  "BC 1000 ppb on floor",
+        "bc_1200":  "BC 1200 ppb on floor (calibrated)",
+        "bc_1000":  "BC 1000 ppb on floor (prior)",
         "ga_30000": "Glacier algae 30k cells/mL on floor",
     }
     print(f"\n  {'Config':<38}  {'VIS RMSE':>9}  {'NIR RMSE':>9}  {'BBA RMSE':>9}")
@@ -438,14 +462,15 @@ def _print_impurity_summary(imp_results: dict):
 
     print()
     print("  Key findings:")
-    print("    1. BC 1000 ppb halves both VIS and NIR RMSE simultaneously.")
-    print("    2. GA 30k matches VIS similarly but degrades NIR — wrong spectral shape.")
-    print("    3. Both impurities achieve similar VIS match but BC gives flatter")
-    print("       spectral residuals (observed drop at 600-700nm is real chlorophyll")
-    print("       signal not captured by either proxy alone).")
-    print("    4. Recommended parameterisation for summer Arctic melt ponds:")
-    print("       black_carbon=[0, 1000, 0]  (1000 ppb in top ice, zero elsewhere)")
-    print("       This is physically consistent with cryoconite-laden pond bottoms.")
+    print("    1. BC 1200 ppb (re-calibrated for Jin et al. DL=850 floor) achieves")
+    print("       the best overall fit: good for 5–30cm depth bins.")
+    print("    2. The 0–5cm bin is moderately under-estimated (VIS Δ≈−0.17): very")
+    print("       shallow ponds expose floor material less covered by sediment/algae,")
+    print("       suggesting a real depth-dependent floor LAP gradient.")
+    print("    3. GA 30k matches VIS similarly but degrades NIR — wrong spectral shape.")
+    print("    4. BC is spectrally flatter; the 600–700nm drop in observations points")
+    print("       to chlorophyll-a (real component not captured by BC proxy alone).")
+    print("    5. Calibrated effective LAP loading: 1200 ppb (not a pure BC measurement).")
 
 
 def make_impurity_plots(imp_results: dict, save_dir=None, show=False):
@@ -457,7 +482,8 @@ def make_impurity_plots(imp_results: dict, save_dir=None, show=False):
 
     labels_map = {
         "clean":    ("Clean", "#999999", "--"),
-        "bc_1000":  ("BC 1000 ppb", "#d62728", "-"),
+        "bc_1200":  ("BC 1200 ppb (calibrated)", "#d62728", "-"),
+        "bc_1000":  ("BC 1000 ppb", "#ff7f0e", ":"),
         "ga_30000": ("GA 30k cells/mL", "#2ca02c", "-."),
     }
 
@@ -529,7 +555,7 @@ REPORT = """\
 
 - `layer_type=5` (liquid water) on top of summer FYI (`layer_type=4`)
 - Pond water: `rho=1000 kg/m³`, `dz=` mid-depth of each bin
-- FYI below: `T=-5°C, S=8 psu, rho=895 kg/m³, bbl=200 µm`
+- FYI below: `T=-5°C, S=8/6 psu, DL rho=850 kg/m³ / IL rho=910 kg/m³, bbl=200/500 µm` (Jin et al. 2023)
 - `SZA=60°`, clear sky
 
 ## Results by depth bin

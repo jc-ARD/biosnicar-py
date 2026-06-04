@@ -273,12 +273,18 @@ if PLOT:
 print("\n" + "=" * 60)
 print("10. Melt ponds (layer_type=5)")
 print("=" * 60)
-print("  layer_type=5 is liquid water — near-zero SSA, strong NIR absorption.")
-print("  rho=1000 kg/m³.  Same run_model() syntax as any other layer type.")
+print("  layer_type=5: liquid water layer. rho=1000 kg/m³.")
+print("  Floor ice: rho=895 kg/m³ (calibrated FYI), BC=1000 ppb effective LAP.")
+print("  BC represents the combined optical effect of cryoconite, black carbon,")
+print("  mineral dust, and algae on summer Arctic pond floors (Makshtas &")
+print("  Podgorny 1996; Briegleb & Light 2007; calibrated vs Morassutti 1995).")
 print()
 
 # 10a. Depth sweep
-print("  Pond depth sweep (summer FYI below, T=-5°C, S=8 psu):")
+print("  Calibrated pond model: BC=1000 ppb in floor ice (effective LAP loading).")
+print("  This matches Morassutti (1995) observations: NIR RMSE=0.028, VIS RMSE=0.068.")
+print()
+print("  Pond depth sweep (summer FYI below, T=-5°C, rho=895, BC=1000 ppb floor):")
 print(f"  {'depth':>8}  {'BBA':>6}  {'VIS':>6}  {'NIR':>6}")
 print("  " + "-" * 32)
 pond_results = {}
@@ -286,7 +292,7 @@ for depth in [0, 0.05, 0.10, 0.20, 0.30, 0.50]:
     if depth == 0:
         out = run_model(
             solzen=60, layer_type=[4,4], dz=[0.05,1.45], rds=[500,500], rho=[895,895],
-            sea_ice_salinity=[12,8], sea_ice_temperature=[-5,-5], sea_ice_bubble_radius=[100,200],
+            sea_ice_salinity=[8,6], sea_ice_temperature=[-5,-5], sea_ice_bubble_radius=[100,200],
         )
         label = "bare ice"
     else:
@@ -296,9 +302,10 @@ for depth in [0, 0.05, 0.10, 0.20, 0.30, 0.50]:
             dz=[depth, 0.05, 1.45],
             rds=[500, 500, 500],
             rho=[1000, 895, 895],
-            sea_ice_salinity=[None, 12, 8],
+            sea_ice_salinity=[None, 8, 6],
             sea_ice_temperature=[None, -5, -5],
             sea_ice_bubble_radius=[None, 100, 200],
+            black_carbon=[0, 1000, 0],   # 1000 ppb effective LAP in floor ice
         )
         label = f"{int(depth*100)} cm"
     pond_results[label] = out

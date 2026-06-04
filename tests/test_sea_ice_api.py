@@ -198,6 +198,7 @@ class TestUnifiedOutputs:
 
 class TestSeaIcePhysics:
     def test_higher_salinity_changes_albedo(self):
+        # FYI_WINTER_BARE has 2 layers [DL(4), IL(4)] — no SSL in winter.
         low  = run_model(preset="FYI_WINTER_BARE", solzen=60,
                          sea_ice_salinity=[1, 1])
         high = run_model(preset="FYI_WINTER_BARE", solzen=60,
