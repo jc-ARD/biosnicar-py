@@ -345,6 +345,9 @@ def retrieve(
             opt_forward_fn, observed, method,
         )
 
+    # --- Attach solar flux for to_outputs() / to_platform() ---
+    result.flx_slr = flx_slr
+
     # --- Transform results back from log space ---
     if use_log:
         for p in parameters:

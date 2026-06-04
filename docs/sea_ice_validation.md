@@ -261,7 +261,34 @@ At 5 cm the SSL is effectively optically thick for most NIR wavelengths — addi
 
 *The residual error on low-BBA dates is a surface composition problem, not an SSL thickness problem.* The correct next improvement is a melt pond areal fraction parameter, which would allow the model to represent a realistic mix of white ice and ponded area without tuning the SSL.
 
-*Recommendation:* Use `FYI_SUMMER_BARE` for July–September simulations. It reduces mean NIR RMSE by 17% and benefits all predominantly-white-ice conditions. The residual VIS bias on low-BBA dates signals the need for a surface LAP parameterisation and/or pond fraction parameter for summer bare ice.
+**Pond areal fraction:** A sweep over pond fractions (blending `FYI_SUMMER_BARE` with `FYI_POND_SHALLOW` at f=0–30%) shows a clear improvement for low-BBA dates. The 16 summer dates split cleanly into two regimes:
+
+- **High-BBA dates (BBA ≥ 0.74, 7 dates):** Predominantly white ice. Optimal f = 0 — pond fraction worsens fit. These are the dates where SSL physics is the primary needed improvement.
+- **Low-to-mid BBA dates (BBA 0.62–0.70, 9 dates):** Mixed surface. Optimal f = 0.10–0.30, individually improving RMSE by 0.01–0.08 per date.
+
+| Pond fraction | Mean VIS RMSE | Mean NIR RMSE | Mean Full RMSE |
+|---|---|---|---|
+| f = 0.00 (pure SSL ice) | 0.110 | 0.096 | 0.110 |
+| **f = 0.10** | **0.073** | 0.106 | **0.101** |
+| f = 0.15 | 0.061 | 0.120 | 0.103 |
+| f = 0.20 | 0.055 | 0.138 | 0.109 |
+| f = 0.30 | 0.057 | 0.182 | 0.133 |
+
+The ensemble mean optimum is f ≈ 0.10 (Full RMSE 0.101 vs 0.110 at f=0). Beyond f=0.10, VIS continues to improve but NIR degrades rapidly — melt pond water is nearly transparent in NIR, pulling the blended NIR below the observations on white-ice-dominated dates.
+
+The BBA threshold at ~0.72 that separates the two regimes corresponds to roughly 10–20% pond cover, consistent with late-season SHEBA conditions (August 1998 was near the peak melt season, with pond fraction declining through September). This is physically sensible: the model correctly represents pure white ice, and adding ~10% pond cover statistically accounts for the spatial heterogeneity present in the 200-m survey transect.
+
+The pond fraction parameter is available as:
+```python
+mixed = run_model(preset="FYI_SUMMER_BARE", solzen=60, pond_fraction=0.10, pond_depth=0.15)
+# or, for full control:
+from biosnicar.sea_ice.pond_fraction import blend_pond_fraction
+ice  = run_model(preset="FYI_SUMMER_BARE",  solzen=60)
+pond = run_model(preset="FYI_POND_SHALLOW", solzen=60)
+mixed = blend_pond_fraction(ice, pond, f=0.10)
+```
+
+*Recommendation:* Use `FYI_SUMMER_BARE` with `pond_fraction=0.10` for July–September ensemble simulations. For single-date simulations, estimate pond fraction from concurrent BBA observations or satellite pond fraction retrievals (e.g. Rösel & Kaleschke 2012) and pass it explicitly. The per-date optimal fraction is linearly related to the observed BBA shortfall relative to the pure-white-ice model.
 
 ---
 
@@ -283,7 +310,8 @@ The FYI_WINTER_SNOW preset with 200 µm snow grains is validated for winter/spri
 | Structure | Mean RMSE (400–1000 nm) | VIS RMSE | NIR RMSE |
 |---|---|---|---|
 | FYI_WINTER_BARE (DL+IL, no SSL) | 0.129 | 0.121 | 0.115 |
-| FYI_SUMMER_BARE (SSL+DL+IL) | **0.110** | **0.110** | **0.096** |
+| FYI_SUMMER_BARE (SSL+DL+IL) | 0.110 | 0.110 | 0.096 |
+| FYI_SUMMER_BARE + 10% pond | **0.101** | **0.073** | 0.106 |
 
 Adding the SSL reduces mean full-spectrum RMSE by 15%, NIR RMSE by 17%, and VIS RMSE by 9%. The NIR improvement is the primary physical target: the SSL's ν_air ≈ 67% provides strong backscattering at 700–1000 nm, filling the NIR gap that DL+IL ice alone cannot reproduce.
 

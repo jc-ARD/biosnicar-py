@@ -106,7 +106,9 @@ sys.path.insert(0, str(REPO))
 
 from biosnicar import run_model as _run_model
 from biosnicar.sea_ice.presets import (FYI_WINTER_BARE, FYI_WINTER_SNOW,
-                                       FYI_SUMMER_BARE, MYI_WINTER_BARE)
+                                       FYI_SUMMER_BARE, FYI_POND_SHALLOW,
+                                       MYI_WINTER_BARE)
+from biosnicar.sea_ice.pond_fraction import blend_pond_fraction
 
 SNICAR_WVL_UM = np.arange(0.205, 4.999, 0.01)
 SNICAR_WVL_NM = SNICAR_WVL_UM * 1000
@@ -390,7 +392,7 @@ def print_summer(rows):
 # Plots
 # ---------------------------------------------------------------------------
 
-def make_plots(spring_rows, summer_rows, save_dir=None, show=True):
+def make_plots(spring_rows, summer_rows, summer_entries=None, save_dir=None, show=True):
     import matplotlib.pyplot as plt
     import matplotlib.gridspec as gridspec
     from matplotlib.lines import Line2D
@@ -586,6 +588,57 @@ def make_plots(spring_rows, summer_rows, save_dir=None, show=True):
     if save_dir:
         fig.savefig(save_dir / "fig4_summer_mismatch.png", dpi=150, bbox_inches="tight")
         print(f"  Saved fig4_summer_mismatch.png")
+    if show:
+        plt.show()
+    plt.close(fig)
+
+    # ── Figure 5: Pond fraction sweep ────────────────────────────────────────
+    if not summer_entries:
+        return   # skip fig 5 if entries not passed
+
+    print("  Computing pond fraction sweep for Fig 5...", flush=True)
+    fractions = [0.0, 0.10, 0.15, 0.20, 0.25, 0.30]
+    frac_rmse_vis, frac_rmse_nir, frac_rmse_all = [], [], []
+    for f in fractions:
+        rv_all, rn_all, ra_all = [], [], []
+        for e in summer_entries:
+            wls, alb, _ = parse_albv(e["path"])
+            if wls is None:
+                continue
+            sza = e["sza"]
+            ice_r  = _run_model(preset=FYI_SUMMER_BARE,  solzen=sza)
+            pond_r = _run_model(preset=FYI_POND_SHALLOW, solzen=sza)
+            mixed  = blend_pond_fraction(ice_r, pond_r, f)
+            mod = interp_model(mixed.albedo, wls)
+            rv_all.append(spectral_stats(wls, alb, mod, 400, 700)[0])
+            rn_all.append(spectral_stats(wls, alb, mod, 700, 1000)[0])
+            ra_all.append(spectral_stats(wls, alb, mod, 400, 1000)[0])
+        frac_rmse_vis.append(np.mean(rv_all))
+        frac_rmse_nir.append(np.mean(rn_all))
+        frac_rmse_all.append(np.mean(ra_all))
+
+    fig, ax = plt.subplots(figsize=(6, 4))
+    ax.plot([f * 100 for f in fractions], frac_rmse_vis, "s-",
+            color="#3a7dc9", label="VIS (400–700 nm)")
+    ax.plot([f * 100 for f in fractions], frac_rmse_nir, "^-",
+            color="#e07b39", label="NIR (700–1000 nm)")
+    ax.plot([f * 100 for f in fractions], frac_rmse_all, "o-",
+            color="#2c2c2c", lw=2, label="Full (400–1000 nm)")
+    best_f = fractions[int(np.argmin(frac_rmse_all))]
+    ax.axvline(best_f * 100, color="green", lw=1, ls="--",
+               label=f"Optimal f = {best_f:.0%}")
+    ax.set_xlabel("Pond areal fraction (%)")
+    ax.set_ylabel("Mean spectral RMSE")
+    ax.set_title(
+        "Pond fraction sensitivity — summer SHEBA (Aug–Sep 1998)\n"
+        "FYI_SUMMER_BARE blended with FYI_POND_SHALLOW",
+        fontsize=10)
+    ax.legend(fontsize=8)
+    ax.grid(alpha=0.2)
+    fig.tight_layout()
+    if save_dir:
+        fig.savefig(save_dir / "fig5_pond_fraction_sweep.png", dpi=150, bbox_inches="tight")
+        print(f"  Saved fig5_pond_fraction_sweep.png")
     if show:
         plt.show()
     plt.close(fig)
@@ -892,7 +945,7 @@ def main():
         run_sweep(spring_rows)
 
     if args.plots or args.show:
-        make_plots(spring_rows, summer_rows,
+        make_plots(spring_rows, summer_rows, summer_entries=summer_entries,
                    save_dir=args.plots, show=args.show)
 
     if args.json:

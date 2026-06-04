@@ -50,6 +50,9 @@ def run_model(
     validate=False,
     plot=False,
     preset=None,
+    pond_fraction=None,
+    pond_depth=0.15,
+    pond_preset=None,
     **overrides,
 ):
     """Run the BioSNICAR forward model and return outputs.
@@ -76,6 +79,31 @@ def run_model(
                 outputs = run_model(preset="FYI_WINTER_BARE", solzen=70)
                 outputs = run_model(preset=FYI_WINTER_SNOW, solzen=60,
                                     black_carbon=500)
+
+        pond_fraction: Melt pond areal fraction, 0–1. When set, a companion
+            melt-pond spectrum is computed and linearly blended with the main
+            (white-ice) result:
+            ``α_total = (1 − f) · α_ice + f · α_pond``.
+            Requires the main configuration to be a bare/snow-covered ice
+            preset; the companion pond uses *pond_preset* (default:
+            ``"FYI_POND_SHALLOW"``) at depth *pond_depth*.
+            Example::
+
+                mixed = run_model(
+                    preset="FYI_SUMMER_BARE",
+                    solzen=60,
+                    pond_fraction=0.30,
+                    pond_depth=0.15,
+                )
+
+        pond_depth: Water depth (m) of the companion melt pond used when
+            *pond_fraction* is set. Default 0.15 m. Ignored when
+            *pond_fraction* is None.
+        pond_preset: Preset name or dict for the companion melt-pond model.
+            Default ``"FYI_POND_SHALLOW"``. The pond water layer thickness
+            is overridden to *pond_depth*; all other pond parameters
+            (floor ice density, salinity, LAP) come from this preset.
+            Ignored when *pond_fraction* is None.
 
         **overrides: Parameter overrides applied before running the model.
 
@@ -197,10 +225,44 @@ def run_model(
             f"Unknown solver {solver!r}; use 'adding-doubling' or 'toon'"
         )
 
+    if pond_fraction is not None:
+        outputs = _blend_with_pond(
+            outputs, pond_fraction, pond_depth, pond_preset,
+            input_file, solver, overrides,
+        )
+
     if plot:
         plot_albedo(plot_config, model_config, outputs.albedo)
 
     return outputs
+
+
+def _blend_with_pond(ice_outputs, f, pond_depth, pond_preset_arg,
+                     input_file, solver, ice_overrides):
+    """Run a companion pond model and blend with the ice result."""
+    from biosnicar.sea_ice.pond_fraction import blend_pond_fraction
+    from biosnicar.sea_ice.presets import _resolve_preset
+
+    if not 0.0 <= f <= 1.0:
+        raise ValueError(f"pond_fraction must be in [0, 1], got {f!r}")
+
+    # Resolve companion pond preset (default: FYI_POND_SHALLOW)
+    if pond_preset_arg is None:
+        pond_preset_arg = "FYI_POND_SHALLOW"
+    pond_kwargs = _resolve_preset(pond_preset_arg)
+
+    # Override the pond water depth (first layer is the water layer)
+    dz = list(pond_kwargs.get("dz", [0.15, 0.05, 1.40]))
+    dz[0] = pond_depth
+    pond_kwargs["dz"] = dz
+
+    # Carry over illumination settings from the ice run
+    for key in _ILLUMINATION_KEYS:
+        if key in ice_overrides:
+            pond_kwargs[key] = ice_overrides[key]
+
+    pond_outputs = run_model(input_file=input_file, solver=solver, **pond_kwargs)
+    return blend_pond_fraction(ice_outputs, pond_outputs, f)
 
 
 def _apply_overrides(overrides, ice, illumination, impurities, input_file):

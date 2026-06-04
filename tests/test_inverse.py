@@ -95,6 +95,67 @@ class TestRetrievalResult:
     def test_observed_shape(self, basic_result):
         assert basic_result.observed.shape == (480,)
 
+    def test_flx_slr_defaults_none(self, basic_result):
+        assert basic_result.flx_slr is None
+
+    # ── to_outputs() ──────────────────────────────────────────────────
+
+    def test_to_outputs_returns_outputs(self, basic_result):
+        from biosnicar.classes.outputs import Outputs
+        out = basic_result.to_outputs()
+        assert isinstance(out, Outputs)
+
+    def test_to_outputs_albedo_matches(self, basic_result):
+        out = basic_result.to_outputs()
+        np.testing.assert_array_equal(out.albedo, basic_result.predicted_albedo)
+
+    def test_to_outputs_bba_physical(self, basic_result):
+        out = basic_result.to_outputs()
+        assert 0.0 <= out.BBA <= 1.0
+        assert 0.0 <= out.BBAVIS <= 1.0
+        assert 0.0 <= out.BBANIR <= 1.0
+
+    def test_to_outputs_aliases(self, basic_result):
+        out = basic_result.to_outputs()
+        assert out.broadband == out.BBA
+        assert out.visible == out.BBAVIS
+        assert out.nir == out.BBANIR
+
+    def test_to_outputs_with_flx_slr_uses_flux_weighting(self):
+        flx = np.ones(480)
+        flx[:50] = 10.0   # weight VIS heavily
+        result = RetrievalResult(
+            best_fit={}, cost=0.0, uncertainty={},
+            predicted_albedo=np.linspace(0.9, 0.1, 480),
+            observed=np.zeros(480), converged=True,
+            method="L-BFGS-B", n_function_evals=1,
+            flx_slr=flx,
+        )
+        out = result.to_outputs()
+        assert out.flx_slr is flx
+        # BBAVIS should be weighted toward high-albedo end
+        assert out.BBAVIS > out.BBANIR
+
+    def test_to_outputs_no_platform_without_flx_slr(self, basic_result):
+        # flx_slr is None → to_platform() should raise
+        out = basic_result.to_outputs()
+        assert out.flx_slr is None
+        with pytest.raises(Exception):
+            out.to_platform("sentinel2")
+
+    def test_to_outputs_to_platform_with_flx_slr(self):
+        flx = np.ones(480)
+        result = RetrievalResult(
+            best_fit={}, cost=0.0, uncertainty={},
+            predicted_albedo=np.full(480, 0.6),
+            observed=np.zeros(480), converged=True,
+            method="L-BFGS-B", n_function_evals=1,
+            flx_slr=flx,
+        )
+        out = result.to_outputs()
+        bands = out.to_platform("sentinel2")
+        assert hasattr(bands, "B3")
+
 
 # ── Latin Hypercube Sampling ─────────────────────────────────────────
 
@@ -545,6 +606,49 @@ class TestRetrieve:
                 emulator=tiny_emulator,
                 platform="sentinel2",
             )
+
+    def test_flx_slr_stored_on_result(self, tiny_emulator):
+        obs = tiny_emulator.predict(rds=1000, black_carbon=500)
+        result = retrieve(
+            observed=obs, parameters=["rds"], emulator=tiny_emulator,
+            fixed_params={"black_carbon": 500},
+        )
+        assert result.flx_slr is not None
+        assert result.flx_slr.shape == (480,)
+
+    def test_to_outputs_from_retrieve(self, tiny_emulator):
+        from biosnicar.classes.outputs import Outputs
+        obs = tiny_emulator.predict(rds=1000, black_carbon=500)
+        result = retrieve(
+            observed=obs, parameters=["rds"], emulator=tiny_emulator,
+            fixed_params={"black_carbon": 500},
+        )
+        out = result.to_outputs()
+        assert isinstance(out, Outputs)
+        assert out.albedo.shape == (480,)
+        assert 0.0 <= out.BBA <= 1.0
+
+    def test_to_platform_from_retrieve(self, tiny_emulator):
+        obs = tiny_emulator.predict(rds=1000, black_carbon=500)
+        result = retrieve(
+            observed=obs, parameters=["rds"], emulator=tiny_emulator,
+            fixed_params={"black_carbon": 500},
+        )
+        bands = result.to_outputs().to_platform("sentinel2")
+        assert hasattr(bands, "B3")
+        assert 0.0 <= bands.B3 <= 1.0
+
+    def test_flx_slr_none_without_emulator(self, tiny_emulator):
+        # When using forward_fn only (no emulator), flx_slr should be None
+        def fwd(rds):
+            return tiny_emulator.predict(rds=rds, black_carbon=0)
+        result = retrieve(
+            observed=np.full(480, 0.5),
+            parameters=["rds"],
+            forward_fn=fwd,
+            bounds={"rds": (500, 2000)},
+        )
+        assert result.flx_slr is None
 
     def test_summary_output(self, tiny_emulator):
         """result.summary() should return a non-empty string."""

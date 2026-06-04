@@ -36,7 +36,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from biosnicar import run_model, FYI_WINTER_BARE, FYI_WINTER_SNOW, MYI_WINTER_BARE
-from biosnicar.sea_ice.presets import ALL_PRESETS
+from biosnicar.sea_ice.presets import ALL_PRESETS, FYI_SUMMER_BARE, FYI_POND_SHALLOW
+from biosnicar.sea_ice.pond_fraction import blend_pond_fraction
 
 WAVELENGTHS = np.arange(0.205, 4.999, 0.01)   # 480-band grid, µm
 PLOT = True
@@ -368,6 +369,89 @@ if PLOT:
                  "(VIS gap: model assumes clear water + white ice bottom)")
     ax.legend(fontsize=8); ax.grid(alpha=0.2)
     ax.set_xlim(-1, 52)
+
+    plt.tight_layout()
+    plt.show()
+
+
+# ── Section 11: Melt pond areal fraction ──────────────────────────────────────
+# Arctic summer surfaces are rarely pure white ice or pure melt pond.
+# blend_pond_fraction() linearly mixes two Outputs objects by pond cover:
+#
+#   α_total(λ) = (1 − f) · α_ice(λ)  +  f · α_pond(λ)
+#
+# This is the standard surface albedo mixing model used in GCMs (Briegleb &
+# Light 2007).  Two interfaces are available:
+#
+#   (A) Two-step: compute ice and pond separately, then blend.
+#   (B) One-step: pass pond_fraction directly to run_model().
+
+print("\n── Section 11: Melt pond areal fraction ──")
+
+# (A) Manual blending
+summer_ice   = run_model(preset=FYI_SUMMER_BARE,  solzen=60)
+shallow_pond = run_model(preset=FYI_POND_SHALLOW, solzen=60)
+
+print(f"  Pure white ice  BBA = {summer_ice.BBA:.3f}")
+print(f"  Pure melt pond  BBA = {shallow_pond.BBA:.3f}")
+print()
+for f in [0.10, 0.20, 0.30, 0.40]:
+    mixed = blend_pond_fraction(summer_ice, shallow_pond, f=f)
+    print(f"  pond_fraction={f:.0%}  →  BBA={mixed.BBA:.3f}  "
+          f"VIS={mixed.BBAVIS:.3f}  NIR={mixed.BBANIR:.3f}")
+
+# (B) Convenience: pond_fraction kwarg on run_model()
+# Internally runs FYI_POND_SHALLOW at pond_depth and blends automatically.
+print()
+mixed_auto = run_model(
+    preset="FYI_SUMMER_BARE",
+    solzen=60,
+    pond_fraction=0.20,
+    pond_depth=0.15,
+)
+print(f"  run_model(pond_fraction=0.20)  BBA = {mixed_auto.BBA:.3f}")
+
+# Pond depth sensitivity at fixed fraction
+print("\n  Pond depth effect at 20% cover:")
+for depth_cm in [5, 10, 20, 40]:
+    r = run_model(preset="FYI_SUMMER_BARE", solzen=60,
+                  pond_fraction=0.20, pond_depth=depth_cm / 100)
+    print(f"    pond_depth={depth_cm:2d} cm  BBA={r.BBA:.3f}  NIR={r.BBANIR:.3f}")
+
+if PLOT:
+    fig, axes = plt.subplots(1, 2, figsize=(13, 4))
+
+    # Panel 1: blended spectra at different pond fractions
+    ax = axes[0]
+    fracs = [0.0, 0.10, 0.20, 0.30, 0.40, 0.50]
+    colors_frac = ["#08306b", "#2171b5", "#4292c6", "#74c476", "#fd8d3c", "#d62728"]
+    for f, col in zip(fracs, colors_frac):
+        mixed = blend_pond_fraction(summer_ice, shallow_pond, f)
+        ax.plot(WAVELENGTHS, mixed.albedo, color=col, lw=1.5,
+                label=f"f={f:.0%}  BBA={mixed.BBA:.3f}")
+    ax.axvline(0.7, color="k", lw=0.5, ls=":", alpha=0.4)
+    ax.text(0.72, 0.92, "NIR→", fontsize=8, color="gray")
+    ax.set_title("Summer Arctic: blended ice + pond spectra\n"
+                 "FYI_SUMMER_BARE × (1−f) + FYI_POND_SHALLOW × f")
+    ax.set_xlabel("Wavelength (µm)"); ax.set_ylabel("Spectral albedo")
+    ax.set_xlim(0.3, 2.5); ax.set_ylim(0, 1.05)
+    ax.legend(fontsize=8)
+
+    # Panel 2: BBA, VIS, NIR vs pond fraction
+    ax = axes[1]
+    bba_vals = [blend_pond_fraction(summer_ice, shallow_pond, f).BBA    for f in fracs]
+    vis_vals = [blend_pond_fraction(summer_ice, shallow_pond, f).BBAVIS for f in fracs]
+    nir_vals = [blend_pond_fraction(summer_ice, shallow_pond, f).BBANIR for f in fracs]
+    pct = [f * 100 for f in fracs]
+    ax.plot(pct, bba_vals, "o-", color="#2c2c2c", lw=2, label="BBA (400–5000 nm)")
+    ax.plot(pct, vis_vals, "s-", color="#3a7dc9", lw=1.5, label="VIS (400–700 nm)")
+    ax.plot(pct, nir_vals, "^-", color="#e07b39", lw=1.5, label="NIR (700–5000 nm)")
+    ax.set_xlabel("Pond areal fraction (%)")
+    ax.set_ylabel("Flux-weighted broadband albedo")
+    ax.set_title("Albedo sensitivity to pond fraction\n"
+                 "SZA=60°, FYI_SUMMER_BARE + FYI_POND_SHALLOW (15 cm)")
+    ax.legend(fontsize=8); ax.grid(alpha=0.2)
+    ax.set_xlim(-1, 52); ax.set_ylim(0, 1.0)
 
     plt.tight_layout()
     plt.show()

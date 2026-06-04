@@ -1,16 +1,29 @@
 """Sea ice radiative transfer extension for BioSNICAR.
 
-Adds support for layer_type=2 (sea ice) using:
-- Cox & Weeks (1983) brine volume
+Adds support for layer_type=4 (sea ice) and layer_type=5 (melt pond) using:
+- Cox & Weeks (1983) brine volume with liquidus salinity correction
 - Maxwell-Garnett effective medium for ice+brine
 - Pre-computed LUT for fast runtime interpolation
+- Melt pond areal fraction blending
 
 Quick start::
 
-    from biosnicar.sea_ice.api import SeaIceColumn, SeaIceLayer
-    from biosnicar.sea_ice.presets import FYI_WINTER_BARE
+    from biosnicar import run_model
+    from biosnicar.sea_ice.presets import FYI_SUMMER_BARE, FYI_POND_SHALLOW
+    from biosnicar.sea_ice.pond_fraction import blend_pond_fraction
 
-    col = SeaIceColumn.from_preset(FYI_WINTER_BARE)
-    result = col.compute_albedo(sza_deg=60)
-    print(result.broadband)
+    # Pure white ice
+    ice = run_model(preset=FYI_SUMMER_BARE, solzen=60)
+
+    # Mixed surface: 30% melt pond cover
+    mixed = run_model(preset="FYI_SUMMER_BARE", solzen=60, pond_fraction=0.30)
+
+    # Or blend pre-computed results
+    pond = run_model(preset=FYI_POND_SHALLOW, solzen=60)
+    mixed = blend_pond_fraction(ice, pond, f=0.30)
+    print(mixed.BBA)
 """
+
+from biosnicar.sea_ice.pond_fraction import blend_pond_fraction
+
+__all__ = ["blend_pond_fraction"]

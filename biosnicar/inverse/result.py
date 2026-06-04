@@ -90,6 +90,10 @@ class RetrievalResult:
         Optimisation method used (e.g. ``"L-BFGS-B"``, ``"mcmc"``).
     n_function_evals : int
         Number of forward-model (or emulator) evaluations.
+    flx_slr : np.ndarray or None
+        480-band spectral solar irradiance used for flux-weighted BBA
+        and platform band convolution.  Populated when an emulator was
+        used; ``None`` when only a ``forward_fn`` was provided.
     chains : np.ndarray or None
         MCMC chains of shape ``(n_steps, n_walkers, n_params)``.
         Only populated when ``method="mcmc"``.
@@ -110,6 +114,9 @@ class RetrievalResult:
 
     # Auxiliary derived quantities (e.g. internal rds/rho decomposition in SSA mode)
     derived: Dict[str, float] = field(default_factory=dict)
+
+    # Solar flux spectrum — populated from emulator.flx_slr when available
+    flx_slr: Optional[np.ndarray] = None
 
     # MCMC-specific fields (None unless method="mcmc")
     chains: Optional[np.ndarray] = None
@@ -146,6 +153,55 @@ class RetrievalResult:
         sigma_rds = self.uncertainty.get("rds", 0.0)
         sigma_rho = self.uncertainty.get("rho", 0.0)
         return _ssa_uncertainty(rds, rho, sigma_rds, sigma_rho)
+
+    def to_outputs(self):
+        """Return the predicted spectrum as an :class:`~biosnicar.classes.outputs.Outputs` object.
+
+        Wraps ``predicted_albedo`` and ``flx_slr`` into a full ``Outputs``
+        instance, giving access to ``.to_platform()``, ``.plot()``, and all
+        other ``Outputs`` methods.
+
+        Returns
+        -------
+        Outputs
+            BBA, BBAVIS, BBANIR, albedo, and flx_slr are populated.
+            Subsurface flux fields (F_up, F_dwn, heat_rt) are None.
+
+        Raises
+        ------
+        ValueError
+            If ``predicted_albedo`` is not available.
+
+        Notes
+        -----
+        ``to_platform()`` on the returned object requires ``flx_slr`` to be
+        present (i.e. the retrieval used an emulator rather than a bare
+        ``forward_fn``).  If ``flx_slr`` is None a uniform weighting is used
+        for BBA computation, and ``to_platform()`` will raise.
+        """
+        from biosnicar.classes.outputs import Outputs
+
+        if self.predicted_albedo is None:
+            raise ValueError("predicted_albedo is not set on this RetrievalResult.")
+
+        _VIS_MAX = 50
+        _NIR_MAX = 480
+
+        out = Outputs()
+        out.albedo = np.array(self.predicted_albedo, dtype=float)
+        out.flx_slr = self.flx_slr
+
+        flx = self.flx_slr if self.flx_slr is not None else np.ones(480)
+        out.BBA = float(np.sum(flx * out.albedo) / np.sum(flx))
+        out.BBAVIS = float(
+            np.sum(flx[:_VIS_MAX] * out.albedo[:_VIS_MAX])
+            / np.sum(flx[:_VIS_MAX])
+        )
+        out.BBANIR = float(
+            np.sum(flx[_VIS_MAX:_NIR_MAX] * out.albedo[_VIS_MAX:_NIR_MAX])
+            / np.sum(flx[_VIS_MAX:_NIR_MAX])
+        )
+        return out
 
     def summary(self) -> str:
         """Return a human-readable summary string."""
