@@ -25,5 +25,16 @@ Quick start::
 """
 
 from biosnicar.sea_ice.pond_fraction import blend_pond_fraction
+from biosnicar.sea_ice.retrieve import retrieve_sea_ice, SeaIceRetrievalResult
+from biosnicar.sea_ice.emulator_configs import (
+    SEA_ICE_EMULATOR_CONFIGS,
+    load_sea_ice_emulators,
+)
 
-__all__ = ["blend_pond_fraction"]
+__all__ = [
+    "blend_pond_fraction",
+    "retrieve_sea_ice",
+    "SeaIceRetrievalResult",
+    "SEA_ICE_EMULATOR_CONFIGS",
+    "load_sea_ice_emulators",
+]

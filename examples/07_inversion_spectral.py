@@ -278,3 +278,160 @@ if PLOT:
     ax.legend(fontsize=7, ncol=2, loc="upper right")
     fig.tight_layout()
     plt.show()
+
+
+# ======================================================================
+# Sea ice spectral retrieval
+# ======================================================================
+#
+# Sea ice inversion works on the same principle as glacier ice, but with
+# a different primary parameter.  The analogue of SSA for sea ice is
+# ``brine_volume_fraction`` (Vb).
+#
+# Why Vb, not (temperature, salinity)?
+#   Temperature and salinity both control brine volume via Cox & Weeks
+#   (1983), creating the same kind of degeneracy as (rds, rho) in glacier
+#   ice: many (T, S) pairs produce the same Vb and therefore the same
+#   spectrum.  Retrieving Vb directly eliminates this degeneracy and gives
+#   well-constrained uncertainties.
+#
+# Post-hoc temperature recovery:
+#   If bulk salinity is known (e.g. from a sea ice model or climatology),
+#   temperature can be recovered exactly:
+#     T = invert_brine_volume(Vb_retrieved, salinity_known)
+#   The reference salinities FYI_BARE_S_REF=6 psu, MYI_BARE_S_REF=2 psu
+#   are used inside the emulator transform functions (see SEA_ICE_EMULATOR.md).
+
+print("\n" + "=" * 65)
+print("SEA ICE SPECTRAL RETRIEVAL")
+print("=" * 65)
+
+from biosnicar.sea_ice.emulator_configs import (
+    load_sea_ice_emulators, FYI_BARE_S_REF
+)
+from biosnicar.sea_ice.brine_volume import compute_brine_volume, invert_brine_volume
+
+si_emus = load_sea_ice_emulators()
+
+# ── Example SI-1: FYI bare ice — brine volume + bubble radius ──────────────
+#
+# True physical state: T=-8°C at S_ref=6 psu → Vb=0.040, bbl_radius=350 µm,
+# BC=200 ppb.  We retrieve all four free parameters; solzen and direct are
+# fixed from measurement metadata.
+#
+# Vb plays the same role as SSA: it is the single well-constrained quantity
+# that captures the (T, S) contribution to spectral albedo.
+
+print("\n── SI-1: Bare FYI — brine_volume_fraction + bubble_radius ──")
+
+TRUE_T_C  = -8.0
+TRUE_VB   = compute_brine_volume(FYI_BARE_S_REF, TRUE_T_C)
+emu_bare  = si_emus["FYI_bare"]
+
+true_params_bare = dict(
+    brine_volume_fraction = TRUE_VB,
+    sea_ice_bubble_radius = 350.0,
+    black_carbon          = 200.0,
+    rho_DL                = 860.0,
+)
+obs_bare = emu_bare.predict(**true_params_bare, solzen=60, direct=1)
+
+result_bare = retrieve(
+    observed     = obs_bare,
+    parameters   = list(true_params_bare.keys()),
+    emulator     = emu_bare,
+    fixed_params = {"solzen": 60, "direct": 1},
+)
+print(f"  Converged: {result_bare.converged}  Cost: {result_bare.cost:.4e}")
+print(f"  {'Parameter':30s}  {'True':>8}  {'Retrieved':>10}  {'σ':>8}")
+for k, tv in true_params_bare.items():
+    rv  = result_bare.best_fit[k]
+    sig = result_bare.uncertainty.get(k, float("nan"))
+    print(f"  {k:30s}  {tv:8.4f}  {rv:10.4f}  {sig:8.4f}")
+
+# Post-hoc T recovery from Vb
+T_rec = invert_brine_volume(result_bare.best_fit["brine_volume_fraction"],
+                             FYI_BARE_S_REF)
+print(f"  [T recovered from Vb]  true={TRUE_T_C:.1f}°C  retrieved={T_rec:.2f}°C")
+
+# ── Example SI-2: Melt pond — retrieve pond depth ──────────────────────────
+#
+# Pond depth is the primary retrievable parameter for melt ponds.  The NIR
+# window (700-1000 nm) is highly sensitive to depth via Beer-Lambert
+# attenuation — albedo roughly halves every 5-7 cm of pond depth.
+
+print("\n── SI-2: Melt pond — pond_depth retrieval ──")
+
+emu_pond  = si_emus["FYI_pond"]
+TRUE_POND = {"pond_depth": 0.18, "sea_ice_temperature": -5.0,
+             "black_carbon": 1200.0}
+obs_pond  = emu_pond.predict(**TRUE_POND, solzen=60, direct=1)
+
+result_pond = retrieve(
+    observed     = obs_pond,
+    parameters   = ["pond_depth"],
+    emulator     = emu_pond,
+    fixed_params = {"sea_ice_temperature": -5.0, "black_carbon": 1200.0,
+                    "solzen": 60, "direct": 1},
+)
+print(f"  True depth = {TRUE_POND['pond_depth']:.2f} m  "
+      f"Retrieved = {result_pond.best_fit['pond_depth']:.4f} m  "
+      f"σ = {result_pond.uncertainty.get('pond_depth', float('nan')):.4f} m  "
+      f"Converged: {result_pond.converged}")
+
+# ── Example SI-3: Snow-covered FYI — retrieve snow depth ──────────────────
+#
+# Snow depth is retrievable from spectral albedo when the snow is thin
+# enough to transmit NIR through to the underlying ice.  Thick snow
+# (>~20 cm) is optically opaque and depth becomes unconstrained from
+# albedo alone; grain radius and BC dominate in that regime.
+
+print("\n── SI-3: Snow-covered FYI — snow_depth retrieval ──")
+
+emu_snow  = si_emus["FYI_snow"]
+TRUE_SNOW = {"snow_depth": 0.09, "snow_grain_radius": 350.0,
+             "sea_ice_temperature": -15.0, "black_carbon": 50.0}
+obs_snow  = emu_snow.predict(**TRUE_SNOW, solzen=60, direct=1)
+
+result_snow = retrieve(
+    observed     = obs_snow,
+    parameters   = ["snow_depth", "snow_grain_radius"],
+    emulator     = emu_snow,
+    fixed_params = {"sea_ice_temperature": -15.0, "black_carbon": 50.0,
+                    "solzen": 60, "direct": 1},
+)
+print(f"  True snow_depth={TRUE_SNOW['snow_depth']:.2f} m  "
+      f"Retrieved={result_snow.best_fit['snow_depth']:.4f} m  "
+      f"Converged: {result_snow.converged}")
+print(f"  True grain_radius={TRUE_SNOW['snow_grain_radius']:.0f} µm  "
+      f"Retrieved={result_snow.best_fit['snow_grain_radius']:.1f} µm")
+
+# ── Example SI-4: retrieve_sea_ice() — classify AND retrieve ──────────────
+#
+# When the surface type is not known in advance, retrieve_sea_ice() fits
+# all five emulators simultaneously and returns the best-fit surface type
+# together with its physical parameters.  This is the sea ice equivalent
+# of fitting glacier ice with multiple scenarios.
+
+print("\n── SI-4: retrieve_sea_ice() — surface classification + retrieval ──")
+
+from biosnicar.sea_ice.retrieve import retrieve_sea_ice
+
+# Use the bare-ice observation from Example SI-1
+result_class = retrieve_sea_ice(
+    observed = obs_bare,
+    solzen   = 60,
+    direct   = 1,
+)
+print(f"  Surface type  : {result_class.surface_type}")
+print(f"  Confidence    : {result_class.confidence:.3f}")
+print(f"  Parameters    :", {k: f"{v:.4f}" for k, v in result_class.parameters.items()})
+print(f"  Cost per type :")
+for stype, cost in sorted(result_class.cost_per_type.items(), key=lambda x: x[1]):
+    marker = " ←" if stype == result_class.surface_type else ""
+    print(f"    {stype:14s}  {cost:.4e}{marker}")
+
+# to_outputs() gives a full Outputs object with .to_platform(), .BBA, etc.
+out_si = result_class.to_outputs()
+print(f"  BBA={out_si.BBA:.3f}  "
+      f"to_platform('sentinel2').B8={out_si.to_platform('sentinel2').B8:.3f}")

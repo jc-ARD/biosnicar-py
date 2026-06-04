@@ -29,7 +29,13 @@ _BINARY_PARAMS = {"direct"}
 # Impurity concentrations span orders of magnitude (0–500 000); log-space
 # makes the cost surface much better conditioned and prevents the optimizer
 # from getting stuck at high concentrations.
-_LOG_SPACE_PARAMS = {"black_carbon", "snow_algae", "glacier_algae", "dust", "ssa"}
+_LOG_SPACE_PARAMS = {
+    "black_carbon", "snow_algae", "glacier_algae", "dust", "ssa",
+    # Sea ice: bubble radius and depth parameters span orders of magnitude;
+    # log-space conditioning substantially improves optimiser convergence.
+    "sea_ice_bubble_radius", "pond_depth", "snow_depth", "snow_grain_radius",
+    "ssl_grain_radius",
+}
 
 
 def _to_log(x):
@@ -44,6 +50,7 @@ def _from_log(x):
 
 # Default parameter bounds for glacier ice retrieval
 DEFAULT_BOUNDS = {
+    # Glacier / terrestrial ice
     "rds": (100.0, 5000.0),
     "rho": (100.0, 917.0),
     "solzen": (20.0, 80.0),
@@ -52,10 +59,22 @@ DEFAULT_BOUNDS = {
     "snow_algae": (0.0, 500000.0),
     "glacier_algae": (0.0, 100000.0),
     "dust": (0.0, 500000.0),
-    "ssa": (0.01, 300.0),       # m2/kg — dense ice to fresh snow
+    "ssa": (0.01, 300.0),
+    # Sea ice physical parameters
+    "brine_volume_fraction": (0.005, 0.15),   # FYI; use (0.005, 0.05) for MYI
+    "sea_ice_temperature":   (-30.0, -2.0),   # legacy — prefer brine_volume_fraction
+    "sea_ice_bubble_radius": (50.0,  2000.0),
+    "sea_ice_salinity":      (0.0,   20.0),   # legacy — prefer brine_volume_fraction
+    "rho_DL":                (820.0, 900.0),
+    # Surface structural parameters
+    "snow_depth":            (0.02,  0.30),
+    "snow_grain_radius":     (100.0, 2000.0),
+    "ssl_grain_radius":      (500.0, 5000.0),
+    "pond_depth":            (0.02,  0.60),
 }
 
 DEFAULT_X0 = {
+    # Glacier / terrestrial ice
     "rds": 1000.0,
     "rho": 500.0,
     "solzen": 50.0,
@@ -64,7 +83,17 @@ DEFAULT_X0 = {
     "snow_algae": 10000.0,
     "glacier_algae": 100.0,
     "dust": 100.0,
-    "ssa": 2.0,                 # m2/kg — typical glacier ice
+    "ssa": 2.0,
+    # Sea ice
+    "brine_volume_fraction": 0.04,    # ~T=-10°C at S_ref=6 psu (FYI_bare)
+    "sea_ice_temperature":   -10.0,   # legacy
+    "sea_ice_bubble_radius": 200.0,
+    "sea_ice_salinity":      6.0,     # legacy
+    "rho_DL":                850.0,
+    "snow_depth":            0.10,
+    "snow_grain_radius":     500.0,
+    "ssl_grain_radius":      2000.0,
+    "pond_depth":            0.15,
 }
 
 

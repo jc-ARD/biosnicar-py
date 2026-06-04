@@ -217,3 +217,108 @@ elif PLOT:
     ax.legend()
     fig.tight_layout()
     plt.show()
+
+
+# ======================================================================
+# Sea ice: optimiser comparison
+# ======================================================================
+#
+# The same four optimisers are available for sea ice retrieval.  The
+# choice follows the same logic as for glacier ice:
+#
+#   L-BFGS-B (default): best for most applications; hybrid DE pre-search
+#     escapes local minima, then gradient polish converges precisely.
+#   Nelder-Mead: use when running the direct forward model (no emulator)
+#     or when the cost surface is very noisy (real observations with high
+#     measurement noise).
+#   differential_evolution: use when the initial guess is very poor (e.g.
+#     completely unknown surface conditions).
+#   MCMC: use when you need publication-quality posterior distributions
+#     and parameter correlations (e.g. brine_volume_fraction vs
+#     sea_ice_bubble_radius correlation in NIR).
+#
+# We use FYI_pond pond_depth retrieval as the demonstration case because:
+#   - It has a single clear free parameter (pond_depth)
+#   - The cost surface is approximately quadratic and well-behaved
+#   - All four methods converge quickly
+#   - The MCMC posterior is clean and easy to interpret
+
+print("\n" + "=" * 65)
+print("SEA ICE: OPTIMISER COMPARISON")
+print("=" * 65)
+
+from biosnicar.sea_ice.emulator_configs import load_sea_ice_emulators
+
+si_emus  = load_sea_ice_emulators(["FYI_pond"])
+emu_pond = si_emus["FYI_pond"]
+
+TRUE_POND_DEPTH = 0.22
+TRUE_POND_PARAMS = {"pond_depth": TRUE_POND_DEPTH,
+                    "sea_ice_temperature": -5.0, "black_carbon": 1200.0}
+obs_pond = emu_pond.predict(**TRUE_POND_PARAMS, solzen=60, direct=1)
+fixed_pond = {"sea_ice_temperature": -5.0, "black_carbon": 1200.0,
+              "solzen": 60, "direct": 1}
+
+print(f"\n  True pond_depth = {TRUE_POND_DEPTH} m")
+print(f"  {'Method':25s}  {'Time (s)':>9}  {'Cost':>10}  {'Depth (m)':>10}  {'Error':>8}  {'Converged':>10}")
+print("  " + "-" * 78)
+
+si_methods = ["L-BFGS-B", "Nelder-Mead", "differential_evolution"]
+si_results = {}
+for method in si_methods:
+    t0 = time.time()
+    r = retrieve(
+        observed     = obs_pond,
+        parameters   = ["pond_depth"],
+        emulator     = emu_pond,
+        fixed_params = fixed_pond,
+        method       = method,
+    )
+    elapsed = time.time() - t0
+    si_results[method] = r
+    depth = r.best_fit["pond_depth"]
+    err   = depth - TRUE_POND_DEPTH
+    print(f"  {method:25s}  {elapsed:9.3f}  {r.cost:10.2e}  {depth:10.4f}  "
+          f"{err:+8.4f}  {r.converged!s:>10}")
+
+# ── Optional MCMC: posterior for pond_depth ────────────────────────────────
+#
+# With a single free parameter (pond_depth), the MCMC posterior is clean
+# and easy to interpret.  The posterior width reflects both the NIR
+# spectral sensitivity and measurement noise (none in this synthetic case).
+# In practice with noisy observations, the posterior reflects how well
+# depth is constrained by the spectral information content.
+
+if MCMC:
+    print("\n  MCMC: pond_depth posterior (32 walkers, 500 steps)")
+    t0 = time.time()
+    r_mcmc = retrieve(
+        observed      = obs_pond,
+        parameters    = ["pond_depth"],
+        emulator      = emu_pond,
+        fixed_params  = fixed_pond,
+        method        = "mcmc",
+        mcmc_walkers  = 32,
+        mcmc_steps    = 500,
+        mcmc_burn     = 100,
+    )
+    elapsed = time.time() - t0
+    depth_mcmc = r_mcmc.best_fit["pond_depth"]
+    unc_mcmc   = r_mcmc.uncertainty["pond_depth"]
+    print(f"  pond_depth = {depth_mcmc:.4f} ± {unc_mcmc:.4f} m  "
+          f"(acceptance={r_mcmc.acceptance_fraction:.3f}, time={elapsed:.1f}s)")
+    print(f"  True depth = {TRUE_POND_DEPTH:.4f} m  "
+          f"Error = {depth_mcmc - TRUE_POND_DEPTH:+.4f} m")
+    print(f"  Chain shape: {r_mcmc.chains.shape}  "
+          "(use corner.corner() for full posterior plot)")
+
+# Guidance summary: method selection for sea ice
+print("\n  Method guidance for sea ice retrieval:")
+print("   L-BFGS-B  — default; fastest for all emulator-based retrievals")
+print("   Nelder-Mead — use with direct forward_fn (no emulator)")
+print("   DE         — use when Vb and bbl_radius are both unknown (multimodal)")
+print("   MCMC       — use when parameter correlations matter (e.g. Vb vs bbl)")
+print()
+print("  Key constraint: brine_volume_fraction and sea_ice_bubble_radius")
+print("  both affect NIR albedo — retrieve one at a time unless using MCMC")
+print("  or strong regularization.")

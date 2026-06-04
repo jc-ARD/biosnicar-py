@@ -65,7 +65,12 @@ _SOLZEN_RANGE = (1, 89)
 # adequate coverage of low concentrations (including near-zero / clean ice).
 # Without this, uniform sampling in e.g. [0, 500000] puts < 0.2% of
 # training points below 1000, and the emulator fails for clean spectra.
-_LOG_SAMPLE_PARAMS = {"black_carbon", "snow_algae", "glacier_algae", "dust"}
+_LOG_SAMPLE_PARAMS = {
+    "black_carbon", "snow_algae", "glacier_algae", "dust",
+    # Sea ice: bubble radius spans ~1.3 orders of magnitude; log-space sampling
+    # gives better coverage of the small-bubble (high-scattering) regime.
+    "sea_ice_bubble_radius",
+}
 
 
 def _snap_rds(value):
@@ -266,6 +271,8 @@ class Emulator:
         input_file="default",
         progress=True,
         seed=42,
+        transform_fn=None,
+        hidden_layer_sizes=(128, 128, 64),
         **fixed_overrides,
     ):
         """Build an emulator by training an MLP on forward-model outputs.
@@ -289,9 +296,27 @@ class Emulator:
             Show a tqdm progress bar during forward-model runs.
         seed : int
             Random seed for Latin hypercube sampling and MLP training.
+        transform_fn : callable or None
+            Optional mapping ``(sampled_params: dict) -> run_model kwargs``.
+            When provided it replaces the default behaviour of passing sampled
+            parameters directly to ``run_model()``, allowing sea-ice and other
+            multi-layer configurations where parameters must be broadcast to
+            per-layer lists or mapped to structural kwargs (e.g. ``pond_depth``
+            → ``dz=[pond_depth, 0.05, 1.40]``).  The callable receives a dict
+            of ``{param_name: scalar}`` for all sampled parameters and must
+            return a dict of valid ``run_model()`` keyword arguments.  When
+            ``transform_fn`` is set, ``**fixed_overrides`` are ignored — the
+            transform is responsible for the complete column specification.
+        hidden_layer_sizes : tuple of int
+            MLP hidden layer architecture.  Default ``(128, 128, 64)`` works
+            well for most surfaces.  For bare sea ice (layer_type=4) the
+            brine optics create a high-dimensional spectral manifold (~27 PCA
+            components vs ~6 for snow); use ``(256, 256, 128, 64)`` or larger
+            for substantially better accuracy on those surface types.
         **fixed_overrides
             Fixed parameters passed to every ``run_model()`` call.
             For glacier ice, ``layer_type=1`` is typical.
+            Ignored when *transform_fn* is supplied.
 
         Returns
         -------
@@ -368,7 +393,11 @@ class Emulator:
                     val = int(round(val))
                 overrides[name] = val
 
-            outputs = run_model(input_file=input_file, solver=solver, **overrides)
+            if transform_fn is not None:
+                run_kwargs = transform_fn(dict(overrides))
+            else:
+                run_kwargs = overrides
+            outputs = run_model(input_file=input_file, solver=solver, **run_kwargs)
             albedos.append(np.array(outputs.albedo, dtype=np.float64))
             if flx_slr_ref is None:
                 flx_slr_ref = np.array(outputs.flx_slr, dtype=np.float64)
@@ -403,7 +432,7 @@ class Emulator:
 
         # --- 5. Train MLP ---
         mlp = MLPRegressor(
-            hidden_layer_sizes=(128, 128, 64),
+            hidden_layer_sizes=hidden_layer_sizes,
             activation="relu",
             max_iter=2000,
             early_stopping=True,
@@ -440,6 +469,8 @@ class Emulator:
             "build_timestamp": datetime.utcnow().isoformat(),
             "fixed_overrides": {k: _jsonable(v) for k, v in fixed_overrides.items()},
             "solver": solver,
+            "transform_fn": getattr(transform_fn, "__name__", None),
+            "hidden_layer_sizes": list(hidden_layer_sizes),
         }
 
         return emu
@@ -489,10 +520,16 @@ class Emulator:
         if missing:
             raise ValueError(f"Missing parameters: {missing}")
         x = np.array([float(params_dict[n]) for n in self._param_names])
-        # Warn if out of bounds
+        # Warn only for violations larger than 0.1 % of the parameter range.
+        # Small violations (< 1e-3 * range) are numerical artefacts from the
+        # finite-difference gradient steps used by the optimiser and Hessian
+        # computation — they do not affect predictions because the scaled value
+        # is clipped to [0, 1] below.  Larger violations indicate genuine
+        # extrapolation and still produce a warning.
         for i, name in enumerate(self._param_names):
             lo, hi = self._bounds[name]
-            if x[i] < lo or x[i] > hi:
+            tol = 1e-3 * (hi - lo)
+            if x[i] < lo - tol or x[i] > hi + tol:
                 warnings.warn(
                     f"Parameter {name}={x[i]} is outside training bounds "
                     f"[{lo}, {hi}].  Predictions may be unreliable.",

@@ -303,10 +303,92 @@ Build time is dominated by forward model runs (~50 ms each). MLP training adds <
 - **Unphysical training data**: the forward model produces unphysical albedo at some extreme parameter combinations. These are automatically filtered during training, but very small training sets may lose a significant fraction of samples. Increase `n_samples` if many are dropped.
 - **No RT-solver-only outputs**: `heat_rt` and `absorbed_flux_per_layer` are not available from the emulator (only from the full forward model).
 
+## Sea Ice Emulators
+
+BioSNICAR includes five pre-built emulators for Arctic sea ice surface types, extending the same `Emulator` class and `.npz` file format described above.  Full documentation is in [SEA_ICE_EMULATOR.md](SEA_ICE_EMULATOR.md); the key differences from glacier ice are summarised here.
+
+### Surface types and parameter spaces
+
+| Emulator | Parameters | Notable difference from glacier ice |
+|---|---|---|
+| `FYI_bare` | `brine_volume_fraction`, `sea_ice_bubble_radius`, `black_carbon`, `rho_DL`, `solzen`, `direct` | Uses `brine_volume_fraction` instead of (T, S) — see below |
+| `FYI_snow` | `snow_depth`, `snow_grain_radius`, `sea_ice_temperature`, `black_carbon`, `solzen`, `direct` | Similar to glacier snow emulator |
+| `FYI_summer` | `ssl_grain_radius`, `sea_ice_temperature`, `sea_ice_bubble_radius`, `black_carbon`, `solzen`, `direct` | Includes Surface Scattering Layer (SSL) grain radius |
+| `MYI_bare` | `brine_volume_fraction`, `sea_ice_bubble_radius`, `black_carbon`, `solzen`, `direct` | Lower salinity MYI; same Vb reparameterisation |
+| `FYI_pond` | `pond_depth`, `sea_ice_temperature`, `black_carbon`, `solzen`, `direct` | Pond depth is the primary parameter |
+
+### The `brine_volume_fraction` reparameterisation
+
+For bare sea ice, temperature and salinity jointly control the brine volume fraction `Vb = f(T, S)` via the Cox & Weeks (1983) equation.  Because many (T, S) pairs produce the same Vb and therefore the same spectrum, retrieving T and S separately creates the same degeneracy problem as retrieving (rds, rho) for glacier ice — large, correlated uncertainties.
+
+`brine_volume_fraction` is the sea ice analogue of SSA: a single, well-constrained parameter that captures the combined (T, S) effect.  If bulk salinity is known from an external source (e.g. a sea ice model), temperature can be recovered post-hoc:
+
+```python
+from biosnicar.sea_ice.brine_volume import invert_brine_volume
+from biosnicar.sea_ice.emulator_configs import FYI_BARE_S_REF
+
+T_recovered = invert_brine_volume(Vb_retrieved, FYI_BARE_S_REF)
+```
+
+### The `transform_fn` mechanism
+
+Sea ice emulators are built with an optional `transform_fn` parameter in `Emulator.build()`.  This callable maps the scalar parameter dict used during training to the multi-layer `run_model()` kwargs needed by BioSNICAR:
+
+```python
+# Example: brine_volume_fraction is the training input,
+# but run_model() needs sea_ice_temperature and sea_ice_salinity per layer.
+def my_transform(params):
+    T = invert_brine_volume(params["brine_volume_fraction"], S_ref)
+    return dict(
+        layer_type=[4, 4], dz=[0.05, 1.45], rds=[500, 500],
+        rho=[params["rho_DL"], 910],
+        sea_ice_salinity=[S_ref, S_ref * 0.5],
+        sea_ice_temperature=[T, T],
+        sea_ice_bubble_radius=[params["sea_ice_bubble_radius"], ...],
+        ...
+    )
+
+emu = Emulator.build(params={...}, transform_fn=my_transform, n_samples=30000)
+```
+
+At inference time, `predict()` runs the neural network directly — no transform is needed.  The transform function name is stored as a string in `emulator._metadata["transform_fn"]` for documentation purposes.
+
+### Why different architecture for bare ice?
+
+Snow, summer SSL, and pond emulators use the default `(128, 128, 64)` architecture and achieve R² > 0.99.  Bare sea ice emulators use `(256, 256, 128, 64)` because brine optics create spectral variation in ~27 independent PCA directions versus 4–6 for snow/pond.
+
+Importantly, R² on the PCA training set is **not** the right accuracy metric for bare ice emulators.  Despite R² ≈ 0.70, the actual spectral MAE is ~0.003 and BBA error is ~0.002 — the same order as the other emulators.  The apparently lower R² reflects high PCA dimensionality, not poor albedo prediction.
+
+### Loading sea ice emulators
+
+```python
+from biosnicar.sea_ice.emulator_configs import load_sea_ice_emulators
+
+# Load all five
+emulators = load_sea_ice_emulators()
+
+# Load a subset
+emulators = load_sea_ice_emulators(["FYI_bare", "FYI_pond"])
+
+# Load one by path
+from biosnicar.emulator import Emulator
+emu = Emulator.load("data/emulators/sea_ice_FYI_bare_6param.npz")
+```
+
+Build all five from scratch (takes ~20-30 minutes total):
+
+```bash
+python scripts/build_sea_ice_emulators.py
+python scripts/build_sea_ice_emulators.py --fast   # quick test (2000 samples each)
+python scripts/build_sea_ice_emulators.py FYI_pond # build one surface type
+```
+
 ## See Also
 
 - [examples/04_emulator_build.py](../examples/04_emulator_build.py) — building a custom emulator
 - [examples/05_emulator_predict.py](../examples/05_emulator_predict.py) — predictions and speed comparison
 - [examples/06_emulator_save_load.py](../examples/06_emulator_save_load.py) — save/load and metadata inspection
+- [examples/14_sea_ice_emulator.py](../examples/14_sea_ice_emulator.py) — sea ice emulator demonstrations
 - [docs/INVERSION.md](INVERSION.md) — using the emulator for parameter retrieval
+- [docs/SEA_ICE_EMULATOR.md](SEA_ICE_EMULATOR.md) — complete sea ice emulator reference
 - [docs/METHODS.md](METHODS.md) — detailed technical methods (paper-quality)

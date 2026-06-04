@@ -1,0 +1,286 @@
+"""Retrieve sea ice surface properties from spectral or satellite albedo.
+
+Provides :func:`retrieve_sea_ice`, a high-level inversion function that fits
+five surface-type emulators against an observed spectrum and classifies the
+most likely ice surface type by residual comparison.
+
+The five surface types are:
+
+    FYI_bare    — winter/spring bare first-year ice
+    FYI_snow    — snow-covered first-year ice
+    FYI_summer  — melt-season bare ice with Surface Scattering Layer
+    MYI_bare    — bare multiyear ice
+    FYI_pond    — melt pond on first-year ice
+
+Physical parameters (bubble radius, temperature, pond depth, snow depth, …)
+are retrieved from the winning emulator's parameter space.  The surface type
+label is assigned retroactively from which emulator produced the lowest
+chi-squared residual against the observation.
+
+Usage::
+
+    from biosnicar.sea_ice.retrieve import retrieve_sea_ice
+
+    # Full spectral inversion (480-band observed albedo)
+    result = retrieve_sea_ice(observed=spectrum, solzen=60)
+    print(result.surface_type)       # e.g. "FYI_summer"
+    print(result.confidence)         # 0–1, how decisively it won
+    print(result.parameters)         # {"sea_ice_bubble_radius": 220, ...}
+    out = result.to_outputs()
+    out.to_platform("sentinel2")     # works — flx_slr is preserved
+
+    # Satellite band mode
+    result = retrieve_sea_ice(
+        observed=[0.82, 0.65, 0.08],
+        platform="sentinel2",
+        observed_band_names=["B3", "B8", "B11"],
+        solzen=60,
+    )
+"""
+
+from dataclasses import dataclass, field
+from typing import Dict, List, Optional
+
+import numpy as np
+
+from biosnicar.inverse.result import RetrievalResult
+
+
+# ── SeaIceRetrievalResult ────────────────────────────────────────────────────
+
+@dataclass
+class SeaIceRetrievalResult:
+    """Result returned by :func:`retrieve_sea_ice`.
+
+    Attributes
+    ----------
+    surface_type : str
+        Name of the best-fitting surface type (e.g. ``"FYI_summer"``).
+    confidence : float
+        How decisively the winner outperformed the next-best candidate:
+        ``(second_best_cost - best_cost) / second_best_cost``.
+        0 = tied; approaches 1 as the winner dominates.
+    parameters : dict
+        ``{param_name: best_value}`` from the winning emulator.
+    uncertainty : dict
+        ``{param_name: 1_sigma}`` from the winning emulator.
+    predicted_albedo : np.ndarray
+        480-band spectral albedo at the best-fit point.
+    observed : np.ndarray
+        Input observations.
+    cost : float
+        Chi-squared at the best-fit point.
+    converged : bool
+        Whether the winning optimiser reported convergence.
+    flx_slr : np.ndarray or None
+        Solar flux spectrum (from the winning emulator).
+    cost_per_type : dict
+        ``{surface_type: chi_squared}`` for all five emulators.
+    all_fits : dict
+        ``{surface_type: RetrievalResult}`` — full result for each type.
+    """
+
+    surface_type: str
+    confidence: float
+    parameters: Dict[str, float]
+    uncertainty: Dict[str, float]
+    predicted_albedo: np.ndarray
+    observed: np.ndarray
+    cost: float
+    converged: bool
+    flx_slr: Optional[np.ndarray]
+    cost_per_type: Dict[str, float] = field(default_factory=dict)
+    all_fits: Dict[str, "RetrievalResult"] = field(default_factory=dict)
+
+    def to_outputs(self):
+        """Wrap the winning predicted spectrum as an ``Outputs`` object.
+
+        Returns an :class:`~biosnicar.classes.outputs.Outputs` instance with
+        ``.BBA``, ``.albedo``, ``.to_platform()``, and all other attributes
+        populated.  Requires ``flx_slr`` to be present (i.e. the winning
+        emulator must have been built from a pre-run forward model).
+        """
+        # Delegate to the underlying RetrievalResult machinery
+        winner = self.all_fits[self.surface_type]
+        return winner.to_outputs()
+
+    def summary(self) -> str:
+        """Human-readable summary."""
+        lines = [
+            f"SeaIceRetrievalResult  surface_type={self.surface_type!r}  "
+            f"confidence={self.confidence:.3f}",
+            f"  Cost: {self.cost:.4f}  converged={self.converged}",
+            "  Retrieved parameters:",
+        ]
+        for name, val in self.parameters.items():
+            unc = self.uncertainty.get(name, float("nan"))
+            lines.append(f"    {name:28s} = {val:12.4f}  ±  {unc:.4f}")
+        lines.append("  Cost per surface type:")
+        ranked = sorted(self.cost_per_type.items(), key=lambda kv: kv[1])
+        for stype, cost in ranked:
+            marker = " ←" if stype == self.surface_type else ""
+            lines.append(f"    {stype:14s}  {cost:.4f}{marker}")
+        return "\n".join(lines)
+
+
+# ── retrieve_sea_ice ─────────────────────────────────────────────────────────
+
+def retrieve_sea_ice(
+    observed,
+    emulators=None,
+    surface_types=None,
+    platform=None,
+    observed_band_names=None,
+    obs_uncertainty=None,
+    method="L-BFGS-B",
+    solzen=None,
+    direct=None,
+    fixed_params=None,
+    bounds=None,
+    x0=None,
+    regularization=None,
+    wavelength_mask=None,
+) -> SeaIceRetrievalResult:
+    """Retrieve sea ice physical properties and classify surface type.
+
+    Fits each of the five sea ice surface-type emulators against *observed*
+    and returns the best-fit parameters together with the most likely surface
+    type (the emulator that achieved the lowest chi-squared residual).
+
+    Parameters
+    ----------
+    observed : array-like
+        Observed albedo.  Either a 480-element spectral array or an
+        N-element array of satellite band albedos (with *platform* and
+        *observed_band_names* set).
+    emulators : dict or None
+        ``{surface_type: Emulator}`` to use.  If None, loads the five
+        pre-built emulators from ``data/emulators/``.  Pass a subset to
+        restrict which surface types are considered.
+    surface_types : list of str or None
+        Restrict fitting to this subset of surface type names.
+    platform : str or None
+        Satellite platform key (e.g. ``"sentinel2"``).  Required when
+        *observed* is a band array rather than a full spectrum.
+    observed_band_names : list of str or None
+        Band names corresponding to *observed* entries (e.g. ``["B3","B8"]``).
+    obs_uncertainty : array-like or None
+        Per-observation 1-sigma uncertainty for chi-squared weighting.
+    method : str
+        Optimisation method: ``"L-BFGS-B"`` (default), ``"Nelder-Mead"``,
+        ``"differential_evolution"``, or ``"mcmc"``.
+    solzen : float or None
+        Solar zenith angle (degrees).  When provided, fixed for all
+        emulators rather than retrieved.
+    direct : int or None
+        Illumination flag (1=direct, 0=diffuse).  When provided, fixed.
+    fixed_params : dict or None
+        Additional parameters to fix across all emulators.  Merged with
+        *solzen* and *direct* when those are provided.
+    bounds, x0, regularization, wavelength_mask
+        Passed through to each :func:`~biosnicar.inverse.optimize.retrieve`
+        call.
+
+    Returns
+    -------
+    SeaIceRetrievalResult
+
+    Raises
+    ------
+    FileNotFoundError
+        If pre-built emulators are not found.  Run
+        ``python scripts/build_sea_ice_emulators.py`` to generate them.
+    """
+    from biosnicar.inverse.optimize import retrieve
+    from biosnicar.sea_ice.emulator_configs import (
+        SEA_ICE_EMULATOR_CONFIGS,
+        load_sea_ice_emulators,
+    )
+
+    observed = np.asarray(observed, dtype=float)
+
+    # Load emulators if not supplied
+    if emulators is None:
+        names = surface_types or list(SEA_ICE_EMULATOR_CONFIGS)
+        emulators = load_sea_ice_emulators(names)
+    elif surface_types is not None:
+        emulators = {k: v for k, v in emulators.items() if k in surface_types}
+
+    # Build the fixed_params dict that applies to all emulators
+    shared_fixed = dict(fixed_params) if fixed_params else {}
+    if solzen is not None:
+        shared_fixed["solzen"] = float(solzen)
+    if direct is not None:
+        shared_fixed["direct"] = int(direct)
+
+    # Fit each emulator
+    all_fits: Dict[str, RetrievalResult] = {}
+    for name, emu in emulators.items():
+        cfg = SEA_ICE_EMULATOR_CONFIGS.get(name, {})
+
+        # Parameters to retrieve: all emulator params that are not in fixed
+        emu_params = list(emu.param_names)
+        retrieve_params = [p for p in emu_params if p not in shared_fixed]
+
+        # Emulator-specific fixed params (those in shared_fixed that the
+        # emulator actually knows about)
+        emu_fixed = {k: v for k, v in shared_fixed.items()
+                     if k in emu_params or k in ("solzen", "direct")}
+
+        try:
+            fit = retrieve(
+                observed=observed,
+                parameters=retrieve_params,
+                emulator=emu,
+                platform=platform,
+                observed_band_names=observed_band_names,
+                obs_uncertainty=obs_uncertainty,
+                bounds=bounds,
+                x0=x0,
+                regularization=regularization,
+                wavelength_mask=wavelength_mask,
+                method=method,
+                fixed_params=emu_fixed if emu_fixed else None,
+            )
+            all_fits[name] = fit
+        except Exception as exc:  # noqa: BLE001
+            # If one emulator fails (e.g. numerical instability), skip it
+            # rather than aborting the whole retrieval.
+            import warnings
+            warnings.warn(
+                f"retrieve_sea_ice: emulator '{name}' failed — {exc}",
+                RuntimeWarning, stacklevel=2,
+            )
+
+    if not all_fits:
+        raise RuntimeError("All emulator fits failed.")
+
+    # Classify: winner = lowest chi-squared
+    cost_per_type = {name: fit.cost for name, fit in all_fits.items()}
+    ranked = sorted(cost_per_type.items(), key=lambda kv: kv[1])
+    winner_name, best_cost = ranked[0]
+    winner_fit = all_fits[winner_name]
+
+    # Confidence: how much better is the winner than the next candidate?
+    if len(ranked) > 1:
+        second_cost = ranked[1][1]
+        confidence = float(
+            (second_cost - best_cost) / second_cost
+            if second_cost > 0 else 0.0
+        )
+    else:
+        confidence = 1.0  # only one emulator ran
+
+    return SeaIceRetrievalResult(
+        surface_type=winner_name,
+        confidence=min(confidence, 1.0),
+        parameters=dict(winner_fit.best_fit),
+        uncertainty=dict(winner_fit.uncertainty),
+        predicted_albedo=winner_fit.predicted_albedo,
+        observed=observed,
+        cost=best_cost,
+        converged=winner_fit.converged,
+        flx_slr=winner_fit.flx_slr,
+        cost_per_type=cost_per_type,
+        all_fits=all_fits,
+    )

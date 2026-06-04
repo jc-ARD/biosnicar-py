@@ -212,3 +212,127 @@ if PLOT:
     ax.legend()
     fig.tight_layout()
     plt.show()
+
+
+# ======================================================================
+# Sea ice satellite band-mode retrieval
+# ======================================================================
+#
+# Sea ice parameters can also be retrieved from satellite band observations.
+# The same constraints as for glacier ice apply: limited to 2-3 free
+# parameters with 3-5 observed bands.  The recommended parameter to
+# retrieve is ``brine_volume_fraction`` (the sea ice analogue of SSA),
+# plus one or two surface properties (bubble_radius, black_carbon, etc.).
+#
+# retrieve_sea_ice() also accepts platform + observed_band_names arguments,
+# enabling full surface-type classification directly from satellite bands.
+
+print("\n" + "=" * 65)
+print("SEA ICE SATELLITE BAND-MODE RETRIEVAL")
+print("=" * 65)
+
+from biosnicar.sea_ice.emulator_configs import load_sea_ice_emulators, FYI_BARE_S_REF
+from biosnicar.sea_ice.brine_volume import compute_brine_volume
+from biosnicar.sea_ice.retrieve import retrieve_sea_ice
+from biosnicar.drivers.run_emulator import run_emulator
+
+si_emus = load_sea_ice_emulators()
+
+# ── Example SB-1: FYI bare ice from Sentinel-2 ────────────────────────────
+#
+# Retrieve bubble_radius (NIR scattering) and brine_volume_fraction
+# (broadband level) from Sentinel-2 B3 (green), B8 (NIR), B11 (SWIR).
+# The three bands provide good spectral leverage for these two parameters:
+#   B3 (green, 559 nm)  — dominated by scattering; weak brine absorption
+#   B8 (NIR, 835 nm)    — sensitive to bubble scattering and brine volume
+#   B11 (SWIR, 1610 nm) — strong ice absorption; bubble-radius diagnostic
+#
+# rho_DL is fixed at its prior (850 kg/m³); it cannot be reliably
+# recovered from 3 bands alone.  Use regularization if rho_DL matters.
+
+print("\n── SB-1: FYI bare ice from Sentinel-2 (B3, B8, B11) ──")
+
+emu_bare   = si_emus["FYI_bare"]
+TRUE_VB_S2 = compute_brine_volume(FYI_BARE_S_REF, -8.0)
+true_si    = dict(brine_volume_fraction=TRUE_VB_S2,
+                  sea_ice_bubble_radius=300.0, black_carbon=50.0, rho_DL=850.0)
+
+out_true_si   = run_emulator(emu_bare, **true_si, solzen=60, direct=1)
+si_s2         = out_true_si.to_platform("sentinel2")
+obs_si_s2     = np.array([si_s2.B3, si_s2.B8, si_s2.B11])
+obs_unc_si_s2 = np.array([0.02, 0.02, 0.03])   # VIS / NIR / SWIR 1-sigma
+
+result_si_s2 = retrieve(
+    observed            = obs_si_s2,
+    parameters          = ["brine_volume_fraction", "sea_ice_bubble_radius"],
+    emulator            = emu_bare,
+    platform            = "sentinel2",
+    observed_band_names = ["B3", "B8", "B11"],
+    obs_uncertainty     = obs_unc_si_s2,
+    fixed_params        = {"black_carbon": 50.0, "rho_DL": 850.0,
+                           "solzen": 60, "direct": 1},
+)
+print(f"  True  Vb={TRUE_VB_S2:.4f}  bbl={true_si['sea_ice_bubble_radius']:.0f} µm")
+print(f"  Retr. Vb={result_si_s2.best_fit['brine_volume_fraction']:.4f}  "
+      f"bbl={result_si_s2.best_fit['sea_ice_bubble_radius']:.1f} µm  "
+      f"Converged: {result_si_s2.converged}")
+
+# ── Example SB-2: Melt pond depth from Sentinel-2 ─────────────────────────
+#
+# Pond depth is particularly well-constrained in band mode because the NIR
+# (B8) and SWIR (B11) bands are sensitive to water column absorption, which
+# follows Beer-Lambert with a characteristic depth scale of ~5-7 cm.
+# Even two bands (B3+B8) are sufficient to constrain pond depth reliably.
+
+print("\n── SB-2: Melt pond depth from Sentinel-2 (B3, B8) ──")
+
+emu_pond    = si_emus["FYI_pond"]
+true_pond   = dict(pond_depth=0.25, sea_ice_temperature=-5.0, black_carbon=1200.0)
+out_pond    = run_emulator(emu_pond, **true_pond, solzen=60, direct=1)
+pond_s2     = out_pond.to_platform("sentinel2")
+obs_pond_s2 = np.array([pond_s2.B3, pond_s2.B8])
+
+result_pond_s2 = retrieve(
+    observed            = obs_pond_s2,
+    parameters          = ["pond_depth"],
+    emulator            = emu_pond,
+    platform            = "sentinel2",
+    observed_band_names = ["B3", "B8"],
+    obs_uncertainty     = np.array([0.02, 0.02]),
+    fixed_params        = {"sea_ice_temperature": -5.0, "black_carbon": 1200.0,
+                           "solzen": 60, "direct": 1},
+)
+print(f"  True depth = {true_pond['pond_depth']:.2f} m  "
+      f"Retrieved = {result_pond_s2.best_fit['pond_depth']:.4f} m  "
+      f"Converged: {result_pond_s2.converged}")
+
+# ── Example SB-3: retrieve_sea_ice() with satellite bands ─────────────────
+#
+# retrieve_sea_ice() also accepts platform + observed_band_names.  It fits
+# all five surface-type emulators against the same band observations and
+# classifies the surface by lowest chi-squared residual.
+# This is the most powerful single-call workflow: surface classification
+# and physical parameter retrieval in one step, directly from satellite
+# observations without a prior assumption of surface type.
+
+print("\n── SB-3: retrieve_sea_ice() surface classification from Sentinel-2 ──")
+
+# Use the bare-ice S2 observation from SB-1
+result_classify_s2 = retrieve_sea_ice(
+    observed            = obs_si_s2,
+    platform            = "sentinel2",
+    observed_band_names = ["B3", "B8", "B11"],
+    obs_uncertainty     = obs_unc_si_s2,
+    solzen              = 60,
+    direct              = 1,
+)
+print(f"  Surface type  : {result_classify_s2.surface_type}  "
+      f"(confidence={result_classify_s2.confidence:.3f})")
+print(f"  Ranked costs  :")
+for stype, cost in sorted(result_classify_s2.cost_per_type.items(), key=lambda x: x[1]):
+    marker = " ←" if stype == result_classify_s2.surface_type else ""
+    print(f"    {stype:14s}  {cost:.4f}{marker}")
+
+# Full Outputs compatibility — to_platform() works on the classification result
+print(f"  to_platform().B8 = "
+      f"{result_classify_s2.to_outputs().to_platform('sentinel2').B8:.3f}")

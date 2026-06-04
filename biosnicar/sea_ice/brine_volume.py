@@ -80,6 +80,54 @@ def compute_brine_volume(salinity_psu, temperature_C):
     return float(nu_b[0]) if scalar else nu_b
 
 
+def invert_brine_volume(brine_volume_fraction, salinity_psu,
+                        T_lo=-22.0, T_hi=-2.1):
+    """Find the temperature that produces a given brine volume fraction.
+
+    Numerically inverts :func:`compute_brine_volume` by root-finding on the
+    monotonic Vb(T) relationship at fixed bulk salinity.  Used to
+    reparameterise the sea ice emulators: the emulator works with
+    ``brine_volume_fraction`` as a single input, and the transform function
+    recovers temperature via this inversion before calling the forward model.
+
+    Args:
+        brine_volume_fraction: Target Vb (dimensionless, must be within the
+            range produced by the forward function on [T_lo, T_hi]).
+        salinity_psu: Reference bulk salinity (psu).  Should match the value
+            used as the fixed salinity in the emulator transform function.
+        T_lo: Lower temperature bound for root search (°C).  Default -22.
+        T_hi: Upper temperature bound for root search (°C).  Default -2.1.
+
+    Returns:
+        Temperature (°C) such that ``compute_brine_volume(salinity_psu, T)``
+        equals ``brine_volume_fraction``.
+
+    Raises:
+        ValueError: If ``brine_volume_fraction`` is outside the range
+            achievable within [T_lo, T_hi] at the given salinity.
+    """
+    from scipy.optimize import brentq
+
+    vb_lo = compute_brine_volume(salinity_psu, T_lo)
+    vb_hi = compute_brine_volume(salinity_psu, T_hi)
+
+    # Clamp to achievable range with a small tolerance for floating-point jitter
+    # at the bounds of the emulator training range.
+    tol = 1e-4
+    if brine_volume_fraction < vb_lo - tol or brine_volume_fraction > vb_hi + tol:
+        raise ValueError(
+            f"brine_volume_fraction={brine_volume_fraction:.4f} is outside the "
+            f"range [{vb_lo:.4f}, {vb_hi:.4f}] achievable with "
+            f"S={salinity_psu} psu on T in [{T_lo}, {T_hi}]°C."
+        )
+    vb = float(np.clip(brine_volume_fraction, vb_lo, vb_hi))
+
+    def residual(T):
+        return compute_brine_volume(salinity_psu, T) - vb
+
+    return float(brentq(residual, T_lo, T_hi, xtol=1e-4))
+
+
 def brine_salinity_at_temp(temperature_C):
     """Approximate brine salinity (psu) at equilibrium from temperature.
 

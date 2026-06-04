@@ -536,11 +536,151 @@ flat_chain = result.chains.reshape(-1, 3)
 
 12. **SSA reference density is cosmetic** — the internal (rds, rho) decomposition in `result.derived` depends on the reference density. Different `ssa_rho` values give different internal rds but the same SSA. Do not interpret `rds_internal` as a physical measurement.
 
+## Sea Ice Inversion
+
+Sea ice retrieval uses the same `retrieve()` function and the same four optimisation methods as glacier ice.  This section describes the differences.
+
+### The `brine_volume_fraction` parameter
+
+The primary difference between glacier ice and sea ice inversion is that **sea ice has no SSA analogue** — there is no single quantity like SSA that collapses the spectral degeneracy of all ice-structure parameters simultaneously.  However, the dominant degeneracy in bare sea ice inversion is between temperature and salinity: both control brine volume fraction `Vb` via the Cox & Weeks (1983) equation, and many (T, S) pairs produce the same `Vb` and therefore the same spectrum.
+
+`brine_volume_fraction` resolves this degeneracy in the same way SSA resolves rds/rho degeneracy:
+
+| Glacier ice | Sea ice |
+|---|---|
+| rds and rho are degenerate through SSA | T and S are degenerate through Vb |
+| Retrieve SSA, not (rds, rho) | Retrieve `brine_volume_fraction`, not (T, S) |
+| Post-hoc: rds = f(SSA, rho_ref) | Post-hoc: T = f(Vb, S_ref) |
+| rho uncertainty ~33% individually | S uncertainty large individually |
+| SSA uncertainty ~5.5% | Vb uncertainty small |
+
+The `FYI_bare` and `MYI_bare` emulators are trained with `brine_volume_fraction` as a parameter.  Their default bounds in `DEFAULT_BOUNDS` are:
+
+```python
+"brine_volume_fraction": (0.005, 0.15),   # FYI; narrow to (0.005, 0.05) for MYI
+```
+
+Post-hoc temperature recovery when salinity is known:
+
+```python
+from biosnicar.sea_ice.brine_volume import invert_brine_volume
+from biosnicar.sea_ice.emulator_configs import FYI_BARE_S_REF   # = 6 psu
+
+result = retrieve(observed=spectrum, parameters=["brine_volume_fraction", ...], ...)
+T = invert_brine_volume(result.best_fit["brine_volume_fraction"], FYI_BARE_S_REF)
+```
+
+### retrieve_sea_ice() — classify and retrieve simultaneously
+
+When the surface type is not known in advance, `retrieve_sea_ice()` is the recommended entry point.  It fits all five sea ice emulators against the observation and classifies by the lowest chi-squared residual:
+
+```python
+from biosnicar.sea_ice.retrieve import retrieve_sea_ice
+
+result = retrieve_sea_ice(
+    observed = spectrum,          # 480-band or satellite band array
+    solzen   = 60,                # fix known conditions
+    direct   = 1,
+)
+
+result.surface_type          # "FYI_bare", "FYI_snow", "FYI_summer", "MYI_bare", "FYI_pond"
+result.confidence            # 0-1; how decisively it outperformed the next best
+result.parameters            # {param: value} from the winning emulator
+result.cost_per_type         # {type: chi_squared} for all five
+result.all_fits              # {type: RetrievalResult} for full access to each fit
+result.to_outputs()          # Outputs object with .BBA, .to_platform(), etc.
+```
+
+`retrieve_sea_ice()` also accepts `platform` and `observed_band_names` for satellite band classification:
+
+```python
+result = retrieve_sea_ice(
+    observed            = np.array([s2.B3, s2.B8, s2.B11]),
+    platform            = "sentinel2",
+    observed_band_names = ["B3", "B8", "B11"],
+    obs_uncertainty     = np.array([0.02, 0.02, 0.03]),
+    solzen              = 60,
+    direct              = 1,
+)
+```
+
+### Sea ice default bounds and initial guesses
+
+| Parameter | Bounds | x₀ | Notes |
+|---|---|---|---|
+| `brine_volume_fraction` | (0.005, 0.15) | 0.04 | ≈T=−10°C at S=6 psu for FYI |
+| `sea_ice_bubble_radius` | (50, 2000) µm | 200 | log-space in optimiser |
+| `sea_ice_temperature` | (−30, −2) °C | −10 | Legacy — prefer `brine_volume_fraction` |
+| `sea_ice_salinity` | (0, 20) psu | 6 | Legacy — prefer `brine_volume_fraction` |
+| `rho_DL` | (820, 900) kg/m³ | 850 | DL density; fix unless specifically retrieving |
+| `snow_depth` | (0.02, 0.30) m | 0.10 | log-space in optimiser |
+| `snow_grain_radius` | (100, 2000) µm | 500 | log-space in optimiser |
+| `ssl_grain_radius` | (500, 5000) µm | 2000 | log-space in optimiser |
+| `pond_depth` | (0.02, 0.60) m | 0.15 | log-space in optimiser |
+
+### Sea ice known limitations
+
+1. **`brine_volume_fraction` and `sea_ice_bubble_radius` are partially correlated** — both affect NIR albedo.  When retrieving both simultaneously, the Hessian uncertainties may be large.  Use MCMC to visualise the posterior and correlation structure, or fix one and retrieve the other.
+
+2. **Surface type classification requires good spectral coverage** — classification from 3 satellite bands is possible but less reliable than from the full 480-band spectrum.  Ensure the bands you provide span at least VIS and NIR (e.g. B3 + B8 for Sentinel-2), or include a SWIR band (B11) for better bare-ice vs snow discrimination.
+
+3. **Bare ice emulator R² is lower than snow/pond** — FYI_bare and MYI_bare have R² ≈ 0.70 compared to >0.99 for the other types.  This is not a quality problem: the actual BBA error is ~0.002 for all types.  R² is deflated because brine optics require ~27 PCA components vs 4–6 for snow/pond.  See [SEA_ICE_EMULATOR.md](SEA_ICE_EMULATOR.md) for explanation.
+
+4. **Reference salinity is a fixed assumption** — the `FYI_bare` emulator uses `FYI_BARE_S_REF = 6 psu` and `MYI_bare` uses `MYI_BARE_S_REF = 2 psu` internally.  If the true bulk salinity is very different (e.g. highly saline new ice), build a custom emulator with a different `S_ref` in the transform function.
+
+5. **Pond floor properties are fixed** — the `FYI_pond` emulator calibrates floor black carbon at 1200 ppb (from Morassutti 1995 validation).  If the floor is known to be unusually clean or dirty, use `retrieve()` directly with `black_carbon` as a free parameter.
+
+6. **No SSL for bare winter ice** — the `FYI_bare` emulator has no SSL.  For summer observations where an SSL is present, use `FYI_summer`.  The classification (`retrieve_sea_ice()`) handles this automatically.
+
+### Sea ice worked examples
+
+```python
+# Spectral retrieval: melt pond depth
+from biosnicar.sea_ice.emulator_configs import load_sea_ice_emulators
+emus = load_sea_ice_emulators()
+result = retrieve(
+    observed     = measured_pond_spectrum,
+    parameters   = ["pond_depth"],
+    emulator     = emus["FYI_pond"],
+    fixed_params = {"sea_ice_temperature": -5.0, "black_carbon": 1200.0,
+                    "solzen": 60, "direct": 1},
+)
+print(f"Pond depth = {result.best_fit['pond_depth']:.3f} ± "
+      f"{result.uncertainty['pond_depth']:.3f} m")
+
+# Full classification from field spectrometer
+from biosnicar.sea_ice.retrieve import retrieve_sea_ice
+result = retrieve_sea_ice(observed=measured_spectrum, solzen=55, direct=1)
+print(f"Surface type: {result.surface_type} (confidence={result.confidence:.2f})")
+print(f"Parameters:  {result.parameters}")
+
+# Post-hoc T from brine_volume_fraction
+from biosnicar.sea_ice.brine_volume import invert_brine_volume
+from biosnicar.sea_ice.emulator_configs import FYI_BARE_S_REF
+if result.surface_type == "FYI_bare":
+    T = invert_brine_volume(result.parameters["brine_volume_fraction"], FYI_BARE_S_REF)
+    print(f"Temperature (at S={FYI_BARE_S_REF} psu): {T:.1f}°C")
+
+# MCMC for posterior on pond depth
+result_mcmc = retrieve(
+    observed      = measured_pond_spectrum,
+    parameters    = ["pond_depth", "black_carbon"],
+    emulator      = emus["FYI_pond"],
+    method        = "mcmc",
+    mcmc_walkers  = 32,
+    mcmc_steps    = 2000,
+    mcmc_burn     = 500,
+    fixed_params  = {"sea_ice_temperature": -5.0, "solzen": 60, "direct": 1},
+)
+```
+
 ## See Also
 
 - [docs/EMULATOR.md](EMULATOR.md) — emulator architecture and design
+- [docs/SEA_ICE_EMULATOR.md](SEA_ICE_EMULATOR.md) — complete sea ice emulator reference
 - [docs/METHODS.md](METHODS.md) — detailed technical methods (paper-quality)
-- [examples/07_inversion_spectral.py](../examples/07_inversion_spectral.py) — SSA spectral retrieval
-- [examples/08_inversion_satellite.py](../examples/08_inversion_satellite.py) — SSA satellite band retrieval
-- [examples/09_inversion_methods.py](../examples/09_inversion_methods.py) — optimiser comparison with SSA
-- [examples/10_end_to_end_workflow.py](../examples/10_end_to_end_workflow.py) — full SSA pipeline
+- [examples/07_inversion_spectral.py](../examples/07_inversion_spectral.py) — SSA spectral retrieval (includes sea ice)
+- [examples/08_inversion_satellite.py](../examples/08_inversion_satellite.py) — satellite band retrieval (includes sea ice)
+- [examples/09_inversion_methods.py](../examples/09_inversion_methods.py) — optimiser comparison (includes sea ice)
+- [examples/14_sea_ice_emulator.py](../examples/14_sea_ice_emulator.py) — sea ice emulator demonstrations
+- [examples/15_sea_ice_inversion.py](../examples/15_sea_ice_inversion.py) — sea ice inversion demonstrations
