@@ -632,6 +632,35 @@ result = retrieve_sea_ice(
 
 6. **No SSL for bare winter ice** — the `FYI_bare` emulator has no SSL.  For summer observations where an SSL is present, use `FYI_summer`.  The classification (`retrieve_sea_ice()`) handles this automatically.
 
+7. **Summer classification requires `known_month`** — without the seasonal prior, `retrieve_sea_ice()` will misclassify summer bare ice as `FYI_snow` by exploiting physically impossible temperatures (T=−25°C in August).  Always pass `known_month` for summer observations.  See the SHEBA validation results in [SEA_ICE_EMULATOR.md](SEA_ICE_EMULATOR.md#validation-against-real-observations-sheba-spectra).
+
+### `known_month` — seasonal physical priors
+
+The `known_month` parameter (integer 1–12) adds Gaussian priors on temperature-related parameters to prevent emulators from reaching physically impossible temperature regimes for the given season.
+
+```python
+# Summer observation (May–September) — prevents T < -10°C solutions
+result = retrieve_sea_ice(
+    observed    = spectrum,
+    wavelength_mask = mask_400_1000,
+    solzen      = 60,
+    direct      = 1,
+    known_month = 8,      # August — applies T ~ (−4°C ± 3°C) prior
+)
+```
+
+| Season | Months | `sea_ice_temperature` prior | `brine_volume_fraction` prior | Effect |
+|---|---|---|---|---|
+| Melt season | 5–9 | (−4°C, σ=3°C) | (0.07, σ=0.04) | Prevents T < −10°C; rules out unphysical FYI_snow solutions |
+| Deep winter | 11–3 | (−15°C, σ=8°C) | (0.03, σ=0.015) | Prevents near-melting temperatures in winter |
+| Transitional | 4, 10 | None | None | No prior applied |
+
+Without `known_month`, the SHEBA summer classification accuracy is 0/16; with it, 9/16.  The 7 remaining misclassifications are high-BBA dates (BBA > 0.72) where snow and bare ice are genuinely spectrally ambiguous in the 400–1000 nm window.
+
+Caller-supplied `regularization` overrides these priors on a key-by-key basis.
+
+> **Use 400–1000 nm only for summer bare ice classification.**  Adding SWIR data (1100–2000 nm) reduces accuracy from 100% to 42% because the white-ice SWIR signature overlaps with coarse snow, reintroducing the ambiguity that `known_month` eliminates in the VIS/NIR window.  Always restrict the `wavelength_mask` to 400–1000 nm for summer observations unless you have a specific reason to include SWIR.
+
 ### Sea ice worked examples
 
 ```python
@@ -660,6 +689,23 @@ from biosnicar.sea_ice.emulator_configs import FYI_BARE_S_REF
 if result.surface_type == "FYI_bare":
     T = invert_brine_volume(result.parameters["brine_volume_fraction"], FYI_BARE_S_REF)
     print(f"Temperature (at S={FYI_BARE_S_REF} psu): {T:.1f}°C")
+
+# Summer bare ice classification — always provide known_month
+from biosnicar.sea_ice.retrieve import retrieve_sea_ice
+import numpy as np
+wavelengths_nm = np.arange(205, 4999, 10)
+mask_400_1000  = (wavelengths_nm >= 400) & (wavelengths_nm <= 1000)
+
+result_summer = retrieve_sea_ice(
+    observed        = observed_spectrum,      # 480-band from field spectrometer
+    wavelength_mask = mask_400_1000,          # only compare the observed window
+    solzen          = 60,
+    direct          = 1,
+    known_month     = 8,                      # August: T prior (−4°C ± 3°C)
+)
+print(f"Surface type: {result_summer.surface_type}  confidence={result_summer.confidence:.2f}")
+# Without known_month, summer bare ice often misclassifies as FYI_snow
+# because the optimiser can fit August spectra with T=−25°C (physically impossible)
 
 # MCMC for posterior on pond depth
 result_mcmc = retrieve(

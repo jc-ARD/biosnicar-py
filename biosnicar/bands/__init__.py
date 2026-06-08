@@ -107,4 +107,5 @@ def _lazy_load():
         sentinel3,
         landsat8,
         modis,
+        planetscope,
     )

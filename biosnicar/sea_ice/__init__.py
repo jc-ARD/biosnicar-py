@@ -30,6 +30,13 @@ from biosnicar.sea_ice.emulator_configs import (
     SEA_ICE_EMULATOR_CONFIGS,
     load_sea_ice_emulators,
 )
+from biosnicar.sea_ice.ice_chart_mapping import (
+    map_to_wmo,
+    map_to_sigrid3,
+    classification_summary,
+    WMOIceClass,
+    SIGRID3IceClass,
+)
 
 __all__ = [
     "blend_pond_fraction",
@@ -37,4 +44,9 @@ __all__ = [
     "SeaIceRetrievalResult",
     "SEA_ICE_EMULATOR_CONFIGS",
     "load_sea_ice_emulators",
+    "map_to_wmo",
+    "map_to_sigrid3",
+    "classification_summary",
+    "WMOIceClass",
+    "SIGRID3IceClass",
 ]

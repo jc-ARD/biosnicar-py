@@ -520,15 +520,20 @@ class Emulator:
         if missing:
             raise ValueError(f"Missing parameters: {missing}")
         x = np.array([float(params_dict[n]) for n in self._param_names])
-        # Warn only for violations larger than 0.1 % of the parameter range.
-        # Small violations (< 1e-3 * range) are numerical artefacts from the
-        # finite-difference gradient steps used by the optimiser and Hessian
-        # computation — they do not affect predictions because the scaled value
-        # is clipped to [0, 1] below.  Larger violations indicate genuine
-        # extrapolation and still produce a warning.
+        # Warn only for violations larger than 0.5 % of the parameter range.
+        # Two categories of small violation are suppressed:
+        #   1. Gradient/Hessian FD steps: optimiser evaluates at x ± 1e-4*(hi-lo);
+        #      these step just outside bounds when the minimum is at a boundary.
+        #   2. Log-space back-transform curvature: parameters optimised in
+        #      log10(x+1) space (BC, bubble_radius, etc.) have their gradient
+        #      steps amplified by the inverse transform near the upper bound.
+        #      E.g. a log-space step of 0.00074 at BC=5000 maps to +8.5 ppb in
+        #      linear space (0.17% overshoot), which exceeds a 0.1% tolerance.
+        # Raising the threshold to 0.5% suppresses both artefacts while still
+        # warning for genuine extrapolation (e.g. BC=10000 on a [0,5000] emulator).
         for i, name in enumerate(self._param_names):
             lo, hi = self._bounds[name]
-            tol = 1e-3 * (hi - lo)
+            tol = 5e-3 * (hi - lo)
             if x[i] < lo - tol or x[i] > hi + tol:
                 warnings.warn(
                     f"Parameter {name}={x[i]} is outside training bounds "

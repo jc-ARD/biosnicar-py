@@ -26,7 +26,7 @@ print(f"  NDSI:        {s2.NDSI:.4f}")
 # ======================================================================
 print("\n=== Example 2: Other platforms ===\n")
 outputs = run_model(solzen=50, rds=1000)
-for platform in ["sentinel2", "landsat8", "modis", "sentinel3"]:
+for platform in ["sentinel2", "landsat8", "modis", "sentinel3", "planetscope"]:
     result = outputs.to_platform(platform)
     print(
         f"  {platform:12s}  bands={len(result.band_names):2d}  "
@@ -52,7 +52,9 @@ print(
 print("\n=== Example 4: Standalone to_platform() call ===\n")
 outputs = run_model(solzen=50, rds=500)
 s2 = to_platform(outputs.albedo, "sentinel2", flx_slr=outputs.flx_slr)
-print(f"  B3={s2.B3:.4f}  B4={s2.B4:.4f}  NDSI={s2.NDSI:.4f}")
+print(f"  sentinel2:    B3={s2.B3:.4f}  B4={s2.B4:.4f}  NDSI={s2.NDSI:.4f}")
+ps = to_platform(outputs.albedo, "planetscope", flx_slr=outputs.flx_slr)
+print(f"  planetscope:  B4={ps.B4:.4f}  B7={ps.B7:.4f}  NDSI={ps.NDSI:.4f}  NDRE={ps.NDRE:.4f}")
 
 # ======================================================================
 # Example 5: Parameter sweep -> band convolution
@@ -76,12 +78,13 @@ print("\n\n=== Example 6: Sweep -> multiple platforms ===\n")
 df_multi = parameter_sweep(
     params={"rds": [500, 1000]},
     progress=False,
-).to_platform("sentinel2", "modis")
+).to_platform("sentinel2", "modis", "planetscope")
 
 # Columns are prefixed when using multiple platforms
-print("Columns:", [c for c in df_multi.columns if "B3" in c or "NDSI" in c])
+print("Columns:", [c for c in df_multi.columns if "B3" in c or "NDSI" in c or "NDRE" in c])
 print(
     df_multi[
-        ["rds", "BBA", "sentinel2_B3", "modis_B4", "sentinel2_NDSI", "modis_NDSI"]
+        ["rds", "BBA", "sentinel2_B3", "modis_B4", "sentinel2_NDSI", "modis_NDSI",
+         "planetscope_B4", "planetscope_NDSI", "planetscope_NDRE"]
     ].to_string(index=False, float_format="{:.4f}".format)
 )

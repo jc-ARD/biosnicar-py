@@ -48,6 +48,19 @@ from biosnicar.inverse.result import RetrievalResult
 
 # ── SeaIceRetrievalResult ────────────────────────────────────────────────────
 
+# Human-readable descriptions for each internal surface-type label.
+# These are the optical-state meanings of the emulator types, independent
+# of WMO/SIGRID-3 structural classification.
+_SURFACE_TYPE_DESCRIPTIONS = {
+    "FYI_bare":   "First-year ice, bare surface (winter/spring, no snow, no SSL)",
+    "FYI_snow":   "First-year ice, snow-covered",
+    "FYI_summer": "First-year ice, ablating — Surface Scattering Layer present",
+    "MYI_bare":   "Multiyear ice, bare surface (desalinated, large bubbles)",
+    "FYI_pond":   "Ice surface with melt ponds (any ice age)",
+    "young_ice":  "Young/new ice — semi-transparent, 0.5–30 cm thick",
+}
+
+
 @dataclass
 class SeaIceRetrievalResult:
     """Result returned by :func:`retrieve_sea_ice`.
@@ -55,7 +68,22 @@ class SeaIceRetrievalResult:
     Attributes
     ----------
     surface_type : str
-        Name of the best-fitting surface type (e.g. ``"FYI_summer"``).
+        Internal emulator label for the best-fitting surface type
+        (e.g. ``"FYI_summer"``).  These labels describe the **optical
+        state** of the surface, not WMO structural categories.  Use
+        ``surface_description`` for a human-readable explanation, or call
+        ``to_wmo()`` / ``to_sigrid3()`` for approximate WMO/SIGRID-3 codes.
+
+        The internal labels are kept as primary because they encode
+        distinctions that WMO codes collapse: for example, ``FYI_bare``,
+        ``FYI_snow``, and ``FYI_summer`` all map to ``SM/SN`` in SIGRID-3
+        but have completely different spectral signatures and forward-model
+        physics.  Switching to WMO codes as primary would discard real,
+        retrievable information.
+    surface_description : str
+        One-line human-readable explanation of what ``surface_type`` means
+        in physical terms (e.g. ``"First-year ice, ablating — Surface
+        Scattering Layer present"``).
     confidence : float
         How decisively the winner outperformed the next-best candidate:
         ``(second_best_cost - best_cost) / second_best_cost``.
@@ -81,6 +109,7 @@ class SeaIceRetrievalResult:
     """
 
     surface_type: str
+    surface_description: str   # auto-populated from _SURFACE_TYPE_DESCRIPTIONS
     confidence: float
     parameters: Dict[str, float]
     uncertainty: Dict[str, float]
@@ -91,6 +120,32 @@ class SeaIceRetrievalResult:
     flx_slr: Optional[np.ndarray]
     cost_per_type: Dict[str, float] = field(default_factory=dict)
     all_fits: Dict[str, "RetrievalResult"] = field(default_factory=dict)
+
+    def to_wmo(self):
+        """Map to WMO Sea Ice Nomenclature (WMO No. 259).
+
+        Returns a :class:`~biosnicar.sea_ice.ice_chart_mapping.WMOIceClass`
+        with stage of development, surface description, melt stage, and
+        caveats about what cannot be inferred from albedo alone.
+        """
+        from biosnicar.sea_ice.ice_chart_mapping import map_to_wmo
+        return map_to_wmo(self)
+
+    def to_sigrid3(self):
+        """Map to a partial SIGRID-3 ice-class description.
+
+        Returns a :class:`~biosnicar.sea_ice.ice_chart_mapping.SIGRID3IceClass`
+        with ice-type code, stage of melt, melt-pond flag, and the partial
+        SIGRID-3 code string.  Fields requiring structural measurement
+        (concentration, thickness, floe size) are marked ``??``.
+        """
+        from biosnicar.sea_ice.ice_chart_mapping import map_to_sigrid3
+        return map_to_sigrid3(self)
+
+    def classification_summary(self) -> str:
+        """Formatted WMO + SIGRID-3 classification summary string."""
+        from biosnicar.sea_ice.ice_chart_mapping import classification_summary
+        return classification_summary(self)
 
     def to_outputs(self):
         """Wrap the winning predicted spectrum as an ``Outputs`` object.
@@ -105,10 +160,14 @@ class SeaIceRetrievalResult:
         return winner.to_outputs()
 
     def summary(self) -> str:
-        """Human-readable summary."""
+        """Human-readable summary including optical-state description and WMO stage."""
+        from biosnicar.sea_ice.ice_chart_mapping import map_to_wmo
+        wmo = map_to_wmo(self)
         lines = [
-            f"SeaIceRetrievalResult  surface_type={self.surface_type!r}  "
-            f"confidence={self.confidence:.3f}",
+            f"SeaIceRetrievalResult",
+            f"  Surface type   : {self.surface_type}  (confidence={self.confidence:.3f})",
+            f"  Description    : {self.surface_description}",
+            f"  WMO stage      : {wmo.stage_of_development} — {wmo.melt_stage}",
             f"  Cost: {self.cost:.4f}  converged={self.converged}",
             "  Retrieved parameters:",
         ]
@@ -118,8 +177,9 @@ class SeaIceRetrievalResult:
         lines.append("  Cost per surface type:")
         ranked = sorted(self.cost_per_type.items(), key=lambda kv: kv[1])
         for stype, cost in ranked:
+            desc = _SURFACE_TYPE_DESCRIPTIONS.get(stype, "")
             marker = " ←" if stype == self.surface_type else ""
-            lines.append(f"    {stype:14s}  {cost:.4f}{marker}")
+            lines.append(f"    {stype:14s}  {cost:.4f}{marker}  {desc}")
         return "\n".join(lines)
 
 
@@ -140,6 +200,7 @@ def retrieve_sea_ice(
     x0=None,
     regularization=None,
     wavelength_mask=None,
+    known_month=None,
 ) -> SeaIceRetrievalResult:
     """Retrieve sea ice physical properties and classify surface type.
 
@@ -180,6 +241,26 @@ def retrieve_sea_ice(
     bounds, x0, regularization, wavelength_mask
         Passed through to each :func:`~biosnicar.inverse.optimize.retrieve`
         call.
+    known_month : int or None
+        Calendar month (1–12) of the observation.  When provided, physically
+        motivated Gaussian priors are automatically added to prevent emulators
+        from exploiting temperature values that are impossible in the given
+        season.  This is the most important correction for summer bare ice
+        classification: without it, FYI_snow can fit August spectra using
+        T = −25°C (physically impossible) and win over FYI_summer/FYI_bare.
+
+        **Summer months (5–9):** ``sea_ice_temperature`` is constrained to
+        (−4°C ± 3°C) for emulators that have a temperature parameter.  This
+        rules out the T < −10°C regime that is unreachable in the melt season.
+        ``brine_volume_fraction`` for bare-ice emulators is constrained to
+        (0.07 ± 0.04), consistent with T ≈ −5°C at the reference salinity.
+
+        **Winter months (11–3):** ``sea_ice_temperature`` is constrained to
+        (−15°C ± 8°C), preventing the optimizer from using near-melting
+        temperatures that would be physically unrealistic in deep winter.
+
+        Any explicit *regularization* dict passed by the caller is merged on
+        top of the season priors — caller values take precedence.
 
     Returns
     -------
@@ -213,6 +294,22 @@ def retrieve_sea_ice(
     if direct is not None:
         shared_fixed["direct"] = int(direct)
 
+    # Build season-aware physical priors from known_month
+    # These prevent emulators from fitting with physically impossible temperatures,
+    # which is the primary cause of summer bare ice misclassification.
+    season_priors: Dict[str, tuple] = {}
+    if known_month is not None:
+        m = int(known_month)
+        if 5 <= m <= 9:      # melt season — May through September
+            season_priors["sea_ice_temperature"]   = (-4.0, 3.0)   # near-melting
+            season_priors["brine_volume_fraction"] = (0.07, 0.04)  # ≈T=−5°C at S_ref=6
+        elif m in (11, 12, 1, 2, 3):  # deep winter — Nov through March
+            season_priors["sea_ice_temperature"]   = (-15.0, 8.0)  # well below freezing
+            season_priors["brine_volume_fraction"] = (0.03, 0.015) # cold ice
+        # Apr and Oct are transitional — no prior applied
+    # Caller-supplied regularization overrides season priors on a key-by-key basis
+    effective_regularization = {**season_priors, **(regularization or {})}
+
     # Fit each emulator
     all_fits: Dict[str, RetrievalResult] = {}
     for name, emu in emulators.items():
@@ -237,7 +334,7 @@ def retrieve_sea_ice(
                 obs_uncertainty=obs_uncertainty,
                 bounds=bounds,
                 x0=x0,
-                regularization=regularization,
+                regularization=effective_regularization or None,
                 wavelength_mask=wavelength_mask,
                 method=method,
                 fixed_params=emu_fixed if emu_fixed else None,
@@ -273,6 +370,7 @@ def retrieve_sea_ice(
 
     return SeaIceRetrievalResult(
         surface_type=winner_name,
+        surface_description=_SURFACE_TYPE_DESCRIPTIONS.get(winner_name, winner_name),
         confidence=min(confidence, 1.0),
         parameters=dict(winner_fit.best_fit),
         uncertainty=dict(winner_fit.uncertainty),

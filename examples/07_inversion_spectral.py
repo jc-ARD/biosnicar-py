@@ -307,11 +307,34 @@ print("SEA ICE SPECTRAL RETRIEVAL")
 print("=" * 65)
 
 from biosnicar.sea_ice.emulator_configs import (
-    load_sea_ice_emulators, FYI_BARE_S_REF
+    load_sea_ice_emulators, SEA_ICE_EMULATOR_CONFIGS, FYI_BARE_S_REF
 )
 from biosnicar.sea_ice.brine_volume import compute_brine_volume, invert_brine_volume
 
 si_emus = load_sea_ice_emulators()
+
+# Seeded random test parameters — non-round values that demonstrably
+# cannot coincide with "convenient" training samples.
+_rng07 = np.random.default_rng(2025)
+def _rand07(name):
+    b = si_emus[name].bounds
+    p = {k: float(_rng07.uniform((lo+hi)/2 - 0.4*(hi-lo), (lo+hi)/2 + 0.4*(hi-lo)))
+         for k, (lo, hi) in b.items() if k not in ("solzen", "direct")}
+    p["solzen"] = 60; p["direct"] = 1
+    return p
+
+def _si_fwd(type_name, params, solzen=60, direct=1):
+    """Forward-model spectrum for a sea ice surface type.
+
+    Using emu.predict() as the synthetic observation would give trivially
+    perfect retrieval (the emulator fitting its own output, cost≈0).
+    This function uses the full RT solver so residuals reflect real
+    emulator approximation error — the honest test.
+    """
+    run_kw = SEA_ICE_EMULATOR_CONFIGS[type_name]["transform_fn"](
+        {**params, "solzen": solzen, "direct": direct}
+    )
+    return np.array(run_model(**run_kw).albedo)
 
 # ── Example SI-1: FYI bare ice — brine volume + bubble radius ──────────────
 #
@@ -324,27 +347,24 @@ si_emus = load_sea_ice_emulators()
 
 print("\n── SI-1: Bare FYI — brine_volume_fraction + bubble_radius ──")
 
-TRUE_T_C  = -8.0
-TRUE_VB   = compute_brine_volume(FYI_BARE_S_REF, TRUE_T_C)
-emu_bare  = si_emus["FYI_bare"]
+emu_bare         = si_emus["FYI_bare"]
+true_params_bare = _rand07("FYI_bare")
+TRUE_VB  = true_params_bare["brine_volume_fraction"]
+TRUE_T_C = invert_brine_volume(TRUE_VB, FYI_BARE_S_REF)
+obs_bare = _si_fwd("FYI_bare", true_params_bare)
 
-true_params_bare = dict(
-    brine_volume_fraction = TRUE_VB,
-    sea_ice_bubble_radius = 350.0,
-    black_carbon          = 200.0,
-    rho_DL                = 860.0,
-)
-obs_bare = emu_bare.predict(**true_params_bare, solzen=60, direct=1)
-
+_FIXED_KEYS = {"solzen", "direct"}
 result_bare = retrieve(
     observed     = obs_bare,
-    parameters   = list(true_params_bare.keys()),
+    parameters   = [k for k in true_params_bare if k not in _FIXED_KEYS],
     emulator     = emu_bare,
-    fixed_params = {"solzen": 60, "direct": 1},
+    fixed_params = {k: true_params_bare[k] for k in _FIXED_KEYS},
 )
 print(f"  Converged: {result_bare.converged}  Cost: {result_bare.cost:.4e}")
 print(f"  {'Parameter':30s}  {'True':>8}  {'Retrieved':>10}  {'σ':>8}")
 for k, tv in true_params_bare.items():
+    if k in _FIXED_KEYS:
+        continue
     rv  = result_bare.best_fit[k]
     sig = result_bare.uncertainty.get(k, float("nan"))
     print(f"  {k:30s}  {tv:8.4f}  {rv:10.4f}  {sig:8.4f}")
@@ -363,18 +383,17 @@ print(f"  [T recovered from Vb]  true={TRUE_T_C:.1f}°C  retrieved={T_rec:.2f}°
 print("\n── SI-2: Melt pond — pond_depth retrieval ──")
 
 emu_pond  = si_emus["FYI_pond"]
-TRUE_POND = {"pond_depth": 0.18, "sea_ice_temperature": -5.0,
-             "black_carbon": 1200.0}
-obs_pond  = emu_pond.predict(**TRUE_POND, solzen=60, direct=1)
+TRUE_POND = _rand07("FYI_pond")
+obs_pond  = _si_fwd("FYI_pond", TRUE_POND)
 
 result_pond = retrieve(
     observed     = obs_pond,
     parameters   = ["pond_depth"],
     emulator     = emu_pond,
-    fixed_params = {"sea_ice_temperature": -5.0, "black_carbon": 1200.0,
-                    "solzen": 60, "direct": 1},
+    fixed_params = {k: v for k, v in TRUE_POND.items() if k != "pond_depth"
+                    and k in emu_pond.bounds},
 )
-print(f"  True depth = {TRUE_POND['pond_depth']:.2f} m  "
+print(f"  True depth = {TRUE_POND['pond_depth']:.4f} m  "
       f"Retrieved = {result_pond.best_fit['pond_depth']:.4f} m  "
       f"σ = {result_pond.uncertainty.get('pond_depth', float('nan')):.4f} m  "
       f"Converged: {result_pond.converged}")
@@ -389,21 +408,21 @@ print(f"  True depth = {TRUE_POND['pond_depth']:.2f} m  "
 print("\n── SI-3: Snow-covered FYI — snow_depth retrieval ──")
 
 emu_snow  = si_emus["FYI_snow"]
-TRUE_SNOW = {"snow_depth": 0.09, "snow_grain_radius": 350.0,
-             "sea_ice_temperature": -15.0, "black_carbon": 50.0}
-obs_snow  = emu_snow.predict(**TRUE_SNOW, solzen=60, direct=1)
+TRUE_SNOW = _rand07("FYI_snow")
+obs_snow  = _si_fwd("FYI_snow", TRUE_SNOW)
 
 result_snow = retrieve(
     observed     = obs_snow,
     parameters   = ["snow_depth", "snow_grain_radius"],
     emulator     = emu_snow,
-    fixed_params = {"sea_ice_temperature": -15.0, "black_carbon": 50.0,
-                    "solzen": 60, "direct": 1},
+    fixed_params = {k: v for k, v in TRUE_SNOW.items()
+                    if k not in ("snow_depth", "snow_grain_radius")
+                    and k in emu_snow.bounds},
 )
-print(f"  True snow_depth={TRUE_SNOW['snow_depth']:.2f} m  "
+print(f"  True snow_depth={TRUE_SNOW['snow_depth']:.4f} m  "
       f"Retrieved={result_snow.best_fit['snow_depth']:.4f} m  "
       f"Converged: {result_snow.converged}")
-print(f"  True grain_radius={TRUE_SNOW['snow_grain_radius']:.0f} µm  "
+print(f"  True grain_radius={TRUE_SNOW['snow_grain_radius']:.1f} µm  "
       f"Retrieved={result_snow.best_fit['snow_grain_radius']:.1f} µm")
 
 # ── Example SI-4: retrieve_sea_ice() — classify AND retrieve ──────────────
@@ -435,3 +454,85 @@ for stype, cost in sorted(result_class.cost_per_type.items(), key=lambda x: x[1]
 out_si = result_class.to_outputs()
 print(f"  BBA={out_si.BBA:.3f}  "
       f"to_platform('sentinel2').B8={out_si.to_platform('sentinel2').B8:.3f}")
+
+if PLOT:
+    import matplotlib.pyplot as plt
+
+    # ── Sea ice: spectral retrieval figure ────────────────────────────────
+    # 4 panels — one per sea ice retrieval example.  Each shows the observed
+    # spectrum (solid) and the best-fit retrieved spectrum (dashed), with
+    # residual shading.  The fourth panel shows all five emulators fitted
+    # against the bare-ice observation, coloured by residual magnitude.
+
+    fig_si, axes_si = plt.subplots(2, 2, figsize=(13, 8))
+    fig_si.suptitle("Sea ice: spectral retrieval quality — obs (solid) vs retrieved (dashed)",
+                    fontsize=10)
+
+    # Panel 1: bare FYI (SI-1)
+    ax = axes_si[0, 0]
+    ax.plot(wavelengths, obs_bare, "k-", lw=1.5, label="Observed")
+    ax.plot(wavelengths, result_bare.predicted_albedo, "--", color="#1b7837",
+            lw=1.5, label=f"Retrieved (cost={result_bare.cost:.1e})")
+    ax.fill_between(wavelengths,
+                    result_bare.predicted_albedo, obs_bare, alpha=0.12, color="#1b7837")
+    ax.axvline(0.7, color="gray", lw=0.5, ls=":", alpha=0.5)
+    ax.set_xlim(0.3, 2.5); ax.set_ylim(0, 1.05)
+    vb_ret = result_bare.best_fit["brine_volume_fraction"]
+    bbl_ret = result_bare.best_fit["sea_ice_bubble_radius"]
+    ax.set_title(f"SI-1: Bare FYI — Vb={vb_ret:.4f}, bbl={bbl_ret:.0f} µm\n"
+                 f"(true Vb={TRUE_VB:.4f}, bbl=350 µm)")
+    ax.set_ylabel("Spectral albedo"); ax.legend(fontsize=8)
+
+    # Panel 2: melt pond (SI-2)
+    ax = axes_si[0, 1]
+    ax.plot(wavelengths, obs_pond, "k-", lw=1.5, label="Observed")
+    ax.plot(wavelengths, result_pond.predicted_albedo, "--", color="#4575b4",
+            lw=1.5, label=f"Retrieved (cost={result_pond.cost:.1e})")
+    ax.fill_between(wavelengths,
+                    result_pond.predicted_albedo, obs_pond, alpha=0.12, color="#4575b4")
+    ax.axvline(0.7, color="gray", lw=0.5, ls=":", alpha=0.5)
+    ax.set_xlim(0.3, 2.5); ax.set_ylim(0, 1.05)
+    d_ret = result_pond.best_fit["pond_depth"]
+    ax.set_title(f"SI-2: Melt pond — depth={d_ret:.4f} m\n"
+                 f"(true depth={TRUE_POND['pond_depth']:.2f} m)")
+    ax.legend(fontsize=8)
+
+    # Panel 3: snow-covered FYI (SI-3)
+    ax = axes_si[1, 0]
+    ax.plot(wavelengths, obs_snow, "k-", lw=1.5, label="Observed")
+    ax.plot(wavelengths, result_snow.predicted_albedo, "--", color="#6a3d9a",
+            lw=1.5, label=f"Retrieved (cost={result_snow.cost:.1e})")
+    ax.fill_between(wavelengths,
+                    result_snow.predicted_albedo, obs_snow, alpha=0.12, color="#6a3d9a")
+    ax.axvline(0.7, color="gray", lw=0.5, ls=":", alpha=0.5)
+    ax.set_xlim(0.3, 2.5); ax.set_ylim(0, 1.05)
+    sd_ret = result_snow.best_fit["snow_depth"]
+    rds_ret = result_snow.best_fit["snow_grain_radius"]
+    ax.set_title(f"SI-3: Snow-covered FYI — depth={sd_ret:.4f} m, rds={rds_ret:.0f} µm\n"
+                 f"(true: {TRUE_SNOW['snow_depth']:.2f} m, {TRUE_SNOW['snow_grain_radius']:.0f} µm)")
+    ax.set_xlabel("Wavelength (µm)"); ax.set_ylabel("Spectral albedo"); ax.legend(fontsize=8)
+
+    # Panel 4: retrieve_sea_ice() — residuals for all five emulators
+    # The winning emulator (FYI_bare) has flat near-zero residuals;
+    # the others show systematic misfit that reveals the wrong surface type.
+    ax = axes_si[1, 1]
+    type_col_si = {"FYI_bare": "#1b7837", "FYI_snow": "#4575b4",
+                   "FYI_summer": "#d73027", "MYI_bare": "#762a83",
+                   "FYI_pond": "#e08214"}
+    for stype, fit in result_class.all_fits.items():
+        resid = fit.predicted_albedo - obs_bare
+        rmse  = float(np.sqrt(np.mean(resid ** 2)))
+        winner = "★ " if stype == result_class.surface_type else ""
+        lw     = 2.0 if stype == result_class.surface_type else 1.0
+        ax.plot(wavelengths, resid, color=type_col_si[stype], lw=lw,
+                label=f"{winner}{stype} RMSE={rmse:.4f}")
+    ax.axhline(0, color="k", lw=0.8, ls="--", alpha=0.5)
+    ax.axvline(0.7, color="gray", lw=0.5, ls=":", alpha=0.5)
+    ax.set_xlim(0.3, 2.5); ax.set_ylim(-0.6, 0.6)
+    ax.set_title("SI-4: retrieve_sea_ice() residuals per emulator\n"
+                 "(flat residual = correct surface type)")
+    ax.set_xlabel("Wavelength (µm)"); ax.set_ylabel("Predicted − Observed")
+    ax.legend(fontsize=7)
+
+    fig_si.tight_layout()
+    plt.show()

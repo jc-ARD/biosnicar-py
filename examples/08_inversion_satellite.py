@@ -231,12 +231,21 @@ print("\n" + "=" * 65)
 print("SEA ICE SATELLITE BAND-MODE RETRIEVAL")
 print("=" * 65)
 
-from biosnicar.sea_ice.emulator_configs import load_sea_ice_emulators, FYI_BARE_S_REF
+from biosnicar.sea_ice.emulator_configs import (
+    load_sea_ice_emulators, SEA_ICE_EMULATOR_CONFIGS, FYI_BARE_S_REF
+)
 from biosnicar.sea_ice.brine_volume import compute_brine_volume
 from biosnicar.sea_ice.retrieve import retrieve_sea_ice
-from biosnicar.drivers.run_emulator import run_emulator
 
 si_emus = load_sea_ice_emulators()
+
+
+def _si_fwd08(type_name, params, solzen=60, direct=1):
+    """Forward-model Outputs for a sea ice surface type (honest test obs)."""
+    run_kw = SEA_ICE_EMULATOR_CONFIGS[type_name]["transform_fn"](
+        {**params, "solzen": solzen, "direct": direct}
+    )
+    return run_model(**run_kw)
 
 # ── Example SB-1: FYI bare ice from Sentinel-2 ────────────────────────────
 #
@@ -252,12 +261,17 @@ si_emus = load_sea_ice_emulators()
 
 print("\n── SB-1: FYI bare ice from Sentinel-2 (B3, B8, B11) ──")
 
-emu_bare   = si_emus["FYI_bare"]
-TRUE_VB_S2 = compute_brine_volume(FYI_BARE_S_REF, -8.0)
-true_si    = dict(brine_volume_fraction=TRUE_VB_S2,
-                  sea_ice_bubble_radius=300.0, black_carbon=50.0, rho_DL=850.0)
+emu_bare = si_emus["FYI_bare"]
+# Seeded random test parameters — non-round values prevent any coincidental
+# proximity to training samples and make the example independently reproducible.
+_rng08 = np.random.default_rng(2025)
+_b8    = emu_bare.bounds
+true_si = {k: float(_rng08.uniform((lo+hi)/2 - 0.4*(hi-lo), (lo+hi)/2 + 0.4*(hi-lo)))
+           for k, (lo, hi) in _b8.items() if k not in ("solzen", "direct")}
+true_si["solzen"] = 60; true_si["direct"] = 1
+TRUE_VB_S2 = true_si["brine_volume_fraction"]
 
-out_true_si   = run_emulator(emu_bare, **true_si, solzen=60, direct=1)
+out_true_si   = _si_fwd08("FYI_bare", true_si)   # forward model, not emulator
 si_s2         = out_true_si.to_platform("sentinel2")
 obs_si_s2     = np.array([si_s2.B3, si_s2.B8, si_s2.B11])
 obs_unc_si_s2 = np.array([0.02, 0.02, 0.03])   # VIS / NIR / SWIR 1-sigma
@@ -269,7 +283,8 @@ result_si_s2 = retrieve(
     platform            = "sentinel2",
     observed_band_names = ["B3", "B8", "B11"],
     obs_uncertainty     = obs_unc_si_s2,
-    fixed_params        = {"black_carbon": 50.0, "rho_DL": 850.0,
+    fixed_params        = {"black_carbon": true_si["black_carbon"],
+                           "rho_DL": true_si["rho_DL"],
                            "solzen": 60, "direct": 1},
 )
 print(f"  True  Vb={TRUE_VB_S2:.4f}  bbl={true_si['sea_ice_bubble_radius']:.0f} µm")
@@ -287,8 +302,11 @@ print(f"  Retr. Vb={result_si_s2.best_fit['brine_volume_fraction']:.4f}  "
 print("\n── SB-2: Melt pond depth from Sentinel-2 (B3, B8) ──")
 
 emu_pond    = si_emus["FYI_pond"]
-true_pond   = dict(pond_depth=0.25, sea_ice_temperature=-5.0, black_carbon=1200.0)
-out_pond    = run_emulator(emu_pond, **true_pond, solzen=60, direct=1)
+_b8p        = emu_pond.bounds
+true_pond   = {k: float(_rng08.uniform((lo+hi)/2 - 0.4*(hi-lo), (lo+hi)/2 + 0.4*(hi-lo)))
+               for k, (lo, hi) in _b8p.items() if k not in ("solzen", "direct")}
+true_pond["solzen"] = 60; true_pond["direct"] = 1
+out_pond    = _si_fwd08("FYI_pond", true_pond)   # forward model, not emulator
 pond_s2     = out_pond.to_platform("sentinel2")
 obs_pond_s2 = np.array([pond_s2.B3, pond_s2.B8])
 
@@ -299,8 +317,8 @@ result_pond_s2 = retrieve(
     platform            = "sentinel2",
     observed_band_names = ["B3", "B8"],
     obs_uncertainty     = np.array([0.02, 0.02]),
-    fixed_params        = {"sea_ice_temperature": -5.0, "black_carbon": 1200.0,
-                           "solzen": 60, "direct": 1},
+    fixed_params        = {k: v for k, v in true_pond.items()
+                           if k != "pond_depth"},
 )
 print(f"  True depth = {true_pond['pond_depth']:.2f} m  "
       f"Retrieved = {result_pond_s2.best_fit['pond_depth']:.4f} m  "
@@ -336,3 +354,87 @@ for stype, cost in sorted(result_classify_s2.cost_per_type.items(), key=lambda x
 # Full Outputs compatibility — to_platform() works on the classification result
 print(f"  to_platform().B8 = "
       f"{result_classify_s2.to_outputs().to_platform('sentinel2').B8:.3f}")
+
+if PLOT:
+    import matplotlib.pyplot as plt
+    from biosnicar.bands import to_platform as _to_platform_fn
+
+    wavelengths = np.arange(0.205, 4.999, 0.01)
+
+    # ── Sea ice satellite band-mode figure ────────────────────────────────
+    # 3 panels: SB-1 (bare FYI from S2), SB-2 (pond from S2),
+    # SB-3 (classification cost per type for each input).
+
+    fig_sib, axes_sib = plt.subplots(1, 3, figsize=(16, 4.5))
+    fig_sib.suptitle("Sea ice: satellite band-mode retrieval (Sentinel-2)",
+                     fontsize=10)
+    s2_band_wl = {"B3": 0.559, "B8": 0.835, "B11": 1.610}
+
+    # Panel 1: SB-1 bare FYI — observed bands + retrieved full spectrum
+    ax = axes_sib[0]
+    out_retr_s2 = result_si_s2.to_outputs()
+    ax.plot(wavelengths, out_true_si.albedo, "k-", lw=1.5,
+            label="True spectrum")
+    ax.plot(wavelengths, out_retr_s2.albedo, "--", color="#1b7837",
+            lw=1.5, label="Retrieved spectrum")
+    for bname, bwl in s2_band_wl.items():
+        obs_val = obs_si_s2[list(s2_band_wl.keys()).index(bname)]
+        ax.plot(bwl, obs_val, "o", color="#d95f02", ms=8, zorder=5)
+    ax.plot([], [], "o", color="#d95f02", ms=8, label="S2 observed bands")
+    ax.axvline(0.7, color="gray", lw=0.5, ls=":", alpha=0.4)
+    ax.set_xlim(0.3, 2.5); ax.set_ylim(0, 1.05)
+    vb_s2 = result_si_s2.best_fit["brine_volume_fraction"]
+    bbl_s2 = result_si_s2.best_fit["sea_ice_bubble_radius"]
+    ax.set_title(f"SB-1: FYI bare ice — S2 (B3, B8, B11)\n"
+                 f"Retrieved Vb={vb_s2:.4f}, bbl={bbl_s2:.0f} µm")
+    ax.set_xlabel("Wavelength (µm)"); ax.set_ylabel("Spectral albedo")
+    ax.legend(fontsize=8)
+
+    # Panel 2: SB-2 melt pond — observed bands + retrieved spectrum
+    ax = axes_sib[1]
+    out_retr_pond = result_pond_s2.to_outputs()
+    ax.plot(wavelengths, out_pond.albedo, "k-", lw=1.5,
+            label="True spectrum")
+    ax.plot(wavelengths, out_retr_pond.albedo, "--", color="#4575b4",
+            lw=1.5, label="Retrieved spectrum")
+    for bname, bwl in {"B3": 0.559, "B8": 0.835}.items():
+        obs_val = obs_pond_s2[list({"B3": 0.559, "B8": 0.835}.keys()).index(bname)]
+        ax.plot(bwl, obs_val, "o", color="#d95f02", ms=8, zorder=5)
+    ax.plot([], [], "o", color="#d95f02", ms=8, label="S2 observed bands")
+    ax.axvline(0.7, color="gray", lw=0.5, ls=":", alpha=0.4)
+    ax.set_xlim(0.3, 2.5); ax.set_ylim(0, 1.05)
+    d_pond_ret = result_pond_s2.best_fit["pond_depth"]
+    ax.set_title(f"SB-2: Melt pond — S2 (B3, B8)\n"
+                 f"Retrieved depth={d_pond_ret:.4f} m  (true={true_pond['pond_depth']:.2f} m)")
+    ax.set_xlabel("Wavelength (µm)"); ax.legend(fontsize=8)
+
+    # Panel 3: SB-3 classification — cost per type for each of the two inputs
+    ax = axes_sib[2]
+    types_sorted = sorted(result_classify_s2.cost_per_type,
+                          key=lambda k: result_classify_s2.cost_per_type[k])
+    x = np.arange(len(types_sorted))
+    w = 0.35
+    costs_bare  = [result_classify_s2.cost_per_type[t] for t in types_sorted]
+    # Run classification on the pond obs too for comparison
+    result_pond_cls = retrieve_sea_ice(
+        observed=obs_si_s2[:2],   # B3, B8 only
+        platform="sentinel2",
+        observed_band_names=["B3", "B8"],
+        obs_uncertainty=np.array([0.02, 0.02]),
+        solzen=60, direct=1,
+    )
+    costs_pond = [result_pond_cls.cost_per_type.get(t, float("nan"))
+                  for t in types_sorted]
+    bars1 = ax.bar(x - w/2, costs_bare,  w, color="#1b7837", alpha=0.8,
+                   label="Bare ice input")
+    bars2 = ax.bar(x + w/2, costs_pond, w, color="#4575b4", alpha=0.8,
+                   label="Pond input")
+    ax.set_yscale("log")
+    ax.set_xticks(x); ax.set_xticklabels(types_sorted, rotation=20, fontsize=8)
+    ax.set_ylabel("Chi-squared residual (log scale)")
+    ax.set_title("SB-3: Classification costs (S2 band mode)\n"
+                 "Lower = better fit for that surface type")
+    ax.legend(fontsize=8)
+
+    fig_sib.tight_layout()
+    plt.show()

@@ -247,17 +247,26 @@ print("\n" + "=" * 65)
 print("SEA ICE: OPTIMISER COMPARISON")
 print("=" * 65)
 
-from biosnicar.sea_ice.emulator_configs import load_sea_ice_emulators
+from biosnicar.sea_ice.emulator_configs import (
+    load_sea_ice_emulators, SEA_ICE_EMULATOR_CONFIGS
+)
 
 si_emus  = load_sea_ice_emulators(["FYI_pond"])
 emu_pond = si_emus["FYI_pond"]
 
-TRUE_POND_DEPTH = 0.22
-TRUE_POND_PARAMS = {"pond_depth": TRUE_POND_DEPTH,
-                    "sea_ice_temperature": -5.0, "black_carbon": 1200.0}
-obs_pond = emu_pond.predict(**TRUE_POND_PARAMS, solzen=60, direct=1)
-fixed_pond = {"sea_ice_temperature": -5.0, "black_carbon": 1200.0,
-              "solzen": 60, "direct": 1}
+# Seeded random test parameters — non-round values, reproducible.
+_rng09       = np.random.default_rng(2025)
+_b9          = si_emus["FYI_pond"].bounds
+TRUE_POND_PARAMS = {k: float(_rng09.uniform((lo+hi)/2 - 0.4*(hi-lo),
+                                             (lo+hi)/2 + 0.4*(hi-lo)))
+                   for k, (lo, hi) in _b9.items() if k not in ("solzen", "direct")}
+TRUE_POND_PARAMS["solzen"] = 60; TRUE_POND_PARAMS["direct"] = 1
+TRUE_POND_DEPTH = TRUE_POND_PARAMS["pond_depth"]
+
+# Generate observation from the FORWARD MODEL — not the emulator.
+_run_kw = SEA_ICE_EMULATOR_CONFIGS["FYI_pond"]["transform_fn"](TRUE_POND_PARAMS)
+obs_pond = np.array(run_model(**_run_kw).albedo)
+fixed_pond = {k: v for k, v in TRUE_POND_PARAMS.items() if k != "pond_depth"}
 
 print(f"\n  True pond_depth = {TRUE_POND_DEPTH} m")
 print(f"  {'Method':25s}  {'Time (s)':>9}  {'Cost':>10}  {'Depth (m)':>10}  {'Error':>8}  {'Converged':>10}")
@@ -322,3 +331,56 @@ print()
 print("  Key constraint: brine_volume_fraction and sea_ice_bubble_radius")
 print("  both affect NIR albedo — retrieve one at a time unless using MCMC")
 print("  or strong regularization.")
+
+if PLOT:
+    import matplotlib.pyplot as plt
+
+    wavelengths = np.arange(0.205, 4.999, 0.01)
+
+    # ── Sea ice: method comparison figure ─────────────────────────────────
+    # Two panels: (1) convergence and accuracy summary table as a visual,
+    # (2) obs vs retrieved spectrum for each method.
+
+    fig_si09, axes_si09 = plt.subplots(1, 2, figsize=(13, 4))
+
+    method_labels = list(si_results.keys())
+    method_colors = {"L-BFGS-B": "#2ca02c",
+                     "Nelder-Mead": "#ff7f0e",
+                     "differential_evolution": "#1f77b4"}
+
+    # Panel 1: retrieved pond depth + cost for each method
+    ax = axes_si09[0]
+    x = np.arange(len(method_labels))
+    depths = [si_results[m].best_fit["pond_depth"] for m in method_labels]
+    costs  = [si_results[m].cost for m in method_labels]
+    bar_c  = [method_colors[m] for m in method_labels]
+    bars = ax.bar(x, depths, color=bar_c, alpha=0.85)
+    ax.axhline(TRUE_POND_DEPTH, color="k", lw=1.5, ls="--",
+               label=f"True depth = {TRUE_POND_DEPTH} m")
+    for i, (bar, cost) in enumerate(zip(bars, costs)):
+        ax.text(bar.get_x() + bar.get_width() / 2,
+                bar.get_height() + 0.003,
+                f"cost={cost:.1e}", ha="center", va="bottom", fontsize=7.5)
+    ax.set_xticks(x); ax.set_xticklabels(method_labels, fontsize=9)
+    ax.set_ylabel("Retrieved pond depth (m)")
+    ax.set_ylim(0, TRUE_POND_DEPTH * 1.3)
+    ax.set_title("Sea ice: pond depth retrieval by method\n"
+                 "(FYI_pond emulator, fixed T and BC)")
+    ax.legend(fontsize=8)
+
+    # Panel 2: obs vs retrieved spectra for each method
+    ax = axes_si09[1]
+    ax.plot(wavelengths, obs_pond, "k-", lw=1.8, label="Observed (truth)", zorder=5)
+    for method, r in si_results.items():
+        ax.plot(wavelengths, r.predicted_albedo, "--",
+                color=method_colors[method], lw=1.3, alpha=0.85,
+                label=f"{method} (depth={r.best_fit['pond_depth']:.4f} m)")
+    ax.axvline(0.7, color="gray", lw=0.5, ls=":", alpha=0.4)
+    ax.set_xlim(0.3, 2.5); ax.set_ylim(0, 0.55)
+    ax.set_xlabel("Wavelength (µm)"); ax.set_ylabel("Spectral albedo")
+    ax.set_title("Retrieved spectra — all methods agree\n"
+                 "(differences are sub-pixel; all converge to same solution)")
+    ax.legend(fontsize=8)
+
+    fig_si09.tight_layout()
+    plt.show()

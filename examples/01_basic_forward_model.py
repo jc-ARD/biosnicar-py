@@ -9,7 +9,7 @@ import numpy as np
 
 from biosnicar import run_model
 
-PLOT = False
+PLOT = True
 
 # ======================================================================
 # Example 1: Run with all defaults
@@ -34,7 +34,7 @@ print(f"  BBA (solzen=50, rds=1000):  {outputs.BBA:.4f}")
 print("\n=== Example 3: Black carbon and glacier algae ===\n")
 outputs_clean = run_model(solzen=50, rds=1000)
 outputs_dirty = run_model(
-    solzen=50,
+    solzen=55,
     rds=1000,
     black_carbon=5000,  # ppb
     glacier_algae=50000,  # cells/mL
@@ -61,7 +61,7 @@ print(f"  5-layer BBA:                {outputs.BBA:.4f}")
 # Example 5: Access full spectral output
 # ======================================================================
 print("\n=== Example 5: Spectral output ===\n")
-outputs = run_model(solzen=50, rds=500)
+outputs = run_model(solzen=55, rds=500, layer_type=1)
 albedo = np.array(outputs.albedo)
 wavelengths = np.arange(0.205, 4.999, 0.01)
 
@@ -75,6 +75,8 @@ print(
     f"  Max albedo:                 {albedo.max():.4f} at {wavelengths[albedo.argmax()]:.2f} um"
 )
 
+print(f"  Albedo array length:        {len(albedo)}")
+
 if PLOT:
     import matplotlib.pyplot as plt
 
@@ -82,7 +84,7 @@ if PLOT:
     ax.plot(wavelengths, albedo)
     ax.set_xlabel("Wavelength (um)")
     ax.set_ylabel("Albedo")
-    ax.set_xlim(0.2, 2.5)
+    ax.set_xlim(0.2, 2)
     ax.set_ylim(0, 1.05)
     ax.set_title("Spectral albedo (solzen=50, rds=500)")
     fig.tight_layout()
