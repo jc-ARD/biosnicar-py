@@ -130,10 +130,13 @@ class TestOpenWaterClassification:
             assert not sig.melt_pond_present
 
     def test_bright_ice_not_misclassified_as_water(self):
-        emus = load_sea_ice_emulators()
-        obs = emus["FYI_snow"].predict(
-            tau_snow=500, snow_grain_radius=300,
-            sea_ice_temperature=-15, black_carbon=100, solzen=60, direct=1,
-        )
+        from biosnicar.drivers.run_model import run_model
+
+        obs = np.asarray(run_model(
+            **SEA_ICE_EMULATOR_CONFIGS["FYI_snow"]["transform_fn"](dict(
+                tau_snow=500, snow_grain_radius=300,
+                sea_ice_temperature=-15, black_carbon=100, solzen=60, direct=1,
+            ))
+        ).albedo)
         result = retrieve_sea_ice(observed=obs, solzen=60, direct=1)
         assert result.surface_type != "open_water"

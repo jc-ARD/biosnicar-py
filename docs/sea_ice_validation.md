@@ -288,7 +288,37 @@ at-bound fractions (34–42 %) are log-sampled near-zero truths retrieving at th
 correct behaviour, not failure.  These identifiability limits are the quantitative basis for the
 `known_month` priors and the quality-flag system.
 
-## 10. Recommended next steps
+## 10. Train/test independence (leakage audit)
+
+All favourable retrieval numbers were checked against training-data recycling:
+
+- **Seeds are disjoint by construction**: emulator training uses LHS seed 42;
+  the emulator-accuracy holdout uses seed 777; the parameter-retrieval suite
+  uses seed 2026.  Verified numerically: zero duplicated parameter points; the
+  nearest training sample to any holdout point is ≥0.016 away in the unit
+  hypercube (interpolation regime — the operational use case — never
+  memorisation).
+- **Selection bias ruled out**: the promoted FYI_bare emulator was *chosen*
+  using the seed-777 holdout, so it was re-scored on a fresh confirmation
+  holdout (seed 31337, 2000 forward-model spectra, used for no prior
+  decision): R² 0.99855, spectral MAE 0.00223, BBA MAE 0.00254 — statistically
+  identical to the selection-holdout values (0.99849 / 0.00225 / 0.00230).
+- **No emulator-generated test observations**: every test and validation
+  script generates observations via the forward model
+  (``transform_fn → run_model``), never via ``emulator.predict()`` — so
+  residuals always include genuine emulator approximation error.  (The
+  analytical ``open_water`` model has no training data; it *is* its own
+  forward model.)
+- **Field validation is fully independent**: SHEBA (Grenfell & Light 2007) and
+  Morassutti (1995) observations share nothing with the synthetic training
+  pipeline.
+- Remaining caveat: synthetic validations use the *same forward model* for
+  generation and inversion (the "inverse crime" in the inversion literature),
+  and E1 adds no observation noise — those numbers measure identifiability
+  under perfect physics, which is why the independent field validation above
+  is the headline evidence.
+
+## 11. Recommended next steps
 
 1. **Always supply `known_month` to `retrieve_sea_ice()`** for field observations where the date is known — it is the single most impactful parameter for summer classification accuracy.
 2. **Pair ALBV + ALBI** (VIS + IR) spectra to extend classification to 1100–2000 nm.  Per-emulator band masks (C2) now handle SWIR selectively: bare-ice types classify on 400–1000 nm, snow/pond/water/young-ice on 400–2500 nm.

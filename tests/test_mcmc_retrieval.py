@@ -15,13 +15,17 @@ POND_FILE = Path(SEA_ICE_EMULATOR_CONFIGS["FYI_pond"]["emulator_file"])
 
 @pytest.mark.skipif(not POND_FILE.exists(), reason="FYI_pond emulator not built")
 def test_mcmc_single_type_posterior():
+    from biosnicar.drivers.run_model import run_model
     from biosnicar.emulator import Emulator
 
     emu = Emulator.load(POND_FILE)
     truth = dict(pond_depth=0.25, sea_ice_temperature=-4.0,
                  black_carbon=100.0, solzen=60, direct=1)
+    # Observation from the FORWARD MODEL, never the emulator — residuals
+    # include real emulator approximation error (no train/test recycling).
+    fwd = run_model(**SEA_ICE_EMULATOR_CONFIGS["FYI_pond"]["transform_fn"](truth))
     rng = np.random.default_rng(3)
-    obs = np.clip(emu.predict(**truth) + rng.normal(0, 0.005, 480), 0, 1)
+    obs = np.clip(np.asarray(fwd.albedo) + rng.normal(0, 0.005, 480), 0, 1)
 
     result = retrieve_sea_ice(
         observed=obs,

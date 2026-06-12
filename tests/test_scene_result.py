@@ -151,15 +151,20 @@ class TestExports:
 class TestBatchRetrieval:
     @pytest.fixture(scope="class")
     def scene(self):
+        from biosnicar.drivers.run_model import run_model
+
         ow = OpenWaterModel()
         fleet = load_sea_ice_emulators(["FYI_pond"])
         fleet["open_water"] = ow
         rng = np.random.default_rng(11)
         water = ow.predict(solzen=60, wind_speed_ms=4.0)
-        pond = fleet["FYI_pond"].predict(
-            pond_depth=0.25, sea_ice_temperature=-4, black_carbon=100,
-            solzen=60, direct=1,
-        )
+        # forward model, not the emulator, generates the pond observation
+        pond = np.asarray(run_model(
+            **SEA_ICE_EMULATOR_CONFIGS["FYI_pond"]["transform_fn"](dict(
+                pond_depth=0.25, sea_ice_temperature=-4, black_carbon=100,
+                solzen=60, direct=1,
+            ))
+        ).albedo)
         pixels = []
         for i in range(10):
             base = water if i < 5 else pond
