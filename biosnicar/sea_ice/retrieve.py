@@ -235,14 +235,15 @@ def _band_centers_um(platform):
 
 def _classification_cost(fit, observed, mask_name, platform,
                          observed_band_names, obs_uncertainty,
-                         wavelength_mask, regularization, emulator):
-    """Chi-squared used to *rank* surface types (not to fit parameters).
+                         wavelength_mask, regularization):
+    """Rank-and-diagnose metrics for one fitted surface type.
 
-    Applies the emulator's classification band mask, rescaling the masked
-    sum of squares to the full observation band count so costs remain
-    comparable across emulators with different masks.  The Gaussian prior
-    penalty is included, matching the fitting cost, so seasonal priors keep
-    steering classification.
+    Returns ``(cost, rms)``: the classification chi-squared (band-masked,
+    rescaled to the full observation band count so costs remain comparable
+    across emulators with different masks, plus the Gaussian prior penalty
+    so seasonal priors keep steering classification) and the *unweighted*
+    RMS albedo residual over the observation, which is scale-free and feeds
+    the POOR_FIT quality flag.
     """
     observed = np.asarray(observed, dtype=float)
 
@@ -256,6 +257,7 @@ def _classification_cost(fit, observed, mask_name, platform,
             [getattr(band_result, b) for b in observed_band_names]
         )
         residual = predicted - observed
+        rms = float(np.sqrt(np.mean(residual ** 2)))
         if obs_uncertainty is not None:
             residual = residual / np.asarray(obs_uncertainty, dtype=float)
         sel = np.ones(len(observed), dtype=bool)
@@ -275,6 +277,7 @@ def _classification_cost(fit, observed, mask_name, platform,
         base = np.isfinite(observed)
         if wavelength_mask is not None:
             base &= np.asarray(wavelength_mask, dtype=bool)
+        rms = float(np.sqrt(np.mean(residual[base] ** 2))) if base.any() else np.inf
         if obs_uncertainty is not None:
             unc = np.asarray(obs_uncertainty, dtype=float)
             residual = np.where(base, residual / unc, 0.0)
@@ -291,7 +294,7 @@ def _classification_cost(fit, observed, mask_name, platform,
         for name, (mu, sigma) in regularization.items():
             if name in fit.best_fit:
                 cost += ((fit.best_fit[name] - mu) / sigma) ** 2
-    return cost
+    return cost, rms
 
 
 # ── retrieve_sea_ice ─────────────────────────────────────────────────────────
@@ -404,6 +407,25 @@ def retrieve_sea_ice(
 
     observed = np.asarray(observed, dtype=float)
 
+    # Non-finite handling: resampled field spectra legitimately carry NaN
+    # outside instrument coverage — fold them into the wavelength mask so
+    # the fitting cost (which does not mask NaN itself) stays finite.
+    finite = np.isfinite(observed)
+    if not finite.all():
+        if platform is not None:
+            raise ValueError(
+                "observed contains non-finite band values — band mode "
+                "cannot mask individual bands; drop them from `observed` "
+                "and `observed_band_names` instead."
+            )
+        wavelength_mask = (
+            finite if wavelength_mask is None
+            else np.asarray(wavelength_mask, dtype=bool) & finite
+        )
+        if not wavelength_mask.any():
+            raise ValueError("observed has no finite values.")
+        observed = np.nan_to_num(observed)
+
     # Default per-band uncertainty from the platform SNR table (C3)
     if (obs_uncertainty is None and platform is not None
             and observed_band_names is not None):
@@ -439,10 +461,8 @@ def retrieve_sea_ice(
         m = int(known_month)
         if 5 <= m <= 9:      # melt season — May through September
             season_priors["sea_ice_temperature"]   = (-4.0, 3.0)   # near-melting
-            season_priors["brine_volume_fraction"] = (0.07, 0.04)  # ≈T=−5°C at S_ref=6
         elif m in (11, 12, 1, 2, 3):  # deep winter — Nov through March
             season_priors["sea_ice_temperature"]   = (-15.0, 8.0)  # well below freezing
-            season_priors["brine_volume_fraction"] = (0.03, 0.015) # cold ice
         # Apr is transitional — no prior applied
         if m in (10, 11, 12, 1, 2):  # freeze-up — young ice plausible
             season_priors["ice_thickness_cm"] = (5.0, 8.0)  # thin, not grease
@@ -464,6 +484,27 @@ def retrieve_sea_ice(
         emu_fixed = {k: v for k, v in shared_fixed.items()
                      if k in emu_params or k in ("solzen", "direct")}
 
+        # Brine volume scales with the reference salinity, so the seasonal
+        # temperature prior is translated into a per-emulator Vb prior via
+        # Cox & Weeks at that emulator's S_ref (a single shared Vb prior is
+        # wrong for MYI: Vb(T=-5) at S=2 is a third of its value at S=6).
+        emu_reg = effective_regularization
+        s_ref = cfg.get("vb_s_ref")
+        if (s_ref is not None
+                and "brine_volume_fraction" in emu_params
+                and "sea_ice_temperature" in season_priors
+                and "brine_volume_fraction" not in (regularization or {})):
+            from biosnicar.sea_ice.brine_volume import compute_brine_volume
+
+            t_mu, t_sig = season_priors["sea_ice_temperature"]
+            clip_t = lambda t: float(np.clip(t, -30.0, -2.1))  # noqa: E731
+            vb_mu = float(compute_brine_volume(s_ref, clip_t(t_mu)))
+            vb_hi = float(compute_brine_volume(s_ref, clip_t(t_mu + t_sig)))
+            vb_lo = float(compute_brine_volume(s_ref, clip_t(t_mu - t_sig)))
+            emu_reg = {**effective_regularization,
+                       "brine_volume_fraction":
+                           (vb_mu, max((vb_hi - vb_lo) / 2.0, 1e-3))}
+
         try:
             fit = retrieve(
                 observed=observed,
@@ -474,7 +515,7 @@ def retrieve_sea_ice(
                 obs_uncertainty=obs_uncertainty,
                 bounds=bounds,
                 x0=x0,
-                regularization=effective_regularization or None,
+                regularization=emu_reg or None,
                 wavelength_mask=wavelength_mask,
                 method=method,
                 mcmc_walkers=mcmc_walkers,
@@ -499,16 +540,26 @@ def retrieve_sea_ice(
     # uses per-emulator band masks (cfg["band_mask"]) — parameter fitting
     # above always used the full observation.
     cost_per_type = {}
+    rms_per_type = {}
     for name, fit in all_fits.items():
         mask_name = SEA_ICE_EMULATOR_CONFIGS.get(name, {}).get("band_mask")
         try:
-            cost_per_type[name] = _classification_cost(
+            cost_per_type[name], rms_per_type[name] = _classification_cost(
                 fit, observed, mask_name, platform, observed_band_names,
                 obs_uncertainty, wavelength_mask, effective_regularization,
-                emulators[name],
             )
-        except Exception:  # noqa: BLE001 — fall back to the fitting cost
-            cost_per_type[name] = fit.cost
+        except Exception as exc:  # noqa: BLE001
+            # Excluded rather than ranked on the (differently scaled)
+            # fitting cost, which would corrupt the comparison.
+            import warnings
+            warnings.warn(
+                f"retrieve_sea_ice: classification cost failed for "
+                f"'{name}' — excluded from ranking ({exc})",
+                RuntimeWarning, stacklevel=2,
+            )
+    if not cost_per_type:  # all failed — fall back to fitting costs
+        cost_per_type = {n: f.cost for n, f in all_fits.items()}
+        rms_per_type = {n: float("inf") for n in all_fits}
     ranked = sorted(cost_per_type.items(), key=lambda kv: kv[1])
     winner_name, best_cost = ranked[0]
     winner_fit = all_fits[winner_name]
@@ -525,12 +576,16 @@ def retrieve_sea_ice(
 
     winner_params = dict(winner_fit.best_fit)
     # Physical snow depth is derived from the (tau_snow, grain_radius)
-    # parameterisation — see _transform_fyi_snow.
-    if "tau_snow" in winner_params and "snow_grain_radius" in winner_params:
-        winner_params["snow_depth"] = float(
-            winner_params["tau_snow"]
-            * winner_params["snow_grain_radius"] * 1e-6
+    # parameterisation, clipped identically to _transform_fyi_snow so the
+    # reported depth matches what the forward model actually saw.
+    if "tau_snow" in winner_params:
+        grain = winner_params.get(
+            "snow_grain_radius", shared_fixed.get("snow_grain_radius")
         )
+        if grain is not None:
+            winner_params["snow_depth"] = float(
+                np.clip(winner_params["tau_snow"] * grain * 1e-6, 0.003, 1.5)
+            )
     # Young ice is retrieved in cm (log conditioning) — derive metres.
     if "ice_thickness_cm" in winner_params:
         winner_params["ice_thickness"] = winner_params["ice_thickness_cm"] / 100.0
@@ -539,6 +594,7 @@ def retrieve_sea_ice(
 
     flags = compute_quality_flags(
         cost=best_cost,
+        rms_residual=rms_per_type.get(winner_name, float("inf")),
         confidence=min(confidence, 1.0),
         converged=winner_fit.converged,
         parameters=dict(winner_fit.best_fit),

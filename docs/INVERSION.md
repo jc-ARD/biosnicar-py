@@ -683,14 +683,24 @@ result = retrieve_sea_ice(
 
 | Season | Months | `sea_ice_temperature` prior | `brine_volume_fraction` prior | Effect |
 |---|---|---|---|---|
-| Melt season | 5–9 | (−4°C, σ=3°C) | (0.07, σ=0.04) | Prevents T < −10°C; rules out unphysical FYI_snow solutions. **Excludes `young_ice` from the candidate fleet** (physically impossible in summer) |
-| Deep winter | 11–3 | (−15°C, σ=8°C) | (0.03, σ=0.015) | Prevents near-melting temperatures in winter |
+| Melt season | 5–9 | (−4°C, σ=3°C) | derived per type | Prevents T < −10°C; rules out unphysical FYI_snow solutions. **Excludes `young_ice` from the candidate fleet** (physically impossible in summer) |
+| Deep winter | 11–3 | (−15°C, σ=8°C) | derived per type | Prevents near-melting temperatures in winter |
 | Freeze-up | 10–2 | October gets (−12°C, σ=6°C); Nov–Feb keep the winter prior | — | Adds `ice_thickness_cm ~ (5 cm, σ=8 cm)` prior for young ice |
 | Transitional | 4 | None | None | No prior applied |
 
 Without `known_month`, the SHEBA summer classification accuracy is 0/16; with it, 9/16.  The 7 remaining misclassifications are high-BBA dates (BBA > 0.72) where snow and bare ice are genuinely spectrally ambiguous in the 400–1000 nm window.
 
+The `brine_volume_fraction` prior is **derived per emulator** from the seasonal
+temperature prior via Cox & Weeks at that emulator's reference salinity
+(`vb_s_ref`: 6 psu for FYI_bare, 2 psu for MYI_bare) — brine volume scales with
+salinity, so a single shared prior would systematically penalise MYI.
+
 Caller-supplied `regularization` overrides these priors on a key-by-key basis.
+
+> **MCMC note:** parameters optimised in log10(x+1) space are *sampled* in that
+> space with uniform bounds, which implies a non-uniform (1/(x+1)) prior in
+> linear space.  For most parameters the likelihood dominates; be aware of it
+> when posteriors are weakly constrained.
 
 > **Use 400–1000 nm only for summer bare ice classification.**  Adding SWIR data (1100–2000 nm) reduces accuracy from 100% to 42% because the white-ice SWIR signature overlaps with coarse snow, reintroducing the ambiguity that `known_month` eliminates in the VIS/NIR window.  Always restrict the `wavelength_mask` to 400–1000 nm for summer observations unless you have a specific reason to include SWIR.
 

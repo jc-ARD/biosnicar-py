@@ -196,7 +196,7 @@ Every retrieval carries a `uint8` bitmask
 
 | Flag | Bit | Meaning | Typical action |
 |---|---|---|---|
-| `poor_fit` | 0x01 | cost > 0.05 — no candidate explains the spectrum | inspect: mixed pixel, cloud, unmodelled surface |
+| `poor_fit` | 0x01 | unweighted RMS albedo residual > 0.03 — no candidate explains the spectrum (scale-free across spectral/band modes and any uncertainty weighting) | inspect: mixed pixel, cloud, unmodelled surface |
 | `low_confidence` | 0x02 | confidence < 0.20 | accept type cautiously, check `cost_per_type` |
 | `at_bounds` | 0x04 | a parameter within 1% of its training bound | parameter value is a limit, not an estimate |
 | `spectrally_ambiguous` | 0x08 | best and 2nd-best cost within 10% | both candidate types are plausible |
@@ -312,7 +312,7 @@ takes seconds.
 | Spring snow classification | SHEBA Grenfell & Light (2007): 6/7 full-spectrum, 7/7 S2/L8 band mode |
 | Summer bare ice classification | SHEBA: 16/16 full-spectrum with `known_month`; 14/16 band mode |
 | Melt pond depth | Morassutti (1995): 77% classification over 504 records; depth accuracy rises from ~7% (<5 cm) to ~94% (>30 cm) |
-| Young ice albedo vs thickness | Grenfell & Maykut (1977) Table 3: all checkpoints within ±0.03 (two-stream slab, frazil scattering 1.5 m⁻¹) |
+| Young ice albedo vs thickness | Grenfell & Maykut (1977) Table 3: all checkpoints within ±0.03 (two-stream slab, frazil scattering 3.0 m⁻¹) |
 | Open water albedo | Fresnel/Cox & Munk physics: BBA 0.02 (SZA 20°) → 0.07 (60°) → ~0.3 (80°, calm); wind darkens high-SZA water |
 | Emulator fidelity | FYI_bare held-out spectral R² 0.9985, BBA MAE 0.0023 (2000 forward-model spectra) |
 | Parameter identifiability | Synthetic validation, seed 2026 — see §3 |

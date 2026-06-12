@@ -207,7 +207,7 @@ def map_to_wmo(result) -> WMOIceClass:
             desc = "Ice surface, shallow melt ponds forming (depth < 10 cm)"
         elif depth < 0.30:
             melt = "peak-melt"
-            desc = f"Ice surface, established melt ponds (depth ≈ {depth:.0%} m)"
+            desc = f"Ice surface, established melt ponds (depth ≈ {depth * 100:.0f} cm)"
         else:
             melt = "peak-melt"
             desc = "Ice surface, deep melt ponds (depth > 30 cm) — advanced melt"

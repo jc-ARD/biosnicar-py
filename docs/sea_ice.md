@@ -134,12 +134,14 @@ equations analytically over the ocean boundary:
   RI (Picard 2016) and liquidus brine (Cox & Weeks brine volume from bulk T, S
   — new ice is *not* desalinated, S = 10–35 psu).
 - **Scattering** from frazil/congelation crystal boundaries: a constant
-  S = 1.5 m⁻¹, calibrated so the BBA-vs-thickness curve matches
+  S = 3.0 m⁻¹, calibrated so the BBA-vs-thickness curve matches
   Grenfell & Maykut (1977) Table 3 within ±0.03 (this coefficient is the
   least-constrained quantity in the model — G&M report extinction at only a
   few wavelengths).
-- **Air–ice Fresnel** reflection from the spectral complex RI of ice
-  (solar-zenith-dependent for direct beam; hemispheric integral for diffuse).
+- **Air–ice Fresnel** interface: external reflectance at the illumination
+  geometry for the downwelling beam; the diffuse upwelling flux from the slab
+  sees the interface from below, where total internal reflection gives an
+  internal diffuse reflectance ≈0.45 (R_int = 1 − (1 − R_dif)/n²).
 
 A pure Beer–Lambert slab with constant surface reflectance *cannot* reproduce
 the observed albedo growth with thickness (it decays toward bare Fresnel as
@@ -161,6 +163,14 @@ non-zero only in the blue/green. Typical BBA: 0.02 at SZA 20°, 0.06–0.07 at
 (`OpenWaterModel`) and joins the retrieval fleet without training data.
 
 ## Known approximations and their consequences
+
+### Brine parameterisation (all sea-ice layer types)
+
+| Approximation | Effect | When it matters |
+|---|---|---|
+| Linear liquidus S_b = −18.7·T (capped at 250 psu) | Overestimates brine salinity below ≈−8 °C vs the true sub-linear liquidus (+31% at −10 °C) | Cold-ice brine absorption; partially absorbed into emulator training |
+| CW83 gas-free brine volume + separate density-balance air fraction | ~5% brine-volume overestimate vs the bulk-density-consistent CW83 form | Cold, dense ice |
+| CW83 cold-branch polynomial clamped at −30 °C | No brine-volume change below −30 °C (polynomial validity limit) | Extreme winter T < −30 °C |
 
 ### Sea ice (layer_type=4)
 

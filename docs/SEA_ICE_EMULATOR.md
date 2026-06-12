@@ -230,15 +230,15 @@ training) in albedo space — the shipped FYI_bare emulator achieves:
 
 | Metric | Value |
 |---|---|
-| Pooled spectral R² | **0.997** |
-| Median per-spectrum R² | 0.998 |
-| Spectral MAE | 0.0026 |
-| BBA MAE | 0.0030 |
+| Pooled spectral R² | **0.998** |
+| Spectral MAE | 0.0021 |
+| BBA MAE | 0.0024 |
+| Max spectral error | 0.46 |
 
-A 60,000-sample retrain (audit experiment `exp1`, now the shipped emulator) improves this
-further (R² 0.9985, BBA MAE 0.0023, max spectral error 0.54 → 0.51) — confirmed on a second,
-never-before-used holdout (seed 31337: R² 0.99855, BBA MAE 0.0025), ruling out selection bias
-from choosing the winning experiment on the first holdout.  A rho_DL/brine-volume Jacobian collinearity analysis
+(Values for the shipped 60,000-sample emulator after the physics-audit rebuild — cold-branch
+Cox & Weeks fix, brine salinity/density cap — re-measured on a regenerated 2000-spectrum
+holdout.  The original audit showed the 30k→60k upgrade halves BBA MAE; the 60k choice was
+confirmed on a second, never-before-used holdout, ruling out selection bias.)  A rho_DL/brine-volume Jacobian collinearity analysis
 found the two parameters separable (mean |cos| = 0.37) — no further reparameterisation is needed.
 Audit script: `scripts/experiments/fyi_bare_audit.py`.
 

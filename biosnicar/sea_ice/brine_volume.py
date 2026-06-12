@@ -14,8 +14,9 @@ import numpy as np
 _F1_WARM = [-4.732, -22.45, -0.6397, -0.01074]    # -22.9 <= T <= -2 °C
 _F2_WARM = [0.08903, -0.01763, -5.330e-4, -8.801e-6]
 
-_F1_COLD = [9.899, 1.6423, 0.07399, 1.021e-3]      # -44 <= T < -22.9 °C
-_F2_COLD = [0.08547, -0.01235, -1.271e-4, -2.547e-7]
+# Cox & Weeks (1983) Table 3 cold-range coefficients (-30 <= T < -22.9 °C).
+_F1_COLD = [9899.0, 1309.0, 55.27, 0.7160]
+_F2_COLD = [8.547, 1.089, 4.518e-2, 5.819e-4]
 
 
 def _poly(coeffs, T):
@@ -69,11 +70,20 @@ def compute_brine_volume(salinity_psu, temperature_C):
         if not np.any(mask):
             continue
         Tm = T[mask]
+        # The CW83 cold polynomial is only fitted to -30 °C; extrapolating
+        # the cubic below that is unstable, so clamp.
+        if f1c is _F1_COLD:
+            Tm = np.maximum(Tm, -30.0)
         Sm = S[mask] if S.shape == T.shape else S
         F1 = _poly(f1c, Tm)
         F2 = _poly(f2c, Tm)
         rho_i = 0.917 - 1.403e-4 * Tm
         denom = F1 - rho_i * Sm * F2
+        if np.any(denom <= 0):
+            raise RuntimeError(
+                "Cox & Weeks denominator non-positive — outside the "
+                "polynomial validity range."
+            )
         nu_b[mask] = (Sm * rho_i) / denom
 
     nu_b = np.clip(nu_b, 0.0, 1.0)
@@ -131,10 +141,12 @@ def invert_brine_volume(brine_volume_fraction, salinity_psu,
 def brine_salinity_at_temp(temperature_C):
     """Approximate brine salinity (psu) at equilibrium from temperature.
 
-    Uses the linear liquidus approximation S_b ≈ -18.7 * T (°C).
-    Valid for -44 ≤ T ≤ -2 °C.  Returns psu.
+    Uses the linear liquidus approximation S_b ≈ -18.7 * T (°C), capped at
+    250 psu (≈ -13 °C): the linear form increasingly overestimates brine
+    salinity below about -8 °C (the true liquidus is strongly sub-linear)
+    and uncapped values produce unphysical brine densities.  Returns psu.
     """
-    return -18.7 * np.asarray(temperature_C, dtype=float)
+    return np.minimum(-18.7 * np.asarray(temperature_C, dtype=float), 250.0)
 
 
 def brine_density(temperature_C):

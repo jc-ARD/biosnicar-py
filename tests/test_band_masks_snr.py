@@ -45,12 +45,13 @@ class TestClassificationCost:
         predicted = observed.copy()
         predicted[WVL > 1.2] += 0.2  # SWIR-only error
         fit = _FakeFit(predicted)
-        c_vis = _classification_cost(fit, observed, "vis_only", None, None,
-                                     None, None, None, None)
-        c_swir = _classification_cost(fit, observed, "vis_swir", None, None,
-                                      None, None, None, None)
+        c_vis, _ = _classification_cost(fit, observed, "vis_only", None, None,
+                                        None, None, None)
+        c_swir, rms = _classification_cost(fit, observed, "vis_swir", None,
+                                           None, None, None, None)
         assert c_vis == pytest.approx(0.0)
         assert c_swir > 1.0
+        assert rms > 0  # unweighted RMS reported alongside the cost
 
     def test_uniform_residual_mask_invariant(self):
         # Rescaling makes a spectrally-flat residual cost identical
@@ -59,7 +60,7 @@ class TestClassificationCost:
         fit = _FakeFit(observed + 0.01)
         costs = [
             _classification_cost(fit, observed, m, None, None, None, None,
-                                 None, None)
+                                 None)[0]
             for m in (None, "vis_only", "vis_swir")
         ]
         assert costs[0] == pytest.approx(costs[1], rel=1e-9)
@@ -68,8 +69,8 @@ class TestClassificationCost:
     def test_regularization_penalty_included(self):
         observed = np.full(480, 0.5)
         fit = _FakeFit(observed.copy(), best_fit={"sea_ice_temperature": -25.0})
-        c = _classification_cost(fit, observed, None, None, None, None, None,
-                                 {"sea_ice_temperature": (-4.0, 3.0)}, None)
+        c, _ = _classification_cost(fit, observed, None, None, None, None,
+                                     None, {"sea_ice_temperature": (-4.0, 3.0)})
         assert c == pytest.approx(49.0)
 
     def test_band_mode_vis_only(self):
@@ -78,13 +79,13 @@ class TestClassificationCost:
         predicted = np.full(480, 0.5)
         predicted[WVL > 1.2] = 0.8  # corrupts B11 only
         fit = _FakeFit(predicted, flx_slr=flx)
-        c_vis = _classification_cost(
+        c_vis, _ = _classification_cost(
             fit, observed, "vis_only", "sentinel2", ["B3", "B11"],
-            None, None, None, None,
+            None, None, None,
         )
-        c_all = _classification_cost(
+        c_all, _ = _classification_cost(
             fit, observed, "vis_swir", "sentinel2", ["B3", "B11"],
-            None, None, None, None,
+            None, None, None,
         )
         assert c_vis < c_all
 
@@ -92,9 +93,9 @@ class TestClassificationCost:
         observed = np.full(480, 0.5)
         observed[WVL > 2.5] = np.nan
         fit = _FakeFit(np.full(480, 0.51))
-        c = _classification_cost(fit, observed, "vis_swir", None, None,
-                                 None, None, None, None)
-        assert np.isfinite(c)
+        c, rms = _classification_cost(fit, observed, "vis_swir", None, None,
+                                      None, None, None)
+        assert np.isfinite(c) and np.isfinite(rms)
 
 
 class TestPlatformSNR:

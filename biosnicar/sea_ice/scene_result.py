@@ -189,6 +189,9 @@ class SeaIceSceneResult:
         stack.attrs["long_name"] = variables
         stack = stack.rio.write_crs(self.crs)
         stack = stack.rio.write_transform(self.transform)
+        # Float bands carry NaN at no-data pixels; tag it so GIS tools mask
+        # them.  (surface_type_code additionally uses 255 — see class docs.)
+        stack = stack.rio.write_nodata(np.nan)
         stack.rio.to_raster(path, compress=compress)
 
     def to_h3_geojson(self, path: str, resolution: int = 8,

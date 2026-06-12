@@ -80,29 +80,6 @@ DEFAULT_BOUNDS = {
     "ocean_albedo":          (0.03,  0.08),
 }
 
-DEFAULT_X0 = {
-    # Glacier / terrestrial ice
-    "rds": 1000.0,
-    "rho": 500.0,
-    "solzen": 50.0,
-    "direct": 1,
-    "black_carbon": 100.0,
-    "snow_algae": 10000.0,
-    "glacier_algae": 100.0,
-    "dust": 100.0,
-    "ssa": 2.0,
-    # Sea ice
-    "brine_volume_fraction": 0.04,    # ~T=-10°C at S_ref=6 psu (FYI_bare)
-    "sea_ice_temperature":   -10.0,   # legacy
-    "sea_ice_bubble_radius": 200.0,
-    "sea_ice_salinity":      6.0,     # legacy
-    "rho_DL":                850.0,
-    "snow_depth":            0.10,
-    "tau_snow":              400.0,
-    "snow_grain_radius":     500.0,
-    "ssl_grain_radius":      2000.0,
-    "pond_depth":            0.15,
-}
 
 
 def retrieve(
@@ -164,7 +141,8 @@ def retrieve(
     bounds : dict, optional
         ``{param_name: (lo, hi)}``.  Overrides :data:`DEFAULT_BOUNDS`.
     x0 : dict, optional
-        ``{param_name: value}``.  Overrides :data:`DEFAULT_X0`.
+        ``{param_name: value}``.  Default: midpoint of the active bounds
+        (log-space midpoint for log-conditioned parameters).
     regularization : dict, optional
         ``{param_name: (prior_mean, prior_sigma)}`` for Gaussian priors.
     wavelength_mask : np.ndarray of bool, optional
@@ -236,8 +214,10 @@ def retrieve(
 
     # --- Build forward function from emulator ---
     if emulator is not None and forward_fn is None:
-        if bounds is None:
-            bounds = {}
+        # Copy: bounds is filled in from the emulator below, and mutating the
+        # caller's dict would leak one emulator's training bounds into the
+        # next fleet member in retrieve_sea_ice().
+        bounds = dict(bounds) if bounds else {}
         if use_ssa:
             forward_fn = _make_ssa_emulator_fn(
                 emulator, parameters, fixed_params, _ref_rho
@@ -472,7 +452,10 @@ def _run_scipy_minimize(cost_fn, parameters, active_bounds, x0_vec,
     lo = np.array([b[0] for b in active_bounds])
     hi = np.array([b[1] for b in active_bounds])
 
-    # Enforce bounds for methods that don't support them natively
+    # Enforce bounds for methods that don't support them natively.  The
+    # Hessian below uses the unwrapped cost so finite-difference steps that
+    # cross a bound don't see the 1e20 penalty wall.
+    hessian_cost_fn = cost_fn
     if method == "Nelder-Mead":
         _inner = cost_fn
 
@@ -513,7 +496,7 @@ def _run_scipy_minimize(cost_fn, parameters, active_bounds, x0_vec,
 
     # Hessian uncertainty
     uncertainty = _hessian_uncertainty(
-        cost_fn, result.x, parameters, active_bounds
+        hessian_cost_fn, result.x, parameters, active_bounds
     )
 
     return RetrievalResult(
@@ -634,7 +617,6 @@ def _hessian_uncertainty(cost_fn, x_opt, parameters, active_bounds):
     steps = np.maximum(steps, 1e-10)
 
     hessian = np.zeros((n, n))
-    f0 = cost_fn(x_opt)
 
     for i in range(n):
         for j in range(i, n):

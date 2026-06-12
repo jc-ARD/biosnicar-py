@@ -239,17 +239,19 @@ Melt pond classification accuracy by depth: 0% for <5 cm, 35% for 5–10 cm, 80%
 ## 7. Young ice validation — Grenfell & Maykut (1977)
 
 The `young_ice` thin-slab forward model (layer_type=6, two-stream slab over ocean; frazil
-scattering coefficient calibrated at 1.5 m⁻¹) against the Grenfell & Maykut (1977) Table 3
+scattering coefficient calibrated at 3.0 m⁻¹ after the internal-reflectance audit fix — the
+upwelling flux sees the ice–air interface from below where total internal reflection makes the
+internal diffuse reflectance ≈0.45) against the Grenfell & Maykut (1977) Table 3
 albedo-vs-thickness brackets (T = −10 °C, S = 25 psu, ocean albedo 0.04, SZA 60° direct):
 
 | Thickness | WMO stage | G&M bracket | Model BBA | Within ±0.03 |
 |---|---|---|---|---|
-| 1 cm | Grease ice / frazil | 0.05–0.08 | 0.091 | ✓ (+0.011 above bracket — Fresnel + transmitted-ocean floor of a smooth slab) |
-| 3 cm | Dark nilas | 0.08–0.12 | 0.105 | ✓ in-bracket |
-| 5 cm | (Y-2 acceptance ≈0.10) | — | 0.118 | ✓ |
-| 8 cm | Light nilas | 0.10–0.18 | 0.136 | ✓ in-bracket |
-| 12 cm | Grey ice | 0.15–0.22 | 0.158 | ✓ in-bracket |
-| 30 cm | Grey-white ice | — | 0.224 | plausible |
+| 1 cm | Grease ice / frazil | 0.05–0.08 | 0.082 | ✓ (was +0.011 over before the interface fix) |
+| 3 cm | Dark nilas | 0.08–0.12 | 0.100 | ✓ in-bracket |
+| 5 cm | (Y-2 acceptance ≈0.10) | — | 0.116 | ✓ |
+| 8 cm | Light nilas | 0.10–0.18 | 0.137 | ✓ in-bracket |
+| 12 cm | Grey ice | 0.15–0.22 | 0.162 | ✓ in-bracket |
+| 30 cm | Grey-white ice | — | 0.236 | plausible |
 
 Note: a pure Beer-Lambert slab with constant surface reflectance cannot reproduce this albedo
 growth with thickness — internal backscattering must accumulate, hence the two-stream

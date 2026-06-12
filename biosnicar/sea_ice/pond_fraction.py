@@ -105,6 +105,13 @@ def blend_pond_fraction(ice: Outputs, pond: Outputs, f: float) -> Outputs:
     # Subsurface fluxes are not meaningful for a spatially mixed surface:
     # each patch has independent subsurface light fields that cannot be
     # averaged without knowing the geometric arrangement of ice and pond.
+    result.abs_slr_tot = None
+    result.abs_vis_tot = None
+    result.abs_nir_tot = None
+    result.abs_slr_btm = None
+    result.abs_vis_btm = None
+    result.abs_nir_btm = None
+    result.absorbed_flux_per_layer = None
     result.F_up = None
     result.F_dwn = None
     result.heat_rt = None

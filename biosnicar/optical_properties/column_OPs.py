@@ -409,9 +409,10 @@ def get_layer_OPs(ice, model_config):
 # bulk extinction at a few wavelengths only.  Calibrated so the thin-slab
 # BBA-vs-thickness curve matches their Table 3 brackets (dark nilas ≈
 # 0.08–0.12, light nilas ≈ 0.10–0.18, grey ice ≈ 0.15–0.22) within ±0.03;
-# grease ice (~1 cm) floors at ≈0.09 — the Fresnel + transmitted-ocean
-# limit of a smooth slab at solzen 60.
-_YOUNG_ICE_SCAT = 1.5
+# grease ice (~1 cm) sits at ≈0.08.  Recalibrated to 3.0 after the
+# internal-reflectance fix (the upward escape through the ice-air interface
+# is (1-R_int)≈0.55, not (1-R_ext)≈0.94).
+_YOUNG_ICE_SCAT = 3.0
 
 
 def _compute_young_ice_ops(thickness_m, temperature_C, salinity_psu,
@@ -463,17 +464,24 @@ def _compute_young_ice_ops(thickness_m, temperature_C, salinity_psu,
     r_slab = (1.0 - r_ocean * (a_km - b_km * coth)) / (a_km + b_km * coth - r_ocean)
     r_slab = np.clip(r_slab, 0.0, 1.0)
 
-    # Air-ice Fresnel interface
+    # Air-ice Fresnel interface.  Downwelling entry uses the external
+    # reflectance at the illumination geometry; the diffuse upwelling flux
+    # from the slab sees the interface from BELOW, where total internal
+    # reflection beyond the critical angle makes the internal diffuse
+    # reflectance ~0.45 (radiance invariance: R_int = 1 - (1 - R_dif)/n²),
+    # not the external beam value (~0.06).
+    th = np.radians(np.arange(0.0, 90.0, 1.0))
+    w = 2.0 * np.cos(th) * np.sin(th)
+    r_dif = (w.reshape(-1, 1)
+             * _fresnel_unpolarized(np.cos(th), m_ice)).sum(axis=0) / w.sum()
+    r_int = 1.0 - (1.0 - r_dif) / m_ice.real**2
     if int(direct):
         cos_i = np.array([np.cos(np.radians(float(solzen)))])
         r_f = _fresnel_unpolarized(cos_i, m_ice)[0]
     else:
-        th = np.radians(np.arange(0.0, 90.0, 1.0))
-        w = 2.0 * np.cos(th) * np.sin(th)
-        r_f = (w.reshape(-1, 1)
-               * _fresnel_unpolarized(np.cos(th), m_ice)).sum(axis=0) / w.sum()
+        r_f = r_dif
 
-    albedo = r_f + (1.0 - r_f) ** 2 * r_slab / (1.0 - r_f * r_slab)
+    albedo = r_f + (1.0 - r_f) * (1.0 - r_int) * r_slab / (1.0 - r_int * r_slab)
     return np.clip(albedo, 0.0, 1.0)
 
 

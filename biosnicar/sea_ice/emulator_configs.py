@@ -207,6 +207,7 @@ SEA_ICE_EMULATOR_CONFIGS = {
         # (T, S) replaced by brine_volume_fraction to eliminate degeneracy.
         # Vb bounds correspond to T in [-22, -2.1]°C at S_ref=FYI_BARE_S_REF=6 psu.
         # Post-hoc T recovery: T = invert_brine_volume(Vb, FYI_BARE_S_REF)
+        "vb_s_ref": FYI_BARE_S_REF,   # for seasonal brine-volume priors
         "params": {
             "brine_volume_fraction":  (0.019, 0.141),
             "sea_ice_bubble_radius":  (50.0,  1000.0),
@@ -216,7 +217,8 @@ SEA_ICE_EMULATOR_CONFIGS = {
             "direct":                 (0,     1),
         },
         "transform_fn":       _transform_fyi_bare,
-        "n_samples":          30000,
+        # 60k samples: the A1 audit showed halved BBA MAE vs 30k.
+        "n_samples":          60000,
         "hidden_layer_sizes": (256, 256, 128, 64),
         "emulator_file": str(_DATA_DIR / "sea_ice_FYI_bare_6param.npz"),
     },
@@ -266,6 +268,7 @@ SEA_ICE_EMULATOR_CONFIGS = {
         "band_mask": "vis_only",
         # (T, S) replaced by brine_volume_fraction.
         # Vb bounds correspond to T in [-22, -2.1]°C at S_ref=MYI_BARE_S_REF=2 psu.
+        "vb_s_ref": MYI_BARE_S_REF,   # for seasonal brine-volume priors
         "params": {
             "brine_volume_fraction":  (0.0065, 0.045),  # T in [-21, -2.2]°C at S=2 psu
             "sea_ice_bubble_radius":  (200.0, 2000.0),

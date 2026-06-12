@@ -92,7 +92,6 @@ _K_IONIC_DECAY     = 25.0      # e-folding scale (µm⁻¹) — Cl⁻ band zero 
 # A non-zero value was found to introduce unphysically large visible absorption
 # when extrapolated to liquidus brine salinities (100–400 psu).
 _K_VIS_ALPHA       = 0.0
-_K_TEMP_SCALE      = 2.5e-4    # k temperature correction per °C (from 0°C ref)
 
 # Cap on liquidus salinity for optical calculations.
 # Beyond ~16°C below freezing the NaCl eutectic is approached; the linear
@@ -175,9 +174,10 @@ def _salt_delta_im(S_brine: float, T_C: float,
 
     # 3. Temperature correction: water absorbs more at sub-zero temperatures
     #    in visible range (Pegau et al. 1997); effect is small in NIR
-    k_temp = _K_TEMP_SCALE * (-T_C) * k_water * vis_mask
-
-    return k_ionic + k_vis + k_temp
+    # NB: no explicit temperature correction — Pegau et al. (1997) report
+    # near-zero visible dα/dT outside narrow shoulder bands, and the term
+    # previously here had the wrong sign at <0.8% magnitude.
+    return k_ionic + k_vis
 
 
 # ---------------------------------------------------------------------------
@@ -306,7 +306,8 @@ def compute_brine_rfidx(
     n_im = np.maximum(_lut_interp_im(pts), 0.0)
 
     # If wavelengths differ from the LUT grid, fall back to direct calculation
-    if not np.allclose(wavelengths_um, WAVELENGTHS[:len(wavelengths_um)], atol=1e-4):
+    if (wavelengths_um.shape != WAVELENGTHS.shape
+            or not np.allclose(wavelengths_um, WAVELENGTHS, atol=1e-4)):
         n_re_w, n_im_w = _load_water_ri()
         f_re = interp1d(WAVELENGTHS, n_re_w, kind="linear",
                         bounds_error=False, fill_value="extrapolate")
