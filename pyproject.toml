@@ -43,6 +43,17 @@ dependencies = [
 inverse = ["scikit-learn>=1.0"]
 mcmc    = ["emcee>=3"]
 app     = ["streamlit", "plotly"]
+# Spatial batch retrieval and raster/vector export (retrieve_sea_ice_batch,
+# SeaIceSceneResult). Core retrieve_sea_ice() works without these.
+geo     = [
+    "joblib>=1.3",
+    "xarray>=2023.0",
+    "netcdf4>=1.6",
+    "rioxarray>=0.15",
+    "rasterio>=1.3",
+    "h3>=3.7",
+    "geopandas>=0.14",
+]
 dev     = ["pytest", "scikit-learn>=1.0", "emcee>=3", "streamlit", "plotly"]
 
 [project.urls]

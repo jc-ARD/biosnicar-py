@@ -44,6 +44,7 @@ from typing import Dict, List, Optional
 import numpy as np
 
 from biosnicar.inverse.result import RetrievalResult
+from biosnicar.sea_ice.scene_result import SURFACE_TYPE_CODES  # noqa: F401  (public API)
 
 
 # ── SeaIceRetrievalResult ────────────────────────────────────────────────────
@@ -407,4 +408,127 @@ def retrieve_sea_ice(
         cost_per_type=cost_per_type,
         all_fits=all_fits,
         quality_flags=flags,
+    )
+
+
+# ── Batch retrieval ──────────────────────────────────────────────────────────
+
+def _result_to_record(result: SeaIceRetrievalResult) -> dict:
+    """Reduce a retrieval result to the lightweight per-pixel record kept
+    in batch output (drops spectra and per-emulator fits)."""
+    return {
+        "surface_type": result.surface_type,
+        "confidence": float(result.confidence),
+        "cost": float(result.cost),
+        "quality_flags": int(result.quality_flags),
+        "parameters": {k: float(v) for k, v in result.parameters.items()},
+        "uncertainty": {k: float(v) for k, v in result.uncertainty.items()},
+    }
+
+
+def _retrieve_chunk(chunk_obs, emulators, kwargs):
+    """Worker: run retrieve_sea_ice on each pixel of a chunk."""
+    import warnings
+
+    records = []
+    for obs in chunk_obs:
+        if not np.all(np.isfinite(obs)):
+            records.append(None)
+            continue
+        try:
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                result = retrieve_sea_ice(observed=obs, emulators=emulators, **kwargs)
+            records.append(_result_to_record(result))
+        except Exception:  # noqa: BLE001 — one bad pixel must not kill the scene
+            records.append(None)
+    return records
+
+
+def retrieve_sea_ice_batch(
+    observed,
+    n_jobs=-1,
+    chunksize=500,
+    spatial_coords=None,
+    crs=None,
+    transform=None,
+    **kwargs,
+):
+    """Run :func:`retrieve_sea_ice` over a scene of pixels in parallel.
+
+    Parameters
+    ----------
+    observed : array-like
+        ``(N, bands)`` pixel list or ``(H, W, bands)`` image of albedo
+        spectra/band values.  Non-finite pixels are skipped (no-data).
+    n_jobs : int
+        joblib parallelism; ``-1`` uses all CPUs.
+    chunksize : int
+        Pixels per parallel job.
+    spatial_coords : array-like or None
+        ``(N, 2)`` or ``(H, W, 2)`` per-pixel (lat, lon) — required for
+        :meth:`SeaIceSceneResult.to_h3_geojson`.
+    crs : str or None
+        EPSG string (e.g. ``"EPSG:32633"``) for GeoTIFF export.
+    transform : affine.Affine or None
+        Raster affine transform for GeoTIFF export (image input only).
+    **kwargs
+        Passed through to :func:`retrieve_sea_ice` (``platform``,
+        ``solzen``, ``known_month``, ...).
+
+    Returns
+    -------
+    SeaIceSceneResult
+
+    Notes
+    -----
+    Parallelised per-pixel L-BFGS-B is practical up to ~100k pixels.  For
+    regional mosaics, the retrieval engine will be replaced by a vectorised
+    inverse network behind the same :class:`SeaIceSceneResult` interface.
+    """
+    try:
+        from joblib import Parallel, delayed
+    except ImportError:
+        raise ImportError(
+            "retrieve_sea_ice_batch requires joblib.  "
+            "Install the geo extras with:  pip install biosnicar[geo]"
+        )
+
+    from biosnicar.sea_ice.emulator_configs import SEA_ICE_EMULATOR_CONFIGS
+    from biosnicar.sea_ice.emulator_configs import load_sea_ice_emulators
+    from biosnicar.sea_ice.scene_result import SeaIceSceneResult
+
+    observed = np.asarray(observed, dtype=float)
+    if observed.ndim == 3:
+        shape = observed.shape[:2]
+        flat = observed.reshape(-1, observed.shape[2])
+    elif observed.ndim == 2:
+        shape = None
+        flat = observed
+    else:
+        raise ValueError(
+            f"observed must be (N, bands) or (H, W, bands); got {observed.shape}"
+        )
+
+    # Load the fleet once in the parent so workers don't each hit disk
+    emulators = kwargs.pop("emulators", None)
+    if emulators is None:
+        names = kwargs.pop("surface_types", None) or list(SEA_ICE_EMULATOR_CONFIGS)
+        emulators = load_sea_ice_emulators(names)
+    elif kwargs.get("surface_types") is not None:
+        keep = kwargs.pop("surface_types")
+        emulators = {k: v for k, v in emulators.items() if k in keep}
+
+    chunks = [flat[i:i + chunksize] for i in range(0, len(flat), chunksize)]
+    chunk_records = Parallel(n_jobs=n_jobs)(
+        delayed(_retrieve_chunk)(chunk, emulators, kwargs) for chunk in chunks
+    )
+    records = [r for chunk in chunk_records for r in chunk]
+
+    latlon = None
+    if spatial_coords is not None:
+        latlon = np.asarray(spatial_coords, dtype=float).reshape(-1, 2)
+
+    return SeaIceSceneResult.from_records(
+        records, shape=shape, latlon=latlon, crs=crs, transform=transform,
     )

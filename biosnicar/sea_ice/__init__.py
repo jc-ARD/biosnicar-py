@@ -25,7 +25,13 @@ Quick start::
 """
 
 from biosnicar.sea_ice.pond_fraction import blend_pond_fraction
-from biosnicar.sea_ice.retrieve import retrieve_sea_ice, SeaIceRetrievalResult
+from biosnicar.sea_ice.retrieve import (
+    retrieve_sea_ice,
+    retrieve_sea_ice_batch,
+    SeaIceRetrievalResult,
+    SURFACE_TYPE_CODES,
+)
+from biosnicar.sea_ice.scene_result import SeaIceSceneResult
 from biosnicar.sea_ice.emulator_configs import (
     SEA_ICE_EMULATOR_CONFIGS,
     load_sea_ice_emulators,
@@ -48,7 +54,10 @@ from biosnicar.sea_ice.ice_chart_mapping import (
 __all__ = [
     "blend_pond_fraction",
     "retrieve_sea_ice",
+    "retrieve_sea_ice_batch",
     "SeaIceRetrievalResult",
+    "SeaIceSceneResult",
+    "SURFACE_TYPE_CODES",
     "SEA_ICE_EMULATOR_CONFIGS",
     "load_sea_ice_emulators",
     "trained_emulator_names",
