@@ -236,6 +236,33 @@ Melt pond classification accuracy by depth: 0% for <5 cm, 35% for 5–10 cm, 80%
 
 ---
 
+## 6.3 Post-audit revalidation against field spectra (2026-06-12)
+
+After the physics/logic audit (Cox & Weeks cold-branch fix, brine caps,
+young-ice interface fix, per-emulator priors, LUT + emulator rebuilds) the
+full suite was re-run against the empirical campaigns:
+
+| Block | Data | Result |
+|---|---|---|
+| Spring snow, full spectrum | Grenfell & Light 2007 | 6/7 (the miss is 27 May classifying as FYI_summer at melt onset — flagged `poor_fit`, conf 0.38) |
+| Summer bare ice, full spectrum | Grenfell & Light 2007 | **16/16** |
+| Spring snow, S2 / L8 bands | simulated from field spectra | 7/7 / 7/7 |
+| Summer bare ice, S2 / L8 bands | simulated from field spectra | 14/16 / 13/16 |
+| Pond classification / depth ±25 % | Morassutti 1995 (120) | 76 / **29** (depth accuracy improved 27→29) |
+
+Spectral fit quality on the 23 empirical Grenfell spectra (canonical
+configuration: direct=1, noon SZA at 76°N, `known_month`): median unweighted
+RMS residual **0.0083**, spring 0.003–0.008, summer 0.005–0.038.  The three
+worst fits (RMS > 0.03: 26 Aug, 3 Sep, and the 27 May transition) all carry
+the `poor_fit` flag — the flag system identifies exactly the dates where the
+surface was transitioning between types.  Most retrievals carry `at_bounds`
+informational flags from the melt-season temperature prior pressing against
+the −5 °C FYI_snow bound and near-zero black carbon — expected saturations,
+not errors.
+
+Observed-vs-retrieved spectra figures for every date:
+`python scripts/plot_sheba_fits.py` → `figures/sheba_fits/`.
+
 ## 7. Young ice validation — Grenfell & Maykut (1977)
 
 The `young_ice` thin-slab forward model (layer_type=6, two-stream slab over ocean; frazil
