@@ -29,7 +29,10 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from biosnicar.emulator import Emulator
-from biosnicar.sea_ice.emulator_configs import SEA_ICE_EMULATOR_CONFIGS
+from biosnicar.sea_ice.emulator_configs import (
+    SEA_ICE_EMULATOR_CONFIGS,
+    trained_emulator_names,
+)
 
 
 def build_one(name: str, n_samples_override: int = None, seed: int = 42) -> None:
@@ -78,11 +81,11 @@ def main():
     parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
 
-    names = args.names or list(SEA_ICE_EMULATOR_CONFIGS)
-    unknown = [n for n in names if n not in SEA_ICE_EMULATOR_CONFIGS]
+    names = args.names or trained_emulator_names()
+    unknown = [n for n in names if n not in trained_emulator_names()]
     if unknown:
-        print(f"Unknown surface type(s): {unknown}")
-        print(f"Available: {list(SEA_ICE_EMULATOR_CONFIGS)}")
+        print(f"Unknown or analytical (no training needed) surface type(s): {unknown}")
+        print(f"Buildable: {trained_emulator_names()}")
         sys.exit(1)
 
     n_override = 2000 if args.fast else args.samples

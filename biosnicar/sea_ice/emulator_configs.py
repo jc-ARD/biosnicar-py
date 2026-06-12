@@ -20,6 +20,8 @@ Surface types
 ``FYI_summer``  Melt-season bare ice with Surface Scattering Layer (SSL + DL + IL).
 ``MYI_bare``    Bare multiyear ice (DL + IL, lower salinity, larger bubbles).
 ``FYI_pond``    Melt pond on FYI (pond water + DL + IL).
+``open_water``  Ice-free ocean (analytical Fresnel + subsurface model — no
+                training; see :mod:`biosnicar.sea_ice.open_water`).
 """
 
 from pathlib import Path
@@ -232,7 +234,25 @@ SEA_ICE_EMULATOR_CONFIGS = {
         "n_samples":     10000,
         "emulator_file": str(_DATA_DIR / "sea_ice_FYI_pond_5param.npz"),
     },
+    "open_water": {
+        "description": "Open water (ice-free) — analytical Fresnel + subsurface",
+        "params": {
+            "solzen":                 (20,    80),
+            "wind_speed_ms":          (0.0,   15.0),
+        },
+        # Analytical model — no training data, no emulator file.
+        "model_factory": "biosnicar.sea_ice.open_water:OpenWaterModel",
+    },
 }
+
+
+def trained_emulator_names():
+    """Names of surface types backed by a trained neural-network emulator.
+
+    Excludes analytical models (e.g. ``open_water``) that have no
+    training data or ``emulator_file``.
+    """
+    return [n for n, c in SEA_ICE_EMULATOR_CONFIGS.items() if "emulator_file" in c]
 
 
 def load_sea_ice_emulators(names=None):
@@ -254,6 +274,8 @@ def load_sea_ice_emulators(names=None):
         If an emulator file has not yet been built.  Run
         ``scripts/build_sea_ice_emulators.py`` to generate them.
     """
+    from importlib import import_module
+
     from biosnicar.emulator import Emulator
 
     if names is None:
@@ -261,7 +283,13 @@ def load_sea_ice_emulators(names=None):
 
     emulators = {}
     for name in names:
-        path = SEA_ICE_EMULATOR_CONFIGS[name]["emulator_file"]
+        cfg = SEA_ICE_EMULATOR_CONFIGS[name]
+        factory = cfg.get("model_factory")
+        if factory is not None:
+            mod_name, cls_name = factory.split(":")
+            emulators[name] = getattr(import_module(mod_name), cls_name)()
+            continue
+        path = cfg["emulator_file"]
         if not Path(path).exists():
             raise FileNotFoundError(
                 f"Sea ice emulator '{name}' not found at {path}.\n"

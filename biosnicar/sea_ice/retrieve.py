@@ -58,6 +58,7 @@ _SURFACE_TYPE_DESCRIPTIONS = {
     "MYI_bare":   "Multiyear ice, bare surface (desalinated, large bubbles)",
     "FYI_pond":   "Ice surface with melt ponds (any ice age)",
     "young_ice":  "Young/new ice — semi-transparent, 0.5–30 cm thick",
+    "open_water": "Open water (ice-free) — Fresnel reflection + subsurface scattering",
 }
 
 

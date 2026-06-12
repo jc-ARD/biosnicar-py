@@ -20,7 +20,10 @@ import pytest
 
 from biosnicar.emulator import Emulator
 from biosnicar.inverse.result import RetrievalResult
-from biosnicar.sea_ice.emulator_configs import SEA_ICE_EMULATOR_CONFIGS
+from biosnicar.sea_ice.emulator_configs import (
+    SEA_ICE_EMULATOR_CONFIGS,
+    trained_emulator_names,
+)
 from biosnicar.sea_ice.retrieve import SeaIceRetrievalResult, retrieve_sea_ice
 
 
@@ -104,24 +107,24 @@ class TestSeaIceEmulatorProperties:
             stored = emu500_fyi_pond.bounds[name]
             assert stored == (float(lo), float(hi))
 
-    @pytest.mark.parametrize("name", list(SEA_ICE_EMULATOR_CONFIGS))
+    @pytest.mark.parametrize("name", trained_emulator_names())
     def test_all_param_names_retrievable(self, name, fleet_all_five):
         emu = fleet_all_five[name]
         cfg = SEA_ICE_EMULATOR_CONFIGS[name]
         assert set(emu.param_names) == set(cfg["params"].keys())
 
-    @pytest.mark.parametrize("name", list(SEA_ICE_EMULATOR_CONFIGS))
+    @pytest.mark.parametrize("name", trained_emulator_names())
     def test_n_pca_components_valid_range(self, name, fleet_all_five):
         emu = fleet_all_five[name]
         assert 1 <= emu.n_pca_components <= 50
 
-    @pytest.mark.parametrize("name", list(SEA_ICE_EMULATOR_CONFIGS))
+    @pytest.mark.parametrize("name", trained_emulator_names())
     def test_hidden_layer_sizes_in_metadata(self, name, fleet_all_five):
         emu = fleet_all_five[name]
         # Metadata stores the list form of hidden_layer_sizes
         assert "hidden_layer_sizes" in emu._metadata
 
-    @pytest.mark.parametrize("name", list(SEA_ICE_EMULATOR_CONFIGS))
+    @pytest.mark.parametrize("name", trained_emulator_names())
     def test_transform_fn_name_in_metadata(self, name, fleet_all_five):
         emu = fleet_all_five[name]
         stored = emu._metadata.get("transform_fn")
@@ -702,8 +705,8 @@ class TestSeaIcePhysicsChecks:
 # ── TestBuiltEmulators ────────────────────────────────────────────────────────
 
 BUILT_EMULATORS_AVAILABLE = all(
-    Path(cfg["emulator_file"]).exists()
-    for cfg in SEA_ICE_EMULATOR_CONFIGS.values()
+    Path(SEA_ICE_EMULATOR_CONFIGS[n]["emulator_file"]).exists()
+    for n in trained_emulator_names()
 )
 
 requires_built = pytest.mark.skipif(

@@ -248,6 +248,22 @@ def map_to_wmo(result) -> WMOIceClass:
             confidence=conf,
         )
 
+    if stype == "open_water":
+        wind = params.get("wind_speed_ms", None)
+        desc = "Open water — no ice present at the observed location"
+        if wind is not None:
+            desc += f" (retrieved wind speed ≈ {wind:.1f} m/s)"
+        return WMOIceClass(
+            stage_of_development="Ice free / open water",
+            surface_description=desc,
+            melt_stage="n/a",
+            notes=(
+                "Classification applies to the observed pixel footprint only; "
+                "nearby ice concentration cannot be inferred from albedo."
+            ),
+            confidence=conf,
+        )
+
     # Unknown type
     return WMOIceClass(
         stage_of_development="Unknown",
@@ -271,6 +287,7 @@ _SIGRID3_TYPE = {
     "MYI_bare":   "SQ",     # multiyear ice
     "FYI_pond":   "SM/SN/SQ",  # pond can be on any ice type
     "young_ice":  None,     # resolved from ice_thickness — see map_to_sigrid3()
+    "open_water": "OW",     # ice free (SIGRID-3 CT=00)
 }
 
 # SIGRID-3 stage-of-melt (SG field)
@@ -329,6 +346,20 @@ def map_to_sigrid3(result) -> SIGRID3IceClass:
     elif stype == "FYI_pond":
         depth = params.get("pond_depth", 0.15)
         sg = 4 if depth >= 0.10 else 3
+
+    elif stype == "open_water":
+        return SIGRID3IceClass(
+            ice_type_code="OW",
+            stage_of_melt=None,
+            melt_pond_present=False,
+            ice_age="n/a",
+            full_code="CT=00|ice free",
+            notes=(
+                "Open water at the observed pixel.  Scene-level ice "
+                "concentration requires aggregating many pixels."
+            ),
+            confidence=conf,
+        )
 
     elif stype == "young_ice":
         # young_ice has its own code resolution — return early

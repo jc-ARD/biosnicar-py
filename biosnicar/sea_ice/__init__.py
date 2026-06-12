@@ -29,7 +29,9 @@ from biosnicar.sea_ice.retrieve import retrieve_sea_ice, SeaIceRetrievalResult
 from biosnicar.sea_ice.emulator_configs import (
     SEA_ICE_EMULATOR_CONFIGS,
     load_sea_ice_emulators,
+    trained_emulator_names,
 )
+from biosnicar.sea_ice.open_water import OpenWaterModel
 from biosnicar.sea_ice.ice_chart_mapping import (
     map_to_wmo,
     map_to_sigrid3,
@@ -44,6 +46,8 @@ __all__ = [
     "SeaIceRetrievalResult",
     "SEA_ICE_EMULATOR_CONFIGS",
     "load_sea_ice_emulators",
+    "trained_emulator_names",
+    "OpenWaterModel",
     "map_to_wmo",
     "map_to_sigrid3",
     "classification_summary",
