@@ -15,7 +15,8 @@ BioSNICAR computes 480-band spectral albedo (0.2–5.0 µm) from the physical pr
 **Key capabilities:**
 
 - **Forward model** — multi-layer ice/snow with arbitrary impurity profiles, liquid water, grain shape corrections
-- **Sea ice** — first-year and multiyear Arctic sea ice via Maxwell-Garnett brine effective medium (v0.1 MVP, `biosnicar.sea_ice`)
+- **Sea ice** — first-year/multiyear Arctic sea ice (Maxwell-Garnett brine effective medium), melt ponds, semi-transparent young ice, and open water (`biosnicar.sea_ice`)
+- **Sea ice retrieval** — classify seven surface types and retrieve their physical properties from spectra or satellite bands, with quality flags, WMO/SIGRID-3 codes, and batch scene processing ([docs/SEA_ICE_RETRIEVAL.md](docs/SEA_ICE_RETRIEVAL.md))
 - **Parameter sweeps** — Cartesian product over any input parameter, returns a pandas DataFrame
 - **Platform bands** — map spectral albedo onto 8 satellite/GCM platforms (Sentinel-2/3, Landsat 8, MODIS, CESM, MAR, HadCM3) with spectral indices
 - **Neural-network emulator** — ~50,000× faster than the full model, enabling optimisation and MCMC
@@ -194,7 +195,7 @@ outputs.plot_subsurface(show=True)
 See [docs/SUBSURFACE.md](docs/SUBSURFACE.md) and [examples/11_subsurface_light.py](examples/11_subsurface_light.py).
 
 
-## Sea ice (v0.1)
+## Sea ice
 
 The `biosnicar.sea_ice` module extends BioSNICAR to Arctic sea ice. Brine inclusions are modelled via Cox & Weeks (1983) brine volume and Maxwell-Garnett effective medium theory. Three built-in presets cover common winter conditions.
 
@@ -324,6 +325,7 @@ The default configuration is in `biosnicar/inputs.yaml`. A guide to choosing phy
 |-------|----------|
 | Full user guide | [biosnicar.vercel.app](https://biosnicar.vercel.app) |
 | **Sea ice extension** | [docs/sea_ice.md](docs/sea_ice.md) |
+| **Sea ice retrieval (end-to-end)** | [docs/SEA_ICE_RETRIEVAL.md](docs/SEA_ICE_RETRIEVAL.md) |
 | Band convolution | [docs/BANDS.md](docs/BANDS.md) |
 | Emulator | [docs/EMULATOR.md](docs/EMULATOR.md) |
 | Inversion | [docs/INVERSION.md](docs/INVERSION.md) |

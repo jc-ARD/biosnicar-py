@@ -265,13 +265,13 @@ if PLOT:
             dict(pond_depth=0.08, sea_ice_temperature=-4.0,
                  black_carbon=1200.0)).albedo),
         "Snow-covered FYI":       np.array(_fwd("FYI_snow",
-            dict(snow_depth=0.12, snow_grain_radius=400.0,
+            dict(tau_snow=300.0, snow_grain_radius=400.0,   # 0.12 m snow
                  sea_ice_temperature=-12.0, black_carbon=100.0)).albedo),
     }
     scen_colors = ["#1b7837", "#d73027", "#4575b4", "#6a3d9a"]
 
     fig2, axes2 = plt.subplots(1, 4, figsize=(18, 4), sharey=True)
-    fig2.suptitle("Multi-scenario sea ice retrieval — retrieve_sea_ice() fits all five emulators",
+    fig2.suptitle("Multi-scenario sea ice retrieval — retrieve_sea_ice() fits the full surface-type fleet",
                   fontsize=10)
     for ax, (label, obs_scen), col in zip(axes2, scenarios_si.items(), scen_colors):
         r_scen = retrieve_sea_ice(

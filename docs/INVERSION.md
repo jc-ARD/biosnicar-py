@@ -572,7 +572,7 @@ T = invert_brine_volume(result.best_fit["brine_volume_fraction"], FYI_BARE_S_REF
 
 ### retrieve_sea_ice() — classify and retrieve simultaneously
 
-When the surface type is not known in advance, `retrieve_sea_ice()` is the recommended entry point.  It fits all five sea ice emulators against the observation and classifies by the lowest chi-squared residual:
+When the surface type is not known in advance, `retrieve_sea_ice()` is the recommended entry point.  It fits all seven surface-type models (six emulators + the analytical open-water model) against the observation and classifies by the lowest band-masked chi-squared residual:
 
 ```python
 from biosnicar.sea_ice.retrieve import retrieve_sea_ice
@@ -586,7 +586,7 @@ result = retrieve_sea_ice(
 result.surface_type          # "FYI_bare", "FYI_snow", "FYI_summer", "MYI_bare", "FYI_pond"
 result.confidence            # 0-1; how decisively it outperformed the next best
 result.parameters            # {param: value} from the winning emulator
-result.cost_per_type         # {type: chi_squared} for all five
+result.cost_per_type         # {type: chi_squared} for every candidate type
 result.all_fits              # {type: RetrievalResult} for full access to each fit
 result.to_outputs()          # Outputs object with .BBA, .to_platform(), etc.
 ```

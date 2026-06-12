@@ -16,6 +16,8 @@ BioSNICAR uses a `layer_type` integer per layer to select the optical-property m
 | 2 | Solid bubbly glacier ice, no Fresnel correction | No |
 | 3 | Granular water/ice sphere mixture (slush) | No |
 | **4** | **Sea ice — brine inclusions via Maxwell-Garnett** | **Yes** |
+| **5** | **Melt pond — liquid water layer (near-pure absorption)** | No |
+| **6** | **Young ice — semi-transparent thin slab over ocean (boundary condition, bypasses the τ/ω/g pipeline)** | **Yes** |
 
 Types 1 and 2 are the same optical model (bulk ice matrix, absorption from `k_ice`, scattering from air/water bubble LUTs) — the only difference is that type 1 triggers the Fresnel surface reflection in the solver and type 2 does not. Type 3 is a different physical picture altogether: discrete spheres of ice and water in air, combined by linear volume-fraction mixing, with no effective medium theory.
 
@@ -34,13 +36,17 @@ Sea ice (`layer_type=4`) is closest to type 1 in structure — solid bulk ice wi
 - Works with the existing BioSNICAR `run_model()` API — no new classes required.
 - Fully backward-compatible: all existing terrestrial-ice functionality unchanged.
 
+### Does (added in v0.4)
+- **Young ice** (`layer_type=6`): grease ice, nilas, grey/grey-white ice 0.5–30 cm — a two-stream thin slab over a reflecting ocean (see below).
+- **Open water**: analytical Fresnel + subsurface albedo model (`biosnicar.sea_ice.open_water`).
+- **Inverse retrieval and classification**: `retrieve_sea_ice()` classifies seven surface types and retrieves their parameters with uncertainties and quality flags — see [SEA_ICE_RETRIEVAL.md](SEA_ICE_RETRIEVAL.md).
+
 ### Doesn't (deferred to later versions)
-- **Sea-ice algae** (v0.3): algal blooms in sea ice are not in the impurity database.
-- **Salty snow** (v0.3): snow on sea ice is treated as fresh.
-- **Pond bottom darkening** (v0.3): melt pond model assumes a white-ice bottom; real ponds are darkened by algae, sediment, and dissolved organic matter.
-- **Vertical T/S profiles** (v0.3): each layer uses a single T and S value.
-- **Antarctic-specific tuning** (v0.3): validation uses Arctic data only.
-- **Inverse retrieval** (v1.0): parameter retrieval from observations is not yet implemented.
+- **Sea-ice algae** (v0.5): algal blooms in sea ice are not in the impurity database.
+- **Salty snow** (v0.5): snow on sea ice is treated as fresh.
+- **Vertical T/S profiles** (v0.5): each layer uses a single T and S value.
+- **Antarctic-specific tuning** (v0.5): validation uses Arctic data only.
+- **Pancake ice / ice rind** (young-ice spec out-of-scope): require lateral-scattering treatment.
 
 ---
 
@@ -115,6 +121,44 @@ Sea ice also contains air bubbles whose scattering dominates the NIR optical dep
 Scattering coefficients are looked up from the existing `bubbly_air.npz` LUT (pre-computed Mie theory for air bubbles in pure ice). *MVP approximation*: the effective-medium correction to bubble scattering (host RI changes slightly with brine content) is < 5% and is neglected.
 
 ---
+
+### Young ice (layer_type=6) — thin-slab two-stream model
+
+Ice thinner than ~15–20 cm violates the opaque-column assumption of
+`layer_type=4`: radiation transmitted through the slab reflects off the ocean
+(albedo 0.03–0.08) and returns. The young-ice model treats the column as a
+single homogeneous slab and solves the diffuse two-flux (Kubelka–Munk)
+equations analytically over the ocean boundary:
+
+- **Absorption** `K(λ) = 2[(1−V_b)·κ_ice(λ) + V_b·κ_brine(λ)]` from pure-ice
+  RI (Picard 2016) and liquidus brine (Cox & Weeks brine volume from bulk T, S
+  — new ice is *not* desalinated, S = 10–35 psu).
+- **Scattering** from frazil/congelation crystal boundaries: a constant
+  S = 1.5 m⁻¹, calibrated so the BBA-vs-thickness curve matches
+  Grenfell & Maykut (1977) Table 3 within ±0.03 (this coefficient is the
+  least-constrained quantity in the model — G&M report extinction at only a
+  few wavelengths).
+- **Air–ice Fresnel** reflection from the spectral complex RI of ice
+  (solar-zenith-dependent for direct beam; hemispheric integral for diffuse).
+
+A pure Beer–Lambert slab with constant surface reflectance *cannot* reproduce
+the observed albedo growth with thickness (it decays toward bare Fresnel as
+the ocean dims) — internal backscattering must accumulate, which is what the
+two-stream solution provides. Albedo increases monotonically with thickness,
+darkens as the ice warms (more liquidus brine), and tracks the ocean albedo
+when very thin. WMO stages map directly from thickness: grease/frazil (<1 cm),
+dark/light nilas (1–10 cm), grey ice (10–15 cm), grey-white ice (15–30 cm).
+
+### Open water — Fresnel + subsurface
+
+Open water albedo is the sum of (1) specular Fresnel reflection at the rough
+air–water interface — spectral water RI (Rowe 2020) averaged over the
+Cox & Munk (1954) wind-slope distribution, so wind *darkens* water at high
+solar zenith angle — and (2) diffuse subsurface upwelling from pure-seawater
+molecular scattering, R(0⁻) = 0.33·b_b/(a+b_b) (Morel & Prieur 1977), which is
+non-zero only in the blue/green. Typical BBA: 0.02 at SZA 20°, 0.06–0.07 at
+60°, rising to ~0.3 for calm water at 80°. The model is fully analytical
+(`OpenWaterModel`) and joins the retrieval fleet without training data.
 
 ## Known approximations and their consequences
 

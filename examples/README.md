@@ -15,6 +15,11 @@ Self-contained example scripts covering the full BioSNICAR workflow. Each script
 | 09  | [inversion_methods.py](09_inversion_methods.py)     | L-BFGS-B, Nelder-Mead, differential evolution, MCMC comparison (SSA mode)                   |
 | 10  | [end_to_end_workflow.py](10_end_to_end_workflow.py) | Full pipeline: load emulator, synthetic S2 observation, SSA retrieval, validate              |
 | 11  | [subsurface_light.py](11_subsurface_light.py)       | Subsurface fluxes, PAR depth profiles, spectral heating rates                                |
+| 12  | [planetscope.py](12_planetscope.py)                  | PlanetScope band convolution                                                                 |
+| 13  | [sea_ice.py](13_sea_ice.py)                          | Sea ice forward model: presets, custom columns, snow cover, melt ponds                       |
+| 14  | [sea_ice_emulator.py](14_sea_ice_emulator.py)        | Sea ice emulator training and prediction                                                     |
+| 15  | [sea_ice_inversion.py](15_sea_ice_inversion.py)      | `retrieve_sea_ice()`: classification, band mode, uncertainty, multi-scenario                 |
+| 16  | [sea_ice_scene_classification.py](16_sea_ice_scene_classification.py) | Young ice, open water, quality flags, batch scenes with NetCDF/H3 export   |
 
 ## Running
 

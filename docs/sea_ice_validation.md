@@ -192,7 +192,7 @@ Using `retrieve_sea_ice()` with `known_month` and a 400–1000 nm wavelength mas
 
 **Surprising finding — VIS-only outperforms VIS+SWIR for summer bare ice.** When the ALBI paired IR spectra (1100–2000 nm) are added alongside the VIS data, accuracy drops to 5/12 (42%) for the 12 dates with both data types. The ice SWIR signature (1100–2000 nm) overlaps with coarse snow, reintroducing the FYI_snow ambiguity that `known_month` suppresses in the 400–1000 nm window. **Use VIS-only for summer bare ice classification.** The comprehensive standalone validation (`sheba_classification_validation.py`) documents this comparison.
 
-The dedicated emulator retrieval validation script covers full-spectrum and satellite-band modes across all five surface types:
+The dedicated emulator retrieval validation script covers full-spectrum and satellite-band modes across the surface-type fleet:
 
 ```bash
 # Default: 20 Morassutti records per depth bin (~3 min)

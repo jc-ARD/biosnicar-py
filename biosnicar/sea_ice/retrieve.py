@@ -1,16 +1,18 @@
 """Retrieve sea ice surface properties from spectral or satellite albedo.
 
 Provides :func:`retrieve_sea_ice`, a high-level inversion function that fits
-five surface-type emulators against an observed spectrum and classifies the
-most likely ice surface type by residual comparison.
+a fleet of surface-type forward models against an observed spectrum and
+classifies the most likely ice surface type by residual comparison.
 
-The five surface types are:
+The seven surface types are:
 
     FYI_bare    — winter/spring bare first-year ice
-    FYI_snow    — snow-covered first-year ice
+    FYI_snow    — snow-covered first-year ice (tau_snow parameterisation)
     FYI_summer  — melt-season bare ice with Surface Scattering Layer
     MYI_bare    — bare multiyear ice
     FYI_pond    — melt pond on first-year ice
+    young_ice   — semi-transparent thin ice, 0.5–30 cm (layer_type=6)
+    open_water  — ice-free ocean (analytical, no training data)
 
 Physical parameters (bubble radius, temperature, pond depth, snow depth, …)
 are retrieved from the winning emulator's parameter space.  The surface type
@@ -107,7 +109,7 @@ class SeaIceRetrievalResult:
     flx_slr : np.ndarray or None
         Solar flux spectrum (from the winning emulator).
     cost_per_type : dict
-        ``{surface_type: chi_squared}`` for all five emulators.
+        ``{surface_type: chi_squared}`` for every fitted surface type.
     all_fits : dict
         ``{surface_type: RetrievalResult}`` — full result for each type.
     quality_flags : int

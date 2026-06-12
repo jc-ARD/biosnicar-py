@@ -4,7 +4,7 @@ The sea ice emulator system provides fast spectral-albedo prediction and paramet
 
 ## Overview
 
-The system comprises five separate emulators — one per surface type — each trained on Latin hypercube samples of the BioSNICAR forward model with sea-ice-appropriate layer stacks. The high-level function `retrieve_sea_ice()` fits all five against a single observed spectrum, then classifies the surface by the emulator that produced the lowest chi-squared residual.
+The system comprises seven surface-type forward models: six neural-network emulators trained on Latin hypercube samples of the BioSNICAR forward model with sea-ice-appropriate layer stacks, plus one analytical model (`open_water`, no training data). The high-level function `retrieve_sea_ice()` fits the whole fleet against a single observed spectrum, then classifies the surface by the model that produced the lowest band-masked chi-squared residual.
 
 This **retrieve-then-classify** design means that surface type identification and parameter retrieval happen simultaneously in a single call. You do not need to decide the surface type in advance.
 
@@ -55,7 +55,7 @@ from biosnicar.sea_ice.retrieve import retrieve_sea_ice
 import numpy as np
 observed = np.load("my_spectrum.npy")   # shape (480,)
 
-# Fit all five emulators, classify by residual
+# Fit all seven surface types, classify by residual
 result = retrieve_sea_ice(
     observed=observed,
     solzen=60,
