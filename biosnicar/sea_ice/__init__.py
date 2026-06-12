@@ -32,6 +32,11 @@ from biosnicar.sea_ice.emulator_configs import (
     trained_emulator_names,
 )
 from biosnicar.sea_ice.open_water import OpenWaterModel
+from biosnicar.sea_ice.quality_flags import (
+    QualityFlag,
+    compute_quality_flags,
+    describe_quality_flags,
+)
 from biosnicar.sea_ice.ice_chart_mapping import (
     map_to_wmo,
     map_to_sigrid3,
@@ -48,6 +53,9 @@ __all__ = [
     "load_sea_ice_emulators",
     "trained_emulator_names",
     "OpenWaterModel",
+    "QualityFlag",
+    "compute_quality_flags",
+    "describe_quality_flags",
     "map_to_wmo",
     "map_to_sigrid3",
     "classification_summary",

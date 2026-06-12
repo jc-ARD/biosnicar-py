@@ -107,6 +107,10 @@ class SeaIceRetrievalResult:
         ``{surface_type: chi_squared}`` for all five emulators.
     all_fits : dict
         ``{surface_type: RetrievalResult}`` — full result for each type.
+    quality_flags : int
+        uint8 bitmask of quality conditions — see
+        :class:`~biosnicar.sea_ice.quality_flags.QualityFlag`.  Unpack with
+        :meth:`quality_flag_description`.
     """
 
     surface_type: str
@@ -121,6 +125,12 @@ class SeaIceRetrievalResult:
     flx_slr: Optional[np.ndarray]
     cost_per_type: Dict[str, float] = field(default_factory=dict)
     all_fits: Dict[str, "RetrievalResult"] = field(default_factory=dict)
+    quality_flags: int = 0
+
+    def quality_flag_description(self) -> Dict[str, bool]:
+        """Unpack the quality bitmask into ``{flag_name: bool}``."""
+        from biosnicar.sea_ice.quality_flags import describe_quality_flags
+        return describe_quality_flags(self.quality_flags)
 
     def to_wmo(self):
         """Map to WMO Sea Ice Nomenclature (WMO No. 259).
@@ -170,8 +180,10 @@ class SeaIceRetrievalResult:
             f"  Description    : {self.surface_description}",
             f"  WMO stage      : {wmo.stage_of_development} — {wmo.melt_stage}",
             f"  Cost: {self.cost:.4f}  converged={self.converged}",
-            "  Retrieved parameters:",
         ]
+        set_flags = [n for n, on in self.quality_flag_description().items() if on]
+        lines.append(f"  Quality flags  : {', '.join(set_flags) if set_flags else 'none'}")
+        lines.append("  Retrieved parameters:")
         for name, val in self.parameters.items():
             unc = self.uncertainty.get(name, float("nan"))
             lines.append(f"    {name:28s} = {val:12.4f}  ±  {unc:.4f}")
@@ -369,6 +381,18 @@ def retrieve_sea_ice(
     else:
         confidence = 1.0  # only one emulator ran
 
+    from biosnicar.sea_ice.quality_flags import compute_quality_flags
+
+    flags = compute_quality_flags(
+        cost=best_cost,
+        confidence=min(confidence, 1.0),
+        converged=winner_fit.converged,
+        parameters=dict(winner_fit.best_fit),
+        bounds=emulators[winner_name].bounds,
+        surface_type=winner_name,
+        cost_per_type=cost_per_type,
+    )
+
     return SeaIceRetrievalResult(
         surface_type=winner_name,
         surface_description=_SURFACE_TYPE_DESCRIPTIONS.get(winner_name, winner_name),
@@ -382,4 +406,5 @@ def retrieve_sea_ice(
         flx_slr=winner_fit.flx_slr,
         cost_per_type=cost_per_type,
         all_fits=all_fits,
+        quality_flags=flags,
     )
