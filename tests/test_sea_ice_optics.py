@@ -69,3 +69,37 @@ class TestSeaIceOpticsVariants:
             tau, ssa, g = compute_sea_ice_optics(1.0, 8.0, -10.0, 910.0, 200.0, ri_variant=ri)
             assert np.all(tau >= 0)
             assert np.all(ssa > 0) and np.all(ssa < 1)
+
+
+class TestNearestLutRadius:
+    """A3: out-of-range bubble radii clamp to LUT endpoints with a warning."""
+
+    def _lut(self):
+        import biosnicar
+        from biosnicar.optical_properties.op_lookup import get_lut
+        path = biosnicar.DATA_DIR / "OP_data" / "480band" / "luts" / "bubbly_air.npz"
+        return get_lut(str(path))
+
+    def test_in_range_no_warning(self):
+        import warnings
+        from biosnicar.sea_ice.sea_ice_optics import _nearest_lut_radius
+        lut = self._lut()
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            assert _nearest_lut_radius(213.0, lut) in (210, 215)
+
+    def test_below_range_clamps_and_warns(self):
+        import pytest
+        from biosnicar.sea_ice.sea_ice_optics import _nearest_lut_radius
+        lut = self._lut()
+        lo = float(lut.data["radii"].min())
+        with pytest.warns(UserWarning, match="outside the"):
+            assert _nearest_lut_radius(lo / 2.0, lut) == int(lo)
+
+    def test_above_range_clamps_and_warns(self):
+        import pytest
+        from biosnicar.sea_ice.sea_ice_optics import _nearest_lut_radius
+        lut = self._lut()
+        hi = float(lut.data["radii"].max())
+        with pytest.warns(UserWarning, match="outside the"):
+            assert _nearest_lut_radius(hi * 2.0, lut) == int(hi)

@@ -71,8 +71,24 @@ def _load_ice_ri(ri_variant: str = "Pic16") -> np.ndarray:
 
 
 def _nearest_lut_radius(radius_um: float, lut) -> int:
-    """Round bubble radius to nearest entry in bubbly_air LUT."""
+    """Round bubble radius to nearest entry in bubbly_air LUT.
+
+    Requests outside the LUT grid are clamped to the nearest endpoint
+    with a warning rather than silently snapped.
+    """
+    import warnings
+
     radii = lut.data["radii"]
+    lo, hi = float(radii.min()), float(radii.max())
+    if radius_um < lo or radius_um > hi:
+        clamped = lo if radius_um < lo else hi
+        warnings.warn(
+            f"sea_ice_bubble_radius={radius_um:g} um is outside the "
+            f"bubbly_air LUT range [{lo:g}, {hi:g}] um — clamped to "
+            f"{clamped:g} um.",
+            stacklevel=2,
+        )
+        radius_um = clamped
     idx = np.argmin(np.abs(radii - radius_um))
     return int(radii[idx])
 
