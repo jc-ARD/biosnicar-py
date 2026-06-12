@@ -93,20 +93,37 @@ print(result.uncertainty["pond_depth"]) # 1-sigma
 result.to_outputs().to_platform("sentinel2")
 ```
 
-## The Five Surface Types (v0.2)
+## The Seven Surface Types (v0.4)
 
-| Name | Description | Parameters | Typical BBA |
-|------|-------------|------------|-------------|
-| `FYI_bare` | Winter/spring bare first-year ice (no snow, no SSL) | brine_volume_fraction, bubble_radius, BC, rho_DL, solzen, direct | 0.55–0.85 |
-| `FYI_snow` | Snow-covered first-year ice | snow_depth, snow_grain_radius, T, BC, solzen, direct | 0.80–0.95 |
-| `FYI_summer` | Melt-season bare FYI with Surface Scattering Layer | ssl_grain_radius, T, bubble_radius, BC, solzen, direct | 0.45–0.75 |
-| `MYI_bare` | Bare multiyear ice (lower salinity, larger bubbles) | brine_volume_fraction, bubble_radius, BC, solzen, direct | 0.55–0.85 |
-| `FYI_pond` | Melt pond on first-year ice | pond_depth, T, BC, solzen, direct | 0.05–0.30 |
+| Name | Description | Parameters | Typical BBA | Classification bands |
+|------|-------------|------------|-------------|---|
+| `FYI_bare` | Winter/spring bare first-year ice (no snow, no SSL) | brine_volume_fraction, bubble_radius, BC, rho_DL, solzen, direct | 0.55–0.85 | vis_only |
+| `FYI_snow` | Snow-covered first-year ice | tau_snow, snow_grain_radius, T, BC, solzen, direct | 0.80–0.95 | vis_swir |
+| `FYI_summer` | Melt-season bare FYI with Surface Scattering Layer | ssl_grain_radius, T, bubble_radius, BC, solzen, direct | 0.45–0.75 | vis_only |
+| `MYI_bare` | Bare multiyear ice (lower salinity, larger bubbles) | brine_volume_fraction, bubble_radius, BC, solzen, direct | 0.55–0.85 | vis_only |
+| `FYI_pond` | Melt pond on first-year ice | pond_depth, T, BC, solzen, direct | 0.05–0.30 | vis_swir |
+| `young_ice` | Grease ice, nilas, grey/grey-white ice (0.5–30 cm, semi-transparent thin slab over ocean) | ice_thickness_cm, T, salinity, ocean_albedo, solzen, direct | 0.08–0.30 | vis_swir |
+| `open_water` | Ice-free ocean (analytical — Cox & Munk Fresnel + pure-seawater subsurface; no training) | solzen, wind_speed_ms | 0.02–0.10 (to ~0.3 at SZA 80°) | vis_swir |
 
-> **Planned v0.4 — `young_ice`** (grease ice, nilas, grey/grey-white ice, 0.5–30 cm thick):
-> BBA 0.05–0.25, semi-transparent, parameterised by `ice_thickness` rather than brine inclusions.
-> Requires a new thin-slab Beer-Lambert forward model (see [young-ice-build-spec.md](young-ice-build-spec.md)).
-> WMO codes SA (new ice), SB (nilas), SI (grey ice), SJ (grey-white ice).
+> `FYI_snow` retrieves `tau_snow` (snow depth / grain radius — a dimensionless optical-depth
+> proxy) instead of the degenerate (snow_depth, grain_radius) pair; physical `snow_depth` (m) is
+> derived into `result.parameters`.  `young_ice` retrieves `ice_thickness_cm` (log-conditioned);
+> `ice_thickness` (m) is derived likewise.  Young ice uses the thin-slab two-stream forward model
+> (layer_type=6, see [young-ice-build-spec.md](young-ice-build-spec.md)) and maps to WMO codes
+> SA/SB/SI/SJ resolved by thickness.  `young_ice` is excluded from the candidate fleet when
+> `known_month` is in May–September.
+
+### Per-emulator classification band masks (C2)
+
+Classification (ranking surface types by chi-squared) uses a per-type wavelength mask, set as
+`band_mask` in `SEA_ICE_EMULATOR_CONFIGS`; **parameter fitting always uses the full observation**.
+Bare-ice types classify on `vis_only` (400–1000 nm) because the white-ice SWIR signature overlaps
+coarse snow — including SWIR drops summer bare-ice accuracy from 100% to 42%.  Types whose SWIR
+signature is discriminative (snow grain size, pond/water absorption, thin-ice transmittance)
+classify on `vis_swir` (400–2500 nm).  Masked chi-squared values are rescaled to the full
+observation band count so costs stay comparable across masks, and the seasonal-prior penalty is
+included so `known_month` keeps steering classification.  In band mode the mask is resolved via
+each band's SRF-weighted centre wavelength.
 
 ### FYI_bare — Winter/spring bare first-year ice
 
@@ -201,15 +218,30 @@ Bare sea ice albedo (layer_type=4) is controlled by brine optics, which produce 
 
 Snow and pond surfaces are dominated by scattering (grain radius, depth) and produce smoother spectral shapes (~6 PCA dimensions). The smaller default architecture is sufficient.
 
-### Why R² can be misleading for bare ice
+### Why the reported "training R²" is misleading for bare ice
 
-Bare sea ice with brine optics typically achieves R² ≈ 0.55 on small (250-sample) emulators, compared to R² > 0.98 for snow-covered ice at the same sample count. **This is not a quality problem.** R² measures how much variance the emulator explains relative to the total output variance. For bare ice:
+The production FYI_bare emulator reports training R² ≈ 0.70 (MYI_bare ≈ 0.66) vs > 0.98 for
+snow/pond types.  **This is a metric artifact, not a quality problem.**  The reported score is
+sklearn's multioutput R² in PCA-*coefficient* space: a uniform average over ~26 components, where
+near-zero-variance tail components are barely predictable and drag the mean down.
 
-- The spectral manifold is high-dimensional (27 PCA components)
-- A 250-sample emulator cannot fully cover a 7-parameter space
-- R² measures "what fraction of output variance did we explain" — it goes low when the emulator is undertrained relative to the manifold dimensionality
+Measured properly — against 2,000 held-out forward-model spectra (seed 777, disjoint from
+training) in albedo space — the shipped FYI_bare emulator achieves:
 
-The correct diagnostic for emulator quality is **BBA MAE** (mean absolute broadband albedo error), measured via `emulator.verify()`. For the production emulators (30,000 samples), BBA MAE is typically 0.002–0.004 for all surface types, regardless of R².
+| Metric | Value |
+|---|---|
+| Pooled spectral R² | **0.997** |
+| Median per-spectrum R² | 0.998 |
+| Spectral MAE | 0.0026 |
+| BBA MAE | 0.0030 |
+
+A 60,000-sample retrain (audit experiment `exp1`) improves this further (R² 0.9985, BBA MAE
+0.0023, max spectral error 0.54 → 0.51).  A rho_DL/brine-volume Jacobian collinearity analysis
+found the two parameters separable (mean |cos| = 0.37) — no further reparameterisation is needed.
+Audit script: `scripts/experiments/fyi_bare_audit.py`.
+
+The day-to-day diagnostic for emulator quality remains **BBA MAE** via `emulator.verify()`;
+production emulators sit at 0.002–0.004 for all surface types.
 
 ### PCA component counts
 
@@ -655,7 +687,7 @@ At emulator speed (~microseconds), even MCMC with 32 walkers × 5000 steps takes
 
 ## Known Limitations
 
-1. **R² metric misleading for bare ice** — R² is not a reliable quality metric for FYI_bare and MYI_bare emulators because the high-dimensional brine optics spectral manifold requires many more samples than the manifold than snow/pond surfaces. Always evaluate accuracy via BBA MAE from `verify()`.
+1. **Reported training R² is misleading for bare ice** — the score is computed in PCA-coefficient space and deflated by near-zero-variance tail components; held-out spectral R² for the production FYI_bare emulator is 0.997 (see the audit section above). Always evaluate accuracy via BBA MAE / held-out spectral metrics, not the training score.
 
 2. **Brine physics is high-dimensional** — Brine optics (temperature, salinity → complex refractive index → absorption) create ~27 PCA dimensions vs ~6 for snow. This means more training samples and a larger MLP are required for the same accuracy. The production emulators (30,000 samples) achieve BBA MAE ≈ 0.002–0.004; test emulators (250–500 samples) may show BBA MAE > 0.05.
 
@@ -697,7 +729,7 @@ With `known_month=8` (August), the prior `sea_ice_temperature ~ (−4°C ± 3°C
 
 1. **Spectral range** — The Grenfell data covers only 400–1000 nm. The SWIR (1000–2500 nm) contains diagnostic ice absorption features that discriminate bare ice from snow. When paired IR spectra (ALBI files, 1100–2000 nm) are available, classification improves further. The `wavelength_mask` parameter accepts any band selection.
 
-2. **Emulator accuracy bias** — FYI_bare has R² ≈ 0.56 vs R² ≈ 0.99 for FYI_snow. Even when the surface is genuinely bare ice, the FYI_snow emulator produces lower chi-squared residuals because it fits more accurately. FYI_summer (R² ≈ 0.99) partially compensates, ranking 2nd on most summer dates.
+2. **Emulator accuracy bias** — historical concern, now largely resolved: held-out spectral accuracy is comparable across types (FYI_bare spectral MAE ≈ 0.0026). Residual chi-squared differences between types are dominated by physics, not emulator error.
 
 3. **No seasonal physical constraint (without `known_month`)** — The unrestricted FYI_snow emulator can reach T=−25°C in August. Providing `known_month` applies a Gaussian prior that prevents this.
 
@@ -727,7 +759,7 @@ If paired 1100–2000 nm IR spectra are available, include them in the observed 
 | Melt ponds | Morassutti 1995 | 504 | yes (month=7) | 400–1000 nm (6 bands) | **387/504 (77%)** |
 
 **Surprising finding — VIS-only beats VIS+SWIR for bare ice.**
-Adding SWIR data (1100–2000 nm) to the 400–1000 nm VIS window *reduces* summer bare ice accuracy from 100% to 42%.  The SWIR signature of white ice overlaps with coarse snow, reintroducing the snow–ice ambiguity that the seasonal prior eliminates in the VIS window.  **Use 400–1000 nm only for summer bare ice classification.**
+Adding SWIR data (1100–2000 nm) to the 400–1000 nm VIS window *reduces* summer bare ice accuracy from 100% to 42%.  The SWIR signature of white ice overlaps with coarse snow, reintroducing the snow–ice ambiguity that the seasonal prior eliminates in the VIS window.  This is now handled automatically by the per-emulator classification band masks (C2): bare-ice types are ranked on 400–1000 nm regardless of the observation's spectral coverage.  With the masks + the tau_snow FYI_snow emulator, satellite band-mode summer accuracy improved from 81%/75% (S2/L8) to 88%/88%.
 
 Melt pond accuracy increases strongly with depth: 7% for <5 cm, 94% for >30 cm.
 

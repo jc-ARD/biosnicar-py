@@ -227,6 +227,38 @@ result = col.compute_albedo(sza_deg=60)
 
 See [docs/sea_ice.md](docs/sea_ice.md) and [examples/13_sea_ice.py](examples/13_sea_ice.py).
 
+### Satellite scene retrieval (batch)
+
+`retrieve_sea_ice()` classifies an observed albedo spectrum (or satellite band set)
+into one of seven surface types — FYI bare/snow/summer/pond, MYI bare, young ice,
+open water — and retrieves physical parameters with quality flags.
+`retrieve_sea_ice_batch()` scales this to whole scenes with spatial output
+(requires `pip install biosnicar[geo]`):
+
+```python
+import numpy as np
+from biosnicar.sea_ice import retrieve_sea_ice_batch
+
+# image: (H, W, 4) Sentinel-2 band albedos (B2, B3, B4, B8)
+scene = retrieve_sea_ice_batch(
+    image,
+    platform="sentinel2",
+    observed_band_names=["B2", "B3", "B4", "B8"],
+    solzen=62, direct=1, known_month=6,
+    spatial_coords=latlon,             # (H, W, 2) lat/lon → enables H3 export
+    crs="EPSG:32633", transform=affine,  # georeference → enables GeoTIFF export
+)
+print(scene.summary())                   # per-type pixel counts, flagged pixels
+scene.to_geotiff("classified.tif")       # surface_type_code, confidence, cost, flags
+scene.to_h3_geojson("classified.geojson", resolution=9)
+ds = scene.to_xarray()                   # full per-pixel parameters + uncertainties
+```
+
+Field/drone spectra on instrument-native wavelength grids resample via
+`biosnicar.sea_ice.spectral_utils.resample_to_model_grid()`.
+See [docs/INVERSION.md](docs/INVERSION.md#sea-ice-inversion) and
+[docs/SEA_ICE_EMULATOR.md](docs/SEA_ICE_EMULATOR.md).
+
 
 ## Built-in plotting
 

@@ -1,0 +1,128 @@
+{
+  "baseline_current": {
+    "r2_pooled_albedo": 0.9972308661417025,
+    "r2_per_spectrum_median": 0.9981797070216194,
+    "r2_per_spectrum_p5": 0.9854848343575113,
+    "mae_spectral": 0.002605498160898883,
+    "max_err_spectral": 0.5418097724549056,
+    "bba_mae": 0.0030250766650003033,
+    "bba_max_err": 0.014773591405289693,
+    "n_holdout": 2000,
+    "training_r2_pca_space": 0.6964007794584338,
+    "n_pca_components": 26
+  },
+  "degeneracy_rho_vb": {
+    "jacobian_cosine_mean": 0.3672355499755252,
+    "jacobian_cosine_min": 0.025635240399184252,
+    "jacobian_cosine_max": 0.9021288118355919,
+    "cosines": [
+      -0.13571853378197385,
+      -0.8376544382984806,
+      -0.8317919327298345,
+      -0.1553944632800209,
+      -0.8990977145354534,
+      -0.16563637599494685,
+      0.32477586561510396,
+      0.28986367051772555,
+      -0.9021288118355919,
+      -0.7648575315224189,
+      -0.8102796067766009,
+      -0.23310183795911246,
+      0.3800018969467708,
+      0.12673981769562911,
+      0.1135036409291552,
+      0.09918750953418863,
+      0.027350310017058822,
+      -0.09028346834736409,
+      -0.025635240399184252,
+      0.13170833279389044
+    ],
+    "note": "|cos|~1 => rho_DL and Vb degenerate; <0.9 => separable"
+  },
+  "exp1_60k": {
+    "r2_pooled_albedo": 0.9984918098802361,
+    "r2_per_spectrum_median": 0.998778972971344,
+    "r2_per_spectrum_p5": 0.9881593746172174,
+    "mae_spectral": 0.0022505050077766963,
+    "max_err_spectral": 0.5099148508570348,
+    "bba_mae": 0.002296722597094359,
+    "bba_max_err": 0.02049357621459691,
+    "n_holdout": 2000,
+    "n_samples": 60000,
+    "hidden": [
+      256,
+      256,
+      128,
+      64
+    ],
+    "pca": 0.999,
+    "n_pca_components": 26,
+    "training_r2_pca_space": 0.8137839333112462,
+    "build_minutes": 0.0
+  },
+  "exp2_deeper": {
+    "r2_pooled_albedo": 0.9966409368893173,
+    "r2_per_spectrum_median": 0.9981644225378555,
+    "r2_per_spectrum_p5": 0.9826912231636084,
+    "mae_spectral": 0.002392809229097398,
+    "max_err_spectral": 0.9184153303737184,
+    "bba_mae": 0.002758484668132669,
+    "bba_max_err": 0.027657161937719,
+    "n_holdout": 2000,
+    "n_samples": 30000,
+    "hidden": [
+      256,
+      256,
+      256,
+      128,
+      64
+    ],
+    "pca": 0.999,
+    "n_pca_components": 26,
+    "training_r2_pca_space": 0.6883287354368635,
+    "build_minutes": 2.1
+  },
+  "exp3_pca9999": {
+    "r2_pooled_albedo": 0.9971958560973643,
+    "r2_per_spectrum_median": 0.9986828464781121,
+    "r2_per_spectrum_p5": 0.9883800923868221,
+    "mae_spectral": 0.002335416066984032,
+    "max_err_spectral": 0.6271441822975545,
+    "bba_mae": 0.0028104635505303184,
+    "bba_max_err": 0.02664780177827336,
+    "n_holdout": 2000,
+    "n_samples": 30000,
+    "hidden": [
+      256,
+      256,
+      128,
+      64
+    ],
+    "pca": 0.9999,
+    "n_pca_components": 32,
+    "training_r2_pca_space": 0.6529484982276164,
+    "build_minutes": 3.8
+  },
+  "exp4_combo": {
+    "r2_pooled_albedo": 0.9986140236227261,
+    "r2_per_spectrum_median": 0.9993189057083594,
+    "r2_per_spectrum_p5": 0.990383246909421,
+    "mae_spectral": 0.001891645079561116,
+    "max_err_spectral": 0.6053546930377771,
+    "bba_mae": 0.0024802297081754653,
+    "bba_max_err": 0.021415040169971034,
+    "n_holdout": 2000,
+    "n_samples": 60000,
+    "hidden": [
+      256,
+      256,
+      256,
+      128,
+      64
+    ],
+    "pca": 0.9999,
+    "n_pca_components": 32,
+    "training_r2_pca_space": 0.8301065450771101,
+    "build_minutes": 8.6
+  }
+}

@@ -613,10 +613,13 @@ result = retrieve_sea_ice(
 | `sea_ice_temperature` | (−30, −2) °C | −10 | Legacy — prefer `brine_volume_fraction` |
 | `sea_ice_salinity` | (0, 20) psu | 6 | Legacy — prefer `brine_volume_fraction` |
 | `rho_DL` | (820, 900) kg/m³ | 850 | DL density; fix unless specifically retrieving |
-| `snow_depth` | (0.02, 0.30) m | 0.10 | log-space in optimiser |
-| `snow_grain_radius` | (100, 2000) µm | 500 | log-space in optimiser |
+| `tau_snow` | (50, 3000) | 400 | Snow depth / grain radius (dimensionless); log-space. Replaces direct `snow_depth` retrieval — physical depth is derived as `tau_snow * snow_grain_radius * 1e-6` m and returned in `result.parameters["snow_depth"]` |
+| `snow_depth` | (0.02, 0.30) m | 0.10 | Derived output for FYI_snow; direct retrieval only for custom emulators |
+| `snow_grain_radius` | (50, 2000) µm | 500 | log-space in optimiser |
 | `ssl_grain_radius` | (500, 5000) µm | 2000 | log-space in optimiser |
 | `pond_depth` | (0.02, 0.60) m | 0.15 | log-space in optimiser |
+| `ice_thickness_cm` | (0.5, 30) cm | — | Young ice (layer_type=6); log-space. Metres derived in `result.parameters["ice_thickness"]` |
+| `ocean_albedo` | (0.03, 0.08) | — | Sub-ice ocean reflectance for young ice |
 
 ### Sea ice known limitations
 
@@ -624,7 +627,7 @@ result = retrieve_sea_ice(
 
 2. **Surface type classification requires good spectral coverage** — classification from 3 satellite bands is possible but less reliable than from the full 480-band spectrum.  Ensure the bands you provide span at least VIS and NIR (e.g. B3 + B8 for Sentinel-2), or include a SWIR band (B11) for better bare-ice vs snow discrimination.
 
-3. **Bare ice emulator R² is lower than snow/pond** — FYI_bare and MYI_bare have R² ≈ 0.70 compared to >0.99 for the other types.  This is not a quality problem: the actual BBA error is ~0.002 for all types.  R² is deflated because brine optics require ~27 PCA components vs 4–6 for snow/pond.  See [SEA_ICE_EMULATOR.md](SEA_ICE_EMULATOR.md) for explanation.
+3. **Bare ice "training R²" is a misleading metric** — FYI_bare and MYI_bare report training R² ≈ 0.70 vs >0.99 for the other types.  This is an artifact of scoring in PCA-coefficient space (uniform average over ~26 components, where near-zero-variance tail components score poorly).  The true held-out *spectral* R² of FYI_bare is 0.997 with BBA MAE ≈ 0.003 (2000 forward-model spectra).  See [SEA_ICE_EMULATOR.md](SEA_ICE_EMULATOR.md) for the full audit.
 
 4. **Reference salinity is a fixed assumption** — the `FYI_bare` emulator uses `FYI_BARE_S_REF = 6 psu` and `MYI_bare` uses `MYI_BARE_S_REF = 2 psu` internally.  If the true bulk salinity is very different (e.g. highly saline new ice), build a custom emulator with a different `S_ref` in the transform function.
 
@@ -633,6 +636,35 @@ result = retrieve_sea_ice(
 6. **No SSL for bare winter ice** — the `FYI_bare` emulator has no SSL.  For summer observations where an SSL is present, use `FYI_summer`.  The classification (`retrieve_sea_ice()`) handles this automatically.
 
 7. **Summer classification requires `known_month`** — without the seasonal prior, `retrieve_sea_ice()` will misclassify summer bare ice as `FYI_snow` by exploiting physically impossible temperatures (T=−25°C in August).  Always pass `known_month` for summer observations.  See the SHEBA validation results in [SEA_ICE_EMULATOR.md](SEA_ICE_EMULATOR.md#validation-against-real-observations-sheba-spectra).
+
+### Batch retrieval over scenes
+
+`retrieve_sea_ice_batch()` parallelises `retrieve_sea_ice()` over `(N, bands)` pixel lists or `(H, W, bands)` images via joblib (install extras: `pip install biosnicar[geo]`):
+
+```python
+from biosnicar.sea_ice.retrieve import retrieve_sea_ice_batch
+
+scene = retrieve_sea_ice_batch(
+    image,                        # (H, W, 480) or (H, W, n_bands)
+    platform="sentinel2",         # band mode — obs_uncertainty defaults
+    observed_band_names=["B2", "B3", "B4", "B8", "B11"],
+    solzen=62, direct=1, known_month=6,
+    spatial_coords=latlon,        # (H, W, 2) for H3 export
+    crs="EPSG:32633", transform=affine,   # for GeoTIFF export
+    n_jobs=-1, chunksize=500,
+)
+scene.to_xarray()                 # xarray Dataset
+scene.to_geotiff("scene.tif")     # surface_type_code, confidence, cost, flags
+scene.to_h3_geojson("scene.geojson", resolution=9)
+scene.to_netcdf("scene.nc")
+print(scene.summary())
+```
+
+Non-finite pixels are skipped (`surface_type_code=255`).  Per-pixel L-BFGS-B is practical to ~100k pixels; the `SeaIceSceneResult` interface is engine-agnostic so a vectorised inverse network can replace the optimiser later without changing exports.
+
+### MCMC through retrieve_sea_ice()
+
+`retrieve_sea_ice(..., method="mcmc", mcmc_walkers=32, mcmc_steps=2000, mcmc_burn=500)` runs the emcee sampler per surface type and fills `uncertainty` with posterior standard deviations.  Expect minutes per observation (vs seconds for L-BFGS-B) — use on selected pixels for publication-grade uncertainty, not scene processing.  Chains: `result.all_fits[result.surface_type].chains`.
 
 ### `known_month` — seasonal physical priors
 
@@ -651,9 +683,10 @@ result = retrieve_sea_ice(
 
 | Season | Months | `sea_ice_temperature` prior | `brine_volume_fraction` prior | Effect |
 |---|---|---|---|---|
-| Melt season | 5–9 | (−4°C, σ=3°C) | (0.07, σ=0.04) | Prevents T < −10°C; rules out unphysical FYI_snow solutions |
+| Melt season | 5–9 | (−4°C, σ=3°C) | (0.07, σ=0.04) | Prevents T < −10°C; rules out unphysical FYI_snow solutions. **Excludes `young_ice` from the candidate fleet** (physically impossible in summer) |
 | Deep winter | 11–3 | (−15°C, σ=8°C) | (0.03, σ=0.015) | Prevents near-melting temperatures in winter |
-| Transitional | 4, 10 | None | None | No prior applied |
+| Freeze-up | 10–2 | October gets (−12°C, σ=6°C); Nov–Feb keep the winter prior | — | Adds `ice_thickness_cm ~ (5 cm, σ=8 cm)` prior for young ice |
+| Transitional | 4 | None | None | No prior applied |
 
 Without `known_month`, the SHEBA summer classification accuracy is 0/16; with it, 9/16.  The 7 remaining misclassifications are high-BBA dates (BBA > 0.72) where snow and bare ice are genuinely spectrally ambiguous in the 400–1000 nm window.
 
