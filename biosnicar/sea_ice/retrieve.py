@@ -99,7 +99,9 @@ class SeaIceRetrievalResult:
     observed : np.ndarray
         Input observations.
     cost : float
-        Chi-squared at the best-fit point.
+        Classification chi-squared of the winner (band-masked, rescaled
+        to the full observation band count — see ``_classification_cost``).
+        Per-emulator fitting costs are in ``all_fits[name].cost``.
     converged : bool
         Whether the winning optimiser reported convergence.
     flx_slr : np.ndarray or None
@@ -197,6 +199,99 @@ class SeaIceRetrievalResult:
         return "\n".join(lines)
 
 
+# ── Classification cost (C2: per-emulator band masks) ───────────────────────
+
+_BAND_CENTER_CACHE: Dict[str, Dict[str, float]] = {}
+
+
+def _band_mask_bool(mask_name):
+    """Resolve a named band mask to a boolean (480,) wavelength selector."""
+    from biosnicar.bands._core import WVL
+    from biosnicar.sea_ice.emulator_configs import BAND_MASKS
+
+    lo, hi = BAND_MASKS[mask_name]
+    return (WVL >= lo - 1e-9) & (WVL <= hi + 1e-9)
+
+
+def _band_centers_um(platform):
+    """SRF-weighted centre wavelength (µm) per band of *platform*.
+
+    Convolving the wavelength grid itself through ``to_platform`` (with
+    flat flux) yields each band's response-weighted mean wavelength —
+    works for every platform regardless of how its SRFs are defined.
+    """
+    if platform not in _BAND_CENTER_CACHE:
+        from biosnicar.bands import to_platform
+        from biosnicar.bands._core import WVL
+
+        result = to_platform(WVL, platform, flx_slr=np.ones(480))
+        _BAND_CENTER_CACHE[platform] = {
+            b: float(getattr(result, b)) for b in result.band_names
+        }
+    return _BAND_CENTER_CACHE[platform]
+
+
+def _classification_cost(fit, observed, mask_name, platform,
+                         observed_band_names, obs_uncertainty,
+                         wavelength_mask, regularization, emulator):
+    """Chi-squared used to *rank* surface types (not to fit parameters).
+
+    Applies the emulator's classification band mask, rescaling the masked
+    sum of squares to the full observation band count so costs remain
+    comparable across emulators with different masks.  The Gaussian prior
+    penalty is included, matching the fitting cost, so seasonal priors keep
+    steering classification.
+    """
+    observed = np.asarray(observed, dtype=float)
+
+    if platform is not None:
+        from biosnicar.bands import to_platform
+
+        band_result = to_platform(
+            fit.predicted_albedo, platform, flx_slr=fit.flx_slr,
+        )
+        predicted = np.array(
+            [getattr(band_result, b) for b in observed_band_names]
+        )
+        residual = predicted - observed
+        if obs_uncertainty is not None:
+            residual = residual / np.asarray(obs_uncertainty, dtype=float)
+        sel = np.ones(len(observed), dtype=bool)
+        if mask_name is not None:
+            from biosnicar.sea_ice.emulator_configs import BAND_MASKS
+
+            lo, hi = BAND_MASKS[mask_name]
+            centers = _band_centers_um(platform)
+            sel = np.array(
+                [lo <= centers[b] <= hi for b in observed_band_names]
+            )
+            if not sel.any():
+                sel[:] = True
+        n_ref = len(observed)
+    else:
+        residual = fit.predicted_albedo - observed
+        base = np.isfinite(observed)
+        if wavelength_mask is not None:
+            base &= np.asarray(wavelength_mask, dtype=bool)
+        if obs_uncertainty is not None:
+            unc = np.asarray(obs_uncertainty, dtype=float)
+            residual = np.where(base, residual / unc, 0.0)
+        sel = base.copy()
+        if mask_name is not None:
+            sel &= _band_mask_bool(mask_name)
+            if not sel.any():
+                sel = base
+        n_ref = int(base.sum())
+
+    cost = float(np.sum(residual[sel] ** 2)) * (n_ref / max(int(sel.sum()), 1))
+
+    if regularization:
+        for name, (mu, sigma) in regularization.items():
+            if name in fit.best_fit:
+                cost += ((fit.best_fit[name] - mu) / sigma) ** 2
+    return cost
+
+
 # ── retrieve_sea_ice ─────────────────────────────────────────────────────────
 
 def retrieve_sea_ice(
@@ -215,6 +310,9 @@ def retrieve_sea_ice(
     regularization=None,
     wavelength_mask=None,
     known_month=None,
+    mcmc_walkers=32,
+    mcmc_steps=2000,
+    mcmc_burn=500,
 ) -> SeaIceRetrievalResult:
     """Retrieve sea ice physical properties and classify surface type.
 
@@ -241,9 +339,19 @@ def retrieve_sea_ice(
         Band names corresponding to *observed* entries (e.g. ``["B3","B8"]``).
     obs_uncertainty : array-like or None
         Per-observation 1-sigma uncertainty for chi-squared weighting.
+        When None and *platform* is set, defaults are taken from the
+        platform SNR table in :mod:`biosnicar.sea_ice.sensor_config`.
     method : str
         Optimisation method: ``"L-BFGS-B"`` (default), ``"Nelder-Mead"``,
         ``"differential_evolution"``, or ``"mcmc"``.
+
+        ``"mcmc"`` (requires ``emcee``) samples the full posterior per
+        emulator and populates ``uncertainty`` with the posterior standard
+        deviation instead of the Hessian approximation.  Expect minutes per
+        observation (vs seconds for L-BFGS-B) — use it on selected pixels
+        for publication-grade uncertainty, not for scene processing.
+        Tune with *mcmc_walkers*, *mcmc_steps*, *mcmc_burn*; the winner's
+        ``all_fits[surface_type].chains`` holds the post-burn-in chain.
     solzen : float or None
         Solar zenith angle (degrees).  When provided, fixed for all
         emulators rather than retrieved.
@@ -294,12 +402,25 @@ def retrieve_sea_ice(
 
     observed = np.asarray(observed, dtype=float)
 
+    # Default per-band uncertainty from the platform SNR table (C3)
+    if (obs_uncertainty is None and platform is not None
+            and observed_band_names is not None):
+        from biosnicar.sea_ice.sensor_config import default_obs_uncertainty
+        obs_uncertainty = default_obs_uncertainty(platform, observed_band_names)
+
     # Load emulators if not supplied
     if emulators is None:
         names = surface_types or list(SEA_ICE_EMULATOR_CONFIGS)
         emulators = load_sea_ice_emulators(names)
     elif surface_types is not None:
         emulators = {k: v for k, v in emulators.items() if k in surface_types}
+
+    # Young ice cannot exist in the melt season — exclude it from the
+    # candidate fleet when the month is known (unless it is the only
+    # candidate, in which case the caller asked for it explicitly).
+    if (known_month is not None and 5 <= int(known_month) <= 9
+            and "young_ice" in emulators and len(emulators) > 1):
+        emulators = {k: v for k, v in emulators.items() if k != "young_ice"}
 
     # Build the fixed_params dict that applies to all emulators
     shared_fixed = dict(fixed_params) if fixed_params else {}
@@ -320,7 +441,10 @@ def retrieve_sea_ice(
         elif m in (11, 12, 1, 2, 3):  # deep winter — Nov through March
             season_priors["sea_ice_temperature"]   = (-15.0, 8.0)  # well below freezing
             season_priors["brine_volume_fraction"] = (0.03, 0.015) # cold ice
-        # Apr and Oct are transitional — no prior applied
+        # Apr is transitional — no prior applied
+        if m in (10, 11, 12, 1, 2):  # freeze-up — young ice plausible
+            season_priors["ice_thickness_cm"] = (5.0, 8.0)  # thin, not grease
+            season_priors.setdefault("sea_ice_temperature", (-12.0, 6.0))
     # Caller-supplied regularization overrides season priors on a key-by-key basis
     effective_regularization = {**season_priors, **(regularization or {})}
 
@@ -351,6 +475,9 @@ def retrieve_sea_ice(
                 regularization=effective_regularization or None,
                 wavelength_mask=wavelength_mask,
                 method=method,
+                mcmc_walkers=mcmc_walkers,
+                mcmc_steps=mcmc_steps,
+                mcmc_burn=mcmc_burn,
                 fixed_params=emu_fixed if emu_fixed else None,
             )
             all_fits[name] = fit
@@ -366,8 +493,20 @@ def retrieve_sea_ice(
     if not all_fits:
         raise RuntimeError("All emulator fits failed.")
 
-    # Classify: winner = lowest chi-squared
-    cost_per_type = {name: fit.cost for name, fit in all_fits.items()}
+    # Classify: winner = lowest classification chi-squared.  Classification
+    # uses per-emulator band masks (cfg["band_mask"]) — parameter fitting
+    # above always used the full observation.
+    cost_per_type = {}
+    for name, fit in all_fits.items():
+        mask_name = SEA_ICE_EMULATOR_CONFIGS.get(name, {}).get("band_mask")
+        try:
+            cost_per_type[name] = _classification_cost(
+                fit, observed, mask_name, platform, observed_band_names,
+                obs_uncertainty, wavelength_mask, effective_regularization,
+                emulators[name],
+            )
+        except Exception:  # noqa: BLE001 — fall back to the fitting cost
+            cost_per_type[name] = fit.cost
     ranked = sorted(cost_per_type.items(), key=lambda kv: kv[1])
     winner_name, best_cost = ranked[0]
     winner_fit = all_fits[winner_name]
@@ -381,6 +520,18 @@ def retrieve_sea_ice(
         )
     else:
         confidence = 1.0  # only one emulator ran
+
+    winner_params = dict(winner_fit.best_fit)
+    # Physical snow depth is derived from the (tau_snow, grain_radius)
+    # parameterisation — see _transform_fyi_snow.
+    if "tau_snow" in winner_params and "snow_grain_radius" in winner_params:
+        winner_params["snow_depth"] = float(
+            winner_params["tau_snow"]
+            * winner_params["snow_grain_radius"] * 1e-6
+        )
+    # Young ice is retrieved in cm (log conditioning) — derive metres.
+    if "ice_thickness_cm" in winner_params:
+        winner_params["ice_thickness"] = winner_params["ice_thickness_cm"] / 100.0
 
     from biosnicar.sea_ice.quality_flags import compute_quality_flags
 
@@ -398,7 +549,7 @@ def retrieve_sea_ice(
         surface_type=winner_name,
         surface_description=_SURFACE_TYPE_DESCRIPTIONS.get(winner_name, winner_name),
         confidence=min(confidence, 1.0),
-        parameters=dict(winner_fit.best_fit),
+        parameters=winner_params,
         uncertainty=dict(winner_fit.uncertainty),
         predicted_albedo=winner_fit.predicted_albedo,
         observed=observed,

@@ -404,6 +404,79 @@ def get_layer_OPs(ice, model_config):
     return ssa_snw, g_snw, mac_snw
 
 
+# Frazil/congelation crystal scattering coefficient for young ice (m⁻¹).
+# Poorly constrained in the literature — Grenfell & Maykut (1977) report
+# bulk extinction at a few wavelengths only.  Calibrated so the thin-slab
+# BBA-vs-thickness curve matches their Table 3 brackets (dark nilas ≈
+# 0.08–0.12, light nilas ≈ 0.10–0.18, grey ice ≈ 0.15–0.22) within ±0.03;
+# grease ice (~1 cm) floors at ≈0.09 — the Fresnel + transmitted-ocean
+# limit of a smooth slab at solzen 60.
+_YOUNG_ICE_SCAT = 1.5
+
+
+def _compute_young_ice_ops(thickness_m, temperature_C, salinity_psu,
+                           ocean_albedo, solzen=60, direct=1):
+    """Spectral albedo of a thin young-ice slab over ocean (layer_type=6).
+
+    Two-stream (Kubelka-Munk) slab solution: absorption from pure ice
+    (Picard 2016 RI) and liquidus brine (Cox & Weeks brine volume), constant
+    frazil scattering coefficient, ocean reflectance as the lower boundary,
+    Fresnel reflection at the air-ice interface.  This is the Grenfell &
+    Maykut (1977) thin-ice model; note that a pure Beer-Lambert slab with
+    constant surface reflectance cannot reproduce their albedo-vs-thickness
+    data (albedo must *grow* with thickness as internal backscattering
+    accumulates), hence the two-stream form.
+
+    Returns a 480-band albedo array — used as a boundary condition,
+    bypassing the τ/ω/g pipeline.
+    """
+    from biosnicar.sea_ice.brine_optics import compute_brine_rfidx
+    from biosnicar.sea_ice.brine_volume import compute_brine_volume
+    from biosnicar.sea_ice.open_water import _fresnel_unpolarized
+    from biosnicar.sea_ice.sea_ice_optics import _load_ice_ri
+
+    d = float(thickness_m)
+    if d <= 0:
+        raise ValueError(f"ice_thickness must be > 0, got {d}")
+    T = float(np.clip(temperature_C, -44.0, -2.0))
+    S = float(salinity_psu)
+    r_ocean = float(ocean_albedo)
+
+    wvl_um = np.arange(0.205, 4.999, 0.01)
+    lam_m = wvl_um * 1e-6
+
+    m_ice = _load_ice_ri()
+    vb = float(np.clip(compute_brine_volume(S, T), 0.0, 0.7))
+    k_brine = compute_brine_rfidx(T).imag
+
+    kappa_abs = 4.0 * np.pi * (
+        (1.0 - vb) * m_ice.imag + vb * k_brine
+    ) / lam_m                                   # m⁻¹
+
+    # Kubelka-Munk slab over a reflecting boundary (diffuse two-flux):
+    # K = 2×absorption, S = backscatter coefficient.
+    K = 2.0 * kappa_abs
+    Ssc = _YOUNG_ICE_SCAT
+    a_km = 1.0 + K / Ssc
+    b_km = np.sqrt(np.maximum(a_km**2 - 1.0, 1e-12))
+    coth = 1.0 / np.tanh(np.minimum(b_km * Ssc * d, 50.0))
+    r_slab = (1.0 - r_ocean * (a_km - b_km * coth)) / (a_km + b_km * coth - r_ocean)
+    r_slab = np.clip(r_slab, 0.0, 1.0)
+
+    # Air-ice Fresnel interface
+    if int(direct):
+        cos_i = np.array([np.cos(np.radians(float(solzen)))])
+        r_f = _fresnel_unpolarized(cos_i, m_ice)[0]
+    else:
+        th = np.radians(np.arange(0.0, 90.0, 1.0))
+        w = 2.0 * np.cos(th) * np.sin(th)
+        r_f = (w.reshape(-1, 1)
+               * _fresnel_unpolarized(np.cos(th), m_ice)).sum(axis=0) / w.sum()
+
+    albedo = r_f + (1.0 - r_f) ** 2 * r_slab / (1.0 - r_f * r_slab)
+    return np.clip(albedo, 0.0, 1.0)
+
+
 def add_water_coating(ice, model_config, ssa_snw, g_snw, mac_snw, i, ext_cff_mss_ice):
 
     """Recalculates layer optical properties where grains are coated in liquid water.

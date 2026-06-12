@@ -34,7 +34,10 @@ _LOG_SPACE_PARAMS = {
     # Sea ice: bubble radius and depth parameters span orders of magnitude;
     # log-space conditioning substantially improves optimiser convergence.
     "sea_ice_bubble_radius", "pond_depth", "snow_depth", "snow_grain_radius",
-    "ssl_grain_radius",
+    "ssl_grain_radius", "tau_snow",
+    # Young ice: NIR transmittance is exponential in thickness (cm scale
+    # so the log10(x+1) transform has effect).
+    "ice_thickness_cm",
 }
 
 
@@ -68,9 +71,13 @@ DEFAULT_BOUNDS = {
     "rho_DL":                (820.0, 900.0),
     # Surface structural parameters
     "snow_depth":            (0.02,  0.30),
-    "snow_grain_radius":     (100.0, 2000.0),
+    "tau_snow":              (50.0,  3000.0),   # snow depth / grain radius
+    "snow_grain_radius":     (50.0,  2000.0),
     "ssl_grain_radius":      (500.0, 5000.0),
     "pond_depth":            (0.02,  0.60),
+    # Young ice (layer_type=6)
+    "ice_thickness_cm":      (0.5,   30.0),
+    "ocean_albedo":          (0.03,  0.08),
 }
 
 DEFAULT_X0 = {
@@ -91,6 +98,7 @@ DEFAULT_X0 = {
     "sea_ice_salinity":      6.0,     # legacy
     "rho_DL":                850.0,
     "snow_depth":            0.10,
+    "tau_snow":              400.0,
     "snow_grain_radius":     500.0,
     "ssl_grain_radius":      2000.0,
     "pond_depth":            0.15,

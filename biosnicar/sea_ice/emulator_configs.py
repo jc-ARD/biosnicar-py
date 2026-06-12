@@ -26,8 +26,22 @@ Surface types
 
 from pathlib import Path
 
+import numpy as np
+
 # ── Absolute path to the emulator data directory ────────────────────────────
 _DATA_DIR = Path(__file__).resolve().parents[2] / "data" / "emulators"
+
+# Classification band masks (C2).  Applied ONLY to the classification
+# chi-squared in retrieve_sea_ice() — never to parameter fitting.
+# "vis_only" (400–1000 nm): bare-ice types — white ice SWIR overlaps coarse
+# snow and degrades summer bare-ice accuracy (100% → 42%, see
+# docs/SEA_ICE_EMULATOR.md).  "vis_swir" (400–2500 nm): types whose SWIR
+# signature is discriminative (snow grain size, pond/water absorption,
+# thin-ice transmittance).
+BAND_MASKS = {
+    "vis_only": (0.400, 1.000),   # µm, inclusive
+    "vis_swir": (0.400, 2.500),
+}
 
 # Reference bulk salinities used when inverting brine volume → temperature.
 # These are representative of each ice type's drained-layer composition.
@@ -80,12 +94,22 @@ def _transform_fyi_bare(p):
 
 
 def _transform_fyi_snow(p):
-    """Snow-covered FYI: fresh snow layer on top of DL + IL."""
+    """Snow-covered FYI: fresh snow layer on top of DL + IL.
+
+    Parameterised by ``tau_snow`` (snow depth in units of grain radius —
+    a dimensionless optical-depth proxy) and ``snow_grain_radius``, rather
+    than the degenerate (snow_depth, snow_grain_radius) pair: the radiative
+    response depends on depth/grain ratio, not on depth independently, so
+    sampling depth directly piles retrievals onto the depth bounds.
+    Physical depth is recovered as ``tau_snow * snow_grain_radius * 1e-6``.
+    """
     T = p["sea_ice_temperature"]
+    r = p["snow_grain_radius"]
+    depth = float(np.clip(p["tau_snow"] * r * 1e-6, 0.003, 1.5))
     return dict(
         layer_type=[0, 4, 4],
-        dz=[p["snow_depth"], 0.05, 1.45],
-        rds=[_snap(p["snow_grain_radius"]), 500, 500],
+        dz=[depth, 0.05, 1.45],
+        rds=[_snap(r), 500, 500],
         rho=[300, 850, 910],
         sea_ice_salinity=[None, 8, 5],
         sea_ice_temperature=[None, T, T],
@@ -137,6 +161,24 @@ def _transform_myi_bare(p):
     )
 
 
+def _transform_young_ice(p):
+    """Young ice: thin slab over dark ocean (layer_type=6).
+
+    The sampled parameter is ``ice_thickness_cm`` (0.5-30 cm) so the
+    log10(x+1) sampling/optimisation machinery conditions it properly
+    (on the metre scale the +1 makes the transform a no-op).
+    """
+    return dict(
+        layer_type=6,
+        ice_thickness=p["ice_thickness_cm"] / 100.0,
+        sea_ice_temperature=p["sea_ice_temperature"],
+        sea_ice_salinity=p["sea_ice_salinity"],
+        ocean_albedo=p["ocean_albedo"],
+        solzen=p["solzen"],
+        direct=p["direct"],
+    )
+
+
 def _transform_fyi_pond(p):
     """Melt pond on FYI: liquid water layer over DL + IL."""
     T = p["sea_ice_temperature"]
@@ -161,6 +203,7 @@ def _transform_fyi_pond(p):
 SEA_ICE_EMULATOR_CONFIGS = {
     "FYI_bare": {
         "description": "Winter/spring bare first-year ice (no snow, no SSL)",
+        "band_mask": "vis_only",
         # (T, S) replaced by brine_volume_fraction to eliminate degeneracy.
         # Vb bounds correspond to T in [-22, -2.1]°C at S_ref=FYI_BARE_S_REF=6 psu.
         # Post-hoc T recovery: T = invert_brine_volume(Vb, FYI_BARE_S_REF)
@@ -179,9 +222,21 @@ SEA_ICE_EMULATOR_CONFIGS = {
     },
     "FYI_snow": {
         "description": "Snow-covered first-year ice",
+        "band_mask": "vis_swir",
+        # (snow_depth, grain_radius) replaced by (tau_snow, grain_radius):
+        # tau_snow = depth / grain_radius (dimensionless; depth and radius
+        # both in um).  tau 50-3000 with r 50-2000 um spans ~3 mm to 1.5 m
+        # of physical snow depth.  Recover depth as tau * r * 1e-6 m.
+        # Grain lower bound 50 um: SHEBA spring fits slammed the old 100 um
+        # bound (fresh fine-grained snow); granular LUT supports >= 30 um.
+        # T upper bound stays at -5: widening to -2 lets warm-snow fits
+        # mimic summer bare ice (SHEBA summer accuracy 16/16 -> 9/16).
+        # Late-spring retrievals saturate T at -5 because the melt-season
+        # prior (mean -4) pushes against this bound — informative, not a
+        # degeneracy.
         "params": {
-            "snow_depth":             (0.02,  0.30),
-            "snow_grain_radius":      (100.0, 2000.0),
+            "tau_snow":               (50.0,  3000.0),
+            "snow_grain_radius":      (50.0,  2000.0),
             "sea_ice_temperature":    (-30.0, -5.0),
             "black_carbon":           (0.0,   5000.0),
             "solzen":                 (20,    80),
@@ -189,10 +244,11 @@ SEA_ICE_EMULATOR_CONFIGS = {
         },
         "transform_fn":  _transform_fyi_snow,
         "n_samples":     12000,
-        "emulator_file": str(_DATA_DIR / "sea_ice_FYI_snow_6param.npz"),
+        "emulator_file": str(_DATA_DIR / "sea_ice_FYI_snow_tau_6param.npz"),
     },
     "FYI_summer": {
         "description": "Melt-season bare FYI with Surface Scattering Layer",
+        "band_mask": "vis_only",
         "params": {
             "ssl_grain_radius":       (500.0, 5000.0),
             "sea_ice_temperature":    (-10.0, -2.0),
@@ -207,6 +263,7 @@ SEA_ICE_EMULATOR_CONFIGS = {
     },
     "MYI_bare": {
         "description": "Bare multiyear ice (lower salinity, larger bubbles)",
+        "band_mask": "vis_only",
         # (T, S) replaced by brine_volume_fraction.
         # Vb bounds correspond to T in [-22, -2.1]°C at S_ref=MYI_BARE_S_REF=2 psu.
         "params": {
@@ -223,6 +280,7 @@ SEA_ICE_EMULATOR_CONFIGS = {
     },
     "FYI_pond": {
         "description": "Melt pond on first-year ice",
+        "band_mask": "vis_swir",
         "params": {
             "pond_depth":             (0.02,  0.60),
             "sea_ice_temperature":    (-10.0, -2.0),
@@ -234,8 +292,25 @@ SEA_ICE_EMULATOR_CONFIGS = {
         "n_samples":     10000,
         "emulator_file": str(_DATA_DIR / "sea_ice_FYI_pond_5param.npz"),
     },
+    "young_ice": {
+        "description": "Young ice — grease ice, nilas, grey ice (0.5–30 cm)",
+        "band_mask": "vis_swir",
+        "params": {
+            "ice_thickness_cm":       (0.5,   30.0),
+            "sea_ice_temperature":    (-20.0, -2.0),
+            "sea_ice_salinity":       (10.0,  35.0),
+            "ocean_albedo":           (0.03,  0.08),
+            "solzen":                 (20,    80),
+            "direct":                 (0,     1),
+        },
+        "transform_fn":       _transform_young_ice,
+        "n_samples":          8000,
+        "hidden_layer_sizes": (128, 128, 64),  # thin-ice physics is smooth
+        "emulator_file": str(_DATA_DIR / "sea_ice_young_ice_6param.npz"),
+    },
     "open_water": {
         "description": "Open water (ice-free) — analytical Fresnel + subsurface",
+        "band_mask": "vis_swir",
         "params": {
             "solzen":                 (20,    80),
             "wind_speed_ms":          (0.0,   15.0),

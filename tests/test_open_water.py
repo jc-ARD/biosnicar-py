@@ -132,7 +132,7 @@ class TestOpenWaterClassification:
     def test_bright_ice_not_misclassified_as_water(self):
         emus = load_sea_ice_emulators()
         obs = emus["FYI_snow"].predict(
-            snow_depth=0.15, snow_grain_radius=300,
+            tau_snow=500, snow_grain_radius=300,
             sea_ice_temperature=-15, black_carbon=100, solzen=60, direct=1,
         )
         result = retrieve_sea_ice(observed=obs, solzen=60, direct=1)

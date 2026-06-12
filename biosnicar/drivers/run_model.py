@@ -36,6 +36,10 @@ _ICE_BROADCAST_KEYS = {
     "sea_ice_salinity", "sea_ice_temperature", "sea_ice_bubble_radius",
 }
 
+# Young-ice (layer_type=6) scalar keys — stored as attributes on the ice
+# object and consumed by the thin-slab boundary-condition path.
+_YOUNG_ICE_KEYS = {"ice_thickness", "ocean_albedo"}
+
 # All per-layer ice list attributes (used to resize when nbr_lyr changes)
 _ICE_ALL_LIST_ATTRS = [
     "dz", "layer_type", "cdom", "rho", "rds", "shp", "water",
@@ -205,6 +209,11 @@ def run_model(
     if validate:
         validate_inputs(ice, illumination, impurities)
 
+    # Young ice (layer_type=6): thin-slab boundary-condition albedo —
+    # bypasses the τ/ω/g pipeline and the RT solvers entirely.
+    if 6 in ice.layer_type:
+        return _run_young_ice(ice, illumination)
+
     # Optical properties
     ssa_snw, g_snw, mac_snw = get_layer_OPs(ice, model_config)
     tau, ssa, g, L_snw = mix_in_impurities(
@@ -234,6 +243,51 @@ def run_model(
     if plot:
         plot_albedo(plot_config, model_config, outputs.albedo)
 
+    return outputs
+
+
+def _run_young_ice(ice, illumination):
+    """Evaluate the layer_type=6 thin-slab model and wrap as Outputs."""
+    import numpy as np
+
+    from biosnicar.classes.outputs import Outputs
+    from biosnicar.optical_properties.column_OPs import _compute_young_ice_ops
+
+    if any(lt != 6 for lt in ice.layer_type):
+        raise ValueError(
+            "layer_type=6 (young ice) must be the only layer in the column — "
+            f"got layer_type={ice.layer_type}.  Young ice is a boundary "
+            "condition, not a stackable scattering layer."
+        )
+    thickness = getattr(ice, "ice_thickness", None)
+    if thickness is None:
+        raise ValueError("layer_type=6 requires the `ice_thickness` override (m).")
+    T = next((t for t in ice.sea_ice_temperature if t is not None), None)
+    S = next((s for s in ice.sea_ice_salinity if s is not None), None)
+    if T is None or S is None:
+        raise ValueError(
+            "layer_type=6 requires `sea_ice_temperature` (degC) and "
+            "`sea_ice_salinity` (psu)."
+        )
+
+    albedo = _compute_young_ice_ops(
+        thickness_m=thickness,
+        temperature_C=T,
+        salinity_psu=S,
+        ocean_albedo=getattr(ice, "ocean_albedo", 0.04),
+        solzen=illumination.solzen,
+        direct=illumination.direct,
+    )
+
+    flx_slr = np.asarray(illumination.flx_slr, dtype=float)
+    outputs = Outputs()
+    outputs.albedo = albedo
+    outputs.flx_slr = flx_slr
+    outputs.BBA = float(np.sum(flx_slr * albedo) / np.sum(flx_slr))
+    outputs.BBAVIS = float(np.sum(flx_slr[:50] * albedo[:50]) / np.sum(flx_slr[:50]))
+    outputs.BBANIR = float(
+        np.sum(flx_slr[50:] * albedo[50:]) / np.sum(flx_slr[50:])
+    )
     return outputs
 
 
@@ -307,6 +361,10 @@ def _apply_overrides(overrides, ice, illumination, impurities, input_file):
             setattr(illumination, key, value)
             needs_irradiance = True
 
+        # Young-ice scalars (layer_type=6)
+        elif key in _YOUNG_ICE_KEYS:
+            setattr(ice, key, float(value))
+
         # Ice broadcast keys
         elif key in _ICE_BROADCAST_KEYS:
             # rds=None is valid for layer_type=4 (sea ice) layers where rds
@@ -350,7 +408,7 @@ def _apply_overrides(overrides, ice, illumination, impurities, input_file):
                 imp_names = sorted(_imp_name_map.keys())
                 raise ValueError(
                     f"Unknown override key {key!r}. Supported: "
-                    f"{sorted(_ILLUMINATION_KEYS | _ICE_BROADCAST_KEYS)} "
+                    f"{sorted(_ILLUMINATION_KEYS | _ICE_BROADCAST_KEYS | _YOUNG_ICE_KEYS)} "
                     f"and impurity names {imp_names}."
                 )
 

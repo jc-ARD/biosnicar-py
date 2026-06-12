@@ -30,3 +30,7 @@ node_modules/.yarn-integrity
 app/node_modules
 /build
 *dask*
+
+# A1 audit artifacts — regenerable via scripts/experiments/fyi_bare_audit.py
+data/emulators/experiments/*.npz
+data/emulators/experiments/experiments_log.txt

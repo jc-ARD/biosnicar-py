@@ -58,7 +58,7 @@ class TestTransformFn:
     def test_fyi_snow_transform_keys(self):
         fn = SEA_ICE_EMULATOR_CONFIGS["FYI_snow"]["transform_fn"]
         result = fn({
-            "snow_depth": 0.10,
+            "tau_snow": 1000.0 / 3.0,   # × 300 um grain = 0.10 m snow depth
             "snow_grain_radius": 300.0,
             "sea_ice_temperature": -15.0,
             "black_carbon": 0.0,

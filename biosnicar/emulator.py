@@ -70,6 +70,11 @@ _LOG_SAMPLE_PARAMS = {
     # Sea ice: bubble radius spans ~1.3 orders of magnitude; log-space sampling
     # gives better coverage of the small-bubble (high-scattering) regime.
     "sea_ice_bubble_radius",
+    # Snow optical-depth proxy (depth / grain radius): albedo response is
+    # logarithmic in tau, so log-sampling covers the thin-snow regime.
+    "tau_snow",
+    # Young ice thickness (cm): transmittance is exponential in thickness.
+    "ice_thickness_cm",
 }
 
 
@@ -273,6 +278,7 @@ class Emulator:
         seed=42,
         transform_fn=None,
         hidden_layer_sizes=(128, 128, 64),
+        pca_components=0.999,
         **fixed_overrides,
     ):
         """Build an emulator by training an MLP on forward-model outputs.
@@ -313,6 +319,10 @@ class Emulator:
             brine optics create a high-dimensional spectral manifold (~27 PCA
             components vs ~6 for snow); use ``(256, 256, 128, 64)`` or larger
             for substantially better accuracy on those surface types.
+        pca_components : float or int
+            Passed to ``sklearn.decomposition.PCA``: a float in (0, 1) retains
+            that fraction of spectral variance; an int fixes the component
+            count.  Default 0.999.
         **fixed_overrides
             Fixed parameters passed to every ``run_model()`` call.
             For glacier ice, ``layer_type=1`` is typical.
@@ -421,7 +431,7 @@ class Emulator:
             lhs_scaled = lhs_scaled[physical_mask]
 
         # --- 3. PCA compression ---
-        pca = PCA(n_components=0.999)  # retain 99.9% variance
+        pca = PCA(n_components=pca_components)
         pca_coeffs = pca.fit_transform(albedo_matrix)
         n_pca = pca.n_components_
 
@@ -471,6 +481,7 @@ class Emulator:
             "solver": solver,
             "transform_fn": getattr(transform_fn, "__name__", None),
             "hidden_layer_sizes": list(hidden_layer_sizes),
+            "pca_components_requested": _jsonable(pca_components),
         }
 
         return emu
