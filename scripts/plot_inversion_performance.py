@@ -17,6 +17,20 @@ Usage::
     python scripts/plot_inversion_performance.py --n 30 --noise 0.01
 
 Figures are written to figures/inversion_performance/ (override with --out).
+
+Caveats stamped on the figures:
+
+* ``young_ice`` and ``open_water`` observations are synthetic from the same
+  physics implementations used for retrieval (open_water is fully
+  self-inverting — it has no emulator).  Their results demonstrate
+  inter-class separability and identifiability, NOT field-validated skill;
+  no independent thin-ice or open-water field spectra exist in the repo.
+  The snow/bare/pond classes are independently validated against SHEBA and
+  Morassutti field spectra (docs/sea_ice_validation.md).
+* Noise is constant in ABSOLUTE albedo (sigma per band), so dark surfaces
+  (young ice, open water) carry 5-25% fractional noise vs <1% on bright
+  snow.  Real instruments are closer to constant-radiance noise (large in
+  the low-flux SWIR instead).
 """
 
 import argparse
@@ -139,7 +153,10 @@ def fig_confusion(rows, out):
                  "(noisy forward-model spectra, known geometry + month)",
                  fontsize=10)
     fig.colorbar(im, label="row fraction")
-    fig.tight_layout()
+    fig.text(0.5, 0.005,
+             "Caveat: young_ice / open_water observations are synthetic from the retrieval physics itself (no independent field spectra) — separability demo, not field-validated skill.",
+             ha="center", fontsize=6.5, style="italic", color="0.35")
+    fig.tight_layout(rect=(0, 0.025, 1, 1))
     fig.savefig(out / "1_confusion_matrix.png", dpi=180)
     plt.close(fig)
     return acc
@@ -225,7 +242,12 @@ def fig_spectra(rows, out):
         ax.set_ylabel("albedo")
     fig.suptitle("Observed vs retrieved spectra — one example per surface type",
                  fontsize=12)
-    fig.tight_layout()
+    fig.text(0.5, 0.005,
+             "Noise is constant in absolute albedo (σ per band), so dark surfaces "
+             "(young ice, open water) appear fractionally noisier than bright snow. "
+             "young_ice / open_water observations are synthetic from the retrieval physics itself (no independent field spectra) — separability demo, not field-validated skill.",
+             ha="center", fontsize=6.5, style="italic", color="0.35")
+    fig.tight_layout(rect=(0, 0.03, 1, 1))
     fig.savefig(out / "3_spectral_fits.png", dpi=180)
     plt.close(fig)
 
@@ -270,7 +292,12 @@ def fig_young_ice(rows, out):
     ax2.set_xlabel("true thickness (cm)")
     ax2.set_ylabel("retrieved thickness (cm)")
     ax2.set_title("Thickness retrieval (freeze-up prior applied)", fontsize=10)
-    fig.tight_layout()
+    fig.text(0.5, 0.005,
+             "Observation scatter about the curve is mostly parameter variation "
+             "(random T, S, ocean albedo per point; curve drawn at fixed values). "
+             "young_ice / open_water observations are synthetic from the retrieval physics itself (no independent field spectra) — separability demo, not field-validated skill.",
+             ha="center", fontsize=6.5, style="italic", color="0.35")
+    fig.tight_layout(rect=(0, 0.035, 1, 1))
     fig.savefig(out / "4_young_ice_curve.png", dpi=180)
     plt.close(fig)
 

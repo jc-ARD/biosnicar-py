@@ -317,6 +317,15 @@ All favourable retrieval numbers were checked against training-data recycling:
   and E1 adds no observation noise — those numbers measure identifiability
   under perfect physics, which is why the independent field validation above
   is the headline evidence.
+- **`young_ice` and `open_water` are synthetic-only**: no independent
+  thin-ice or open-water field spectra exist in this repository, so for these
+  two classes every retrieval result is an inverse-crime result.  Open water
+  is the extreme case — the analytical model is its own forward model, so
+  generation and inversion share identical code and only noise plus the six
+  competing candidates separate them.  Young ice is anchored to published
+  Grenfell & Maykut (1977) broadband values (§7) but not to measured spectra.
+  Locating archived freeze-up spectra (e.g. SHEBA October 1997) remains the
+  outstanding validation task for these classes.
 
 ## 11. Recommended next steps
 

@@ -322,6 +322,15 @@ and known limitations: [sea_ice_validation.md](sea_ice_validation.md).
 
 ### Honest limitations
 
+- **`young_ice` and `open_water` have no independent spectral field
+  validation.** Their retrieval performance is demonstrated only on synthetic
+  observations from the same physics implementations used for inversion
+  (open water is fully self-inverting — the analytical model has no
+  emulator). Young ice is anchored to Grenfell & Maykut (1977) at the
+  broadband level only; open water to literature albedo parameterisations.
+  Treat these two classes as physics-based with synthetic-only verification
+  until field spectra are run through the system. The snow/bare/pond classes
+  are validated against real SHEBA and Morassutti spectra.
 - Shallow ponds (<10 cm) genuinely overlap bare ice spectrally —
   classification ~30% there; rely on the `spectrally_ambiguous` flag.
 - Classification is per-pixel optical state: ice concentration, floe size,
