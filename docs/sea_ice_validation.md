@@ -412,8 +412,35 @@ All favourable retrieval numbers were checked against training-data recycling:
 4. **Obtain bare winter ice spectra** (no snow, T < −15°C) to validate `FYI_WINTER_BARE` directly.
 5. ~~Improve FYI_bare/MYI_bare emulator accuracy~~ — resolved: the low value was the PCA-space training metric; held-out spectral R² is 0.997 (see SEA_ICE_EMULATOR.md audit section).
 6. ~~Address parameter recovery degeneracies in FYI_snow~~ — resolved by the `tau_snow` reparameterisation (§8).
-7. **Add a melting-/summer-snow class** (or merge snow↔SSL in the melt season): the Smith MOSAiC hold-out (§6.4) shows summer snow is not separable from bare ice / SSL under the current taxonomy, and the winter FYI_snow forward model fits it poorly in the SWIR.
+7. **Do *not* add a melting-snow spectral class — it would not separate** (see §6.5). The actionable melt-season fixes are instead: (a) add liquid-water content to the melting-surface (FYI_summer) forward model to close the SWIR misfit and make grain/LWC retrieval meaningful, and (b) use ancillary/structural data (snow depth, temporal context) when the "snow vs ice" provenance label is required — albedo alone cannot recover it.
 8. **Validate against a non-Arctic (Antarctic) campaign** — all current empirical data is Arctic; generalisation beyond it is untested.
+
+## 6.5 Is summer snow vs bare ice a taxonomy gap or a true degeneracy?
+
+Tested directly (`python` analysis over the observed populations), and the
+answer is **largely a true optical degeneracy, not a missing class**:
+
+- **VIS–NIR is not separable.** Observed Smith melting snow (n=44) vs observed
+  SHEBA summer bare ice (n=16): VIS BBA 0.71±0.10 vs 0.74±0.06, NIR/VIS ratio
+  0.79 vs 0.85, and the bare-ice BBA range [0.65, 0.82] lies *entirely inside*
+  the snow range [0.37, 0.89]. A threshold splits them ~50/50 — i.e. no better
+  than chance.
+- **SWIR does not rescue it.** The Smith spectra carry strong, variable
+  1.0/1.2 µm absorption (band depth 0.17±0.09, up to 0.44), but that depth
+  encodes **grain size + liquid water** — properties melting snow and a melting
+  surface-scattering layer *both* possess. SWIR discriminates "coarse and wet"
+  from "fine and dry"; it does not discriminate snow-provenance from
+  ice-provenance.
+- **Physics explains why.** Melting snow metamorphoses into coarse, wet grains;
+  the summer SSL is, in Grenfell's and Perovich's description, "deteriorated ice
+  that is optically snow." The two surfaces physically *converge* on the same
+  coarse-granular-wet optical state, so no albedo-based class boundary can
+  separate them.
+
+Implication: classifying summer "snow" as FYI_summer (SSL) is arguably the
+optically *correct* answer — the disagreement is with the field's structural
+label, not a model error. Recovering the structural label needs information
+outside the spectrum.
 
 ---
 

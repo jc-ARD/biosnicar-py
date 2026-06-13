@@ -311,7 +311,7 @@ takes seconds.
 |---|---|
 | Spring (dry) snow classification | SHEBA Grenfell & Light (2007): 6/7 full-spectrum, 7/7 S2/L8 band mode |
 | Summer bare ice classification | SHEBA: 16/16 full-spectrum with `known_month`; 14/16 band mode |
-| Summer **snow** classification | Smith 2021 MOSAiC (independent hold-out): only 2/44 as FYI_snow — melting summer snow is not separable from SSL/bare ice (§6.4 of validation). Spring numbers do **not** generalise to melt-season snow. |
+| Summer **snow** classification | Smith 2021 MOSAiC (independent hold-out): only 2/44 as FYI_snow — melting summer snow is a *true optical degeneracy* with SSL/bare ice (VIS–NIR ~50/50 separable; SWIR encodes shared grain/wetness), not a missing class (§6.4–6.5). Spring numbers do **not** generalise to melt-season snow. |
 | Melt pond depth | Morassutti (1995): 77% classification over 504 records; depth accuracy rises from ~7% (<5 cm) to ~94% (>30 cm) — the only metric with independent in-situ ground truth |
 | Young ice albedo vs thickness | Grenfell & Maykut (1977) Table 3: all checkpoints within ±0.03 (two-stream slab, frazil scattering 3.0 m⁻¹) |
 | Open water albedo | Fresnel/Cox & Munk physics: BBA 0.02 (SZA 20°) → 0.07 (60°) → ~0.3 (80°, calm); wind darkens high-SZA water |
