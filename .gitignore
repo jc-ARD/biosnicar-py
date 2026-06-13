@@ -34,3 +34,6 @@ app/node_modules
 # A1 audit artifacts — regenerable via scripts/experiments/fyi_bare_audit.py
 data/emulators/experiments/*.npz
 data/emulators/experiments/experiments_log.txt
+
+# Regenerable validation/demo figures
+figures/

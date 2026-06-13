@@ -263,6 +263,54 @@ not errors.
 Observed-vs-retrieved spectra figures for every date:
 `python scripts/plot_sheba_fits.py` → `figures/sheba_fits/`.
 
+## 6.4 Independent-campaign hold-out — Smith et al. (2021) MOSAiC
+
+The SHEBA/Grenfell data above is what `retrieve_sea_ice()` was developed and
+tuned against.  Smith et al. (2021) MOSAiC Leg 4 is a genuinely **independent**
+campaign — different year (2020 vs 1998), site (~82°N vs ~76°N), instrument
+(ASD FieldSpec, 350–2500 nm @ 1 nm vs a 400–1000 nm portable spectrometer),
+and the first real-data exercise of the FYI_snow `vis_swir` classification
+mask.  44 snow-surface transect positions (`surface_type='S'`, change-in-incident
+≤ 10%) were inverted with per-record SZA (from UTC + ship lat/lon),
+per-record diffuse/direct flag from the MOSAiC sky codes (29/44 diffuse —
+"completely overcast, solar disk not visible"), and `known_month`.  Run with
+`python scripts/smith_retrieval_validation.py`.
+
+**Result (honest — this tempers the SHEBA numbers):**
+
+| Metric | Value |
+|---|---|
+| Classified FYI_snow (strict) | **2/44 (5 %)** |
+| Classified snow-like (FYI_snow or FYI_summer) | 27/44 (61 %) |
+| Classified FYI_bare | 17/44 (39 %) |
+| VIS RMS (400–1000 nm), median | 0.017 (vs 0.008 on SHEBA spring) |
+| Full-range RMS (350–2400 nm), median / p90 | 0.027 / 0.077 |
+| `poor_fit`-flagged | 12/44 |
+
+**Interpretation.** This is a regime the SHEBA validation never probed.  SHEBA
+"snow" is cold, dry **spring** snow — a cleanly separable bright optical state,
+classified 6/7.  MOSAiC "snow" is **summer** (Jun–Sep) melting/metamorphosed
+snow at 82°N, which is optically close to a coarse surface-scattering layer or,
+once thinned, to the bare ice beneath it.  The retrieval reflects that physics:
+57 % classify as FYI_summer (melting SSL), 39 % as FYI_bare (peak-melt July is
+the most bare-ice-like, 13/25), and almost none as the winter-parameterised
+FYI_snow.  The split is physically defensible, but it exposes two real
+limitations the SHEBA-only validation masked:
+
+1. **The class taxonomy has no melting-/summer-snow category.**  Summer snow is
+   forced into FYI_summer or FYI_bare; "snow vs bare ice" is not cleanly
+   recoverable in the melt season from albedo alone.
+2. **Fit quality roughly halves out-of-distribution.**  VIS RMS doubles
+   (0.008 → 0.017) and the SWIR is materially worse (p90 0.077) — the
+   winter FYI_snow forward model does not capture melting-summer-snow SWIR.
+   The `poor_fit` flag fires on the worst 12/44, so the quality-flag system
+   does surface the degradation rather than hiding it.
+
+The SZA→89° tail (6/44 above the emulators' 80° training bound) was checked and
+behaves like the rest, so this is not an extrapolation artifact.  Net: spring
+classification generalises; **summer snow/bare-ice discrimination does not**, and
+the headline SHEBA numbers should be read as spring-regime performance.
+
 ## 7. Young ice validation — Grenfell & Maykut (1977)
 
 The `young_ice` thin-slab forward model (layer_type=6, two-stream slab over ocean; frazil
@@ -364,6 +412,8 @@ All favourable retrieval numbers were checked against training-data recycling:
 4. **Obtain bare winter ice spectra** (no snow, T < −15°C) to validate `FYI_WINTER_BARE` directly.
 5. ~~Improve FYI_bare/MYI_bare emulator accuracy~~ — resolved: the low value was the PCA-space training metric; held-out spectral R² is 0.997 (see SEA_ICE_EMULATOR.md audit section).
 6. ~~Address parameter recovery degeneracies in FYI_snow~~ — resolved by the `tau_snow` reparameterisation (§8).
+7. **Add a melting-/summer-snow class** (or merge snow↔SSL in the melt season): the Smith MOSAiC hold-out (§6.4) shows summer snow is not separable from bare ice / SSL under the current taxonomy, and the winter FYI_snow forward model fits it poorly in the SWIR.
+8. **Validate against a non-Arctic (Antarctic) campaign** — all current empirical data is Arctic; generalisation beyond it is untested.
 
 ---
 
