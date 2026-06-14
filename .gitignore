@@ -37,3 +37,10 @@ data/emulators/experiments/experiments_log.txt
 
 # Regenerable validation/demo figures
 figures/
+
+# Regenerable validation outputs (source of truth = scripts + curated docs).
+# These went stale after physics/emulator rebuilds; regenerate from the scripts.
+tests/validation_data/**/results.json
+tests/validation_data/*_results.json
+tests/validation_data/parameter_retrieval_results.*
+tests/validation_data/**/figures/

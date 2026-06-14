@@ -13,8 +13,8 @@ Usage::
 
 Emulators built
 ---------------
-  sea_ice_FYI_bare_7param.npz    Winter/spring bare first-year ice
-  sea_ice_FYI_snow_6param.npz    Snow-covered first-year ice
+  sea_ice_FYI_bare_6param.npz    Winter/spring bare first-year ice (60k samples)
+  sea_ice_FYI_snow_tau_6param.npz Snow-covered first-year ice (tau_snow)
   sea_ice_FYI_summer_6param.npz  Melt-season bare ice (with SSL)
   sea_ice_MYI_bare_6param.npz    Bare multiyear ice
   sea_ice_FYI_pond_5param.npz    Melt pond on first-year ice

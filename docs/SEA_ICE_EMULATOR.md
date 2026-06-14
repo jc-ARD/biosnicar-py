@@ -22,7 +22,7 @@ from biosnicar.emulator import Emulator
 from biosnicar.drivers.run_emulator import run_emulator
 
 # Load a pre-built sea ice emulator
-emu = Emulator.load("data/emulators/sea_ice_FYI_bare_7param.npz")
+emu = Emulator.load("data/emulators/sea_ice_FYI_bare_6param.npz")
 
 # Predict 480-band spectral albedo (~microseconds)
 albedo = emu.predict(
@@ -535,7 +535,7 @@ Use `retrieve()` directly when:
 result = retrieve(
     observed=spectrum,
     parameters=["sea_ice_bubble_radius"],
-    emulator=Emulator.load("data/emulators/sea_ice_FYI_bare_7param.npz"),
+    emulator=Emulator.load("data/emulators/sea_ice_FYI_bare_6param.npz"),
     fixed_params={
         "sea_ice_temperature": -10.0,
         "sea_ice_salinity": 8.0,
@@ -553,7 +553,7 @@ result = retrieve(
 result = retrieve(
     observed=spectrum,
     parameters=["snow_depth", "snow_grain_radius"],
-    emulator=Emulator.load("data/emulators/sea_ice_FYI_snow_6param.npz"),
+    emulator=Emulator.load("data/emulators/sea_ice_FYI_snow_tau_6param.npz"),
     fixed_params={
         "sea_ice_temperature": -15.0,
         "black_carbon": 0.0,
@@ -796,7 +796,7 @@ For the (256,256,128,64) architecture (FYI_bare, MYI_bare), the weight shapes ar
 ```python
 import numpy as np, json
 
-data = np.load("data/emulators/sea_ice_FYI_bare_7param.npz", allow_pickle=False)
+data = np.load("data/emulators/sea_ice_FYI_bare_6param.npz", allow_pickle=False)
 meta = json.loads(str(data["metadata"]))
 
 print(meta["param_names"])    # ['sea_ice_temperature', 'sea_ice_bubble_radius', ...]

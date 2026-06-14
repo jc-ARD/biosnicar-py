@@ -1,6 +1,34 @@
 # Sea Ice Validation Suite
 
-Empirical datasets and validation scripts for the BioSNICAR sea ice extension (`biosnicar.sea_ice`, v0.1+).
+Empirical datasets and validation scripts for the BioSNICAR sea ice extension (`biosnicar.sea_ice`).
+
+> [!IMPORTANT] Source-of-truth policy (read first)
+> **Tracked = scripts + curated docs. Generated = regenerable, not committed.**
+> Result files (`*_results.json`, `parameter_retrieval_results.*`) and figure
+> PNGs are **git-ignored** — they are snapshots that go stale silently after
+> emulator/LUT rebuilds. Regenerate them by running the script; treat the
+> headline numbers in the curated docs (`docs/sea_ice_validation.md`,
+> `docs/SEA_ICE_RETRIEVAL.md`) as the verified record. After any emulator or
+> physics rebuild, re-run the relevant script before quoting numbers.
+
+## Validation inventory and status
+
+| Script | Tests | Modality / data | Status |
+|---|---|---|---|
+| `sea_ice_emulator_sheba_validation.py` | classification + satellite bands + pond depth (blocks A–E) | SHEBA + Morassutti, VIS–NIR | **current** — primary inversion validation |
+| `sheba_classification_validation.py` | classification across spectral windows (VIS vs VIS+SWIR) + label provenance | SHEBA + Morassutti | **current (historical motivation)** — the VIS+SWIR degeneracy it documents is now handled automatically by per-emulator band masks (C2); kept for provenance/regression |
+| `parameter_retrieval_validation.py` | synthetic per-parameter recovery (bias/RMSE/R²/DFS-style) | forward-model, seed 2026 | **current** — synthetic (inverse-crime); see caveat in script |
+| `../../scripts/smith_retrieval_validation.py` | **independent-campaign** retrieval hold-out | Smith/MOSAiC 2020, 350–2500 nm | **current** — the strongest independent test (different year/site/instrument) |
+| `../../scripts/plot_sheba_fits.py` | observed-vs-retrieved spectra figures | SHEBA | **current** — figures |
+| `../../scripts/plot_inversion_performance.py` | confusion matrix + parameter scatter + young-ice curve | synthetic | **current** — synthetic demo (disclaimed in-figure) |
+| `../../scripts/experiments/fyi_bare_audit.py` | FYI_bare emulator accuracy + degeneracy | held-out forward-model, seed 777 | **current** — emulator audit backbone |
+| `run_global_validation.py` | **forward-model preset** accuracy (FYI_WINTER_SNOW/BARE), *not* the inversion | Grenfell + Smith | **current but distinct track** — validates the forward presets, not `retrieve_sea_ice()`; Smith melt-season "failures" are an expected season mismatch |
+
+Curated reports: `docs/sea_ice_validation.md` (inversion, current), plus the
+forward-model-track reports `docs/sea_ice_validation_global.md` and
+`docs/sea_ice_validation_meltpond.md` (older, preset-validation track —
+read alongside `sea_ice_validation.md` §6, which supersedes them for the
+inversion).
 
 ---
 
