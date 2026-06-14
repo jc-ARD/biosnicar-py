@@ -1,6 +1,6 @@
 # Sea Ice Emulator
 
-The sea ice emulator system provides fast spectral-albedo prediction and parameter retrieval for five Arctic sea ice surface types. It extends the terrestrial emulator (see [EMULATOR.md](EMULATOR.md)) with sea-ice-specific physics: brine optics, melt ponds, SSL (Surface Scattering Layer), and multi-year ice. A single forward model evaluation takes ~50 ms; emulator prediction takes ~microseconds, enabling practical optimisation and uncertainty estimation over satellite images.
+The sea ice emulator system provides fast spectral-albedo prediction and parameter retrieval for seven Arctic sea ice surface types. It extends the terrestrial emulator (see [EMULATOR.md](EMULATOR.md)) with sea-ice-specific physics: brine optics, melt ponds, SSL (Surface Scattering Layer), and multi-year ice. A single forward model evaluation takes ~50 ms; emulator prediction takes ~microseconds, enabling practical optimisation and uncertainty estimation over satellite images.
 
 ## Overview
 
@@ -337,7 +337,8 @@ emu.save(cfg["emulator_file"])
 
 | Surface type | Recommended n_samples | Why |
 |---|---|---|
-| FYI_bare, MYI_bare | 30,000 | High-dimensional brine spectral manifold |
+| FYI_bare | 60,000 | High-dimensional brine manifold; 60k halves BBA MAE vs 30k (A1 audit) |
+| MYI_bare | 30,000 | High-dimensional brine manifold |
 | FYI_snow, FYI_summer, FYI_pond | 10,000–12,000 | Smoother spectral shapes |
 | Simple 2-param test emulator | 500–1,000 | Fast testing only |
 
@@ -472,11 +473,11 @@ Returns: `SeaIceRetrievalResult`
 
 ## The Retrieve-then-Classify Workflow
 
-### Why five separate emulators?
+### Why separate emulators per surface type?
 
 A single universal emulator would need a discrete surface-type input (`direct` is already binary and problematic; `surface_type` as a 5-class categorical is worse). More fundamentally, the parameter spaces are incommensurable: `pond_depth` is meaningless for bare ice, `ssl_grain_radius` is meaningless for a pond, and so on.
 
-The five-emulator design means:
+The per-type design means:
 - Each emulator's parameters exactly describe the relevant physics for that surface type
 - The cost function is always full-rank (no degenerate parameters)
 - Classification falls out naturally: the emulator that produces the lowest chi-squared residual is the best physical model for that observation

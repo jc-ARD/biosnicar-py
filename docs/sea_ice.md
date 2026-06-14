@@ -1,6 +1,6 @@
 # Sea Ice Extension — Primer
 
-**Version**: v0.1 (MVP)
+**Version**: v0.4 (forward model + young ice + open water + inversion)
 **Module**: `biosnicar.sea_ice`
 
 ---

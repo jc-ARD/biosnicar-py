@@ -1,4 +1,6 @@
 # Melt Pond Validation Report
+
+> **Historical report (forward-model preset track).** This documents an earlier validation of the forward-model presets, not the current `retrieve_sea_ice()` inversion. For current results see [sea_ice_validation.md](sea_ice_validation.md) (§6 supersedes this for the inversion) and [SEA_ICE_RETRIEVAL.md](SEA_ICE_RETRIEVAL.md).
 ## Dataset: Morassutti (1995) Canadian Arctic Melt Ponds
 
 **Generated**: 2026-06-04

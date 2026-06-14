@@ -1,7 +1,7 @@
 # Young Ice Extension — Build Specification
 
 **Created**: 2026-06-08  
-**Status**: Planned — v0.4  
+**Status**: ✅ IMPLEMENTED — v0.4 (this spec is now a historical record; see docs/SEA_ICE_RETRIEVAL.md and docs/sea_ice_validation.md §7 for the as-built result, incl. the two-stream/internal-reflectance deviation from this spec)  
 **Tags**: #biosnicar #sea-ice #young-ice #build-spec  
 **Depends on**: Sea ice extension v0.2 (completed), sea-ice emulator (completed)
 

@@ -1,6 +1,7 @@
 # Sea Ice Extension — Build Specification
 
-**Created**: 2026-05-14
+**Created**: 2026-05-14  
+**Status**: 📜 HISTORICAL — original MVP build spec. The implementation has since grown well beyond MVP (melt ponds, young ice, open water, full inversion). Kept as a development record; see docs/sea_ice.md and docs/SEA_ICE_RETRIEVAL.md for current state.
 **Tags**: #biosnicar #sea-ice #build-spec #engineering #implementation
 **Purpose**: Step-by-step build instructions for extending BioSNICAR with sea-ice radiative-transfer support to MVP scope. Written to be executable by a competent engineer (human or another Claude instance) without further hand-holding. Each task has a clear goal, file targets, implementation guidance, and acceptance criteria.
 
@@ -16,7 +17,7 @@
 
 Extend BioSNICAR — a Python radiative-transfer code for snow and glacial ice — to also handle sea ice. Sea ice differs from terrestrial ice primarily because it contains brine inclusions: micro-pockets of liquid concentrated seawater that remain liquid at sub-zero temperatures. These inclusions change the ice's complex refractive index and produce different albedo spectra than freshwater ice.
 
-The MVP delivers a forward model that, given a sea-ice layer specification (thickness, temperature, salinity, density, optional snow layer), produces a 480-band albedo spectrum that matches published in-situ measurements to within ~%.
+The MVP delivers a forward model that, given a sea-ice layer specification (thickness, temperature, salinity, density, optional snow layer), produces a 480-band albedo spectrum that matches published in-situ measurements to within a few percent BBA.
 
 Out of scope for MVP: melt ponds, sea-ice algae, salty snow, vertical T/S profiles, spheroid inclusion geometry, Antarctic-specific tuning, inverse retrieval. Each of these is a planned future extension; the MVP must be designed so they can be added cleanly without refactoring.
 
