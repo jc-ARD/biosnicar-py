@@ -1,200 +1,266 @@
 # Sea Ice Retrieval — Development Plan & Roadmap
 
-**Status:** planning · **Date:** 2026-06-13 · **Branch context:** `feature/sea-ice-mvp`
+**Status:** planning · **Date:** 2026-06-14 · **Branch context:** `feature/sea-ice-mvp`
 
-This plan develops the sea ice optical inversion (`biosnicar.sea_ice`) toward
-real-world use as **one line of evidence in a multi-sensor ensemble** that
-classifies sea-ice scenes and retrieves ice characteristics. It is grounded in
-the current validated state and the limitations surfaced by the 2026-06 audit
-and the Smith/MOSAiC independent hold-out (see
+This plan develops the sea ice optical model and inversion (`biosnicar.sea_ice`)
+under a **dual mandate**:
+
+1. **A best-in-class standalone application** for retrieving sea-ice surface
+   type and physical characteristics from optical reflectance — optimised for
+   maximum performance in its own right, across **two first-class data
+   modalities**: full **hyperspectral** inversion (field spectrometer, drone
+   imager, hyperspectral satellite) and **satellite multispectral** inversion
+   (Sentinel-2/3, Landsat, MODIS, PlanetScope, VIIRS).
+2. **An ensemble-ready evidence stream** that later contributes calibrated,
+   fusable likelihoods to a multi-sensor ice-classification system supplemented
+   by SAR, meteorological reanalysis, passive microwave, ice-age/drift, etc.
+
+It is grounded in the validated state and the limitations surfaced by the
+2026-06 audit and the Smith/MOSAiC independent hold-out (see
 [sea_ice_validation.md](sea_ice_validation.md) §6.4–6.5,
 [SEA_ICE_RETRIEVAL.md](SEA_ICE_RETRIEVAL.md)).
 
 ---
 
-## 1. North star and what changes because of the ensemble framing
+## 1. North star: one architecture, two mandates, two modalities
 
-The module's job is **not** to be the final classifier. It is to convert an
-observed reflectance (spectrum or satellite bands) into a *physically grounded,
-calibrated probabilistic statement* — per-class likelihoods plus parameter
-posteriors with uncertainty — that a downstream fusion layer combines with SAR,
-thermal, passive microwave, ice-age/drift products, and operational ice charts.
+The two mandates look like they pull in different directions (standalone wants
+to use every scrap of information including met-data priors; the ensemble must
+not double-count evidence it already holds). They are reconciled by a single
+design choice:
 
-Three consequences reorder the priorities versus a standalone classifier:
+> **Compute and expose the spectrum-only likelihood and the prior contribution
+> separately, always.** Standalone mode consumes the full posterior (priors on);
+> ensemble mode consumes the spectrum-only likelihood and lets the fusion layer
+> own the met/SAR/age evidence. Same code, a toggle and a provenance vector.
 
-1. **Calibrated likelihoods beat headline accuracy.** A fusion layer needs
-   outputs that mean what they say (a 0.7 should be right ~70% of the time).
-   Today's `confidence = (2nd−best)/2nd` is an uncalibrated heuristic. Fixing
-   this outranks adding classes or chasing accuracy points.
-2. **Honest provenance is a hard requirement.** The ensemble must know whether
-   a label came from the *spectrum* or from a *prior/metadata*, or it will
-   double-count evidence (e.g. weight an ice-age prior twice if this module
-   already folded it in). Outputs must separate spectral likelihood from
-   prior contribution.
-3. **Degeneracies are acceptable if reported as such.** The optical
-   degeneracies we found (melting snow ↔ SSL; FYI_bare ↔ MYI_bare ↔ young ice ↔
-   open water) don't need to be solved *within* this stream — they are exactly
-   what complementary streams (SAR, thermal, ice age) resolve. This stream must
-   report the ambiguity cleanly rather than force a confident pick.
+The **methodological spine** that delivers this is **optimal estimation (OE) /
+Bayesian retrieval** (Rodgers framework) per surface-type forward model, with
+**Bayesian model selection** across types:
+
+- **Per class:** OE retrieval → parameter posterior (mean + covariance),
+  marginal likelihood, **averaging kernels** and **degrees of freedom for
+  signal (DFS)**.
+- **Across classes:** posterior probability over surface types from the marginal
+  likelihoods (with optional class priors).
+
+This one framework yields, for free, everything both mandates need:
+
+| Need | OE product that supplies it |
+|---|---|
+| Calibrated uncertainty (ensemble) | posterior covariance |
+| Spectral-vs-prior provenance (ensemble + honesty) | averaging kernel / gain matrix — literally "how much came from the data" |
+| What is retrievable from *this* band set (modality) | DFS / information content |
+| Standalone accuracy | MAP estimate using all available priors |
+| Fusable output (ensemble) | per-class marginal likelihood with priors *off* |
+
+The emulators make this cheap: MLP Jacobians are analytic/finite-difference in
+microseconds, so OE + model selection runs at scene scale.
 
 ### Design principles
-- **Probabilistic, not hard-label:** emit posteriors, never just argmin.
-- **Physically grounded:** keep the forward model; priors are external evidence, not curve-fitting freedom.
-- **Regime-aware:** performance is season/melt-state dependent — validate and report per regime, never as a single headline number.
-- **Honest by construction:** spectral vs prior-resolved provenance, quality flags, and known degeneracies are first-class outputs.
+- **Probabilistic, not hard-label:** emit per-class posteriors and parameter posteriors; argmin is a reporting convenience, never the interface.
+- **Information-content-aware:** retrieve only the parameters the observation's DFS supports; lean on priors for the rest — and *say which is which*.
+- **Modality-first:** hyperspectral and multispectral are distinct regimes with distinct information content, error budgets, and validation — not one path with the other bolted on.
+- **Physically grounded:** keep the forward model; priors are external evidence, not fitting freedom.
+- **Regime-aware:** report per season/melt-state; never a single headline number.
+- **Honest by construction:** provenance, quality flags, DFS, and known degeneracies are first-class outputs.
 - **Reproducible:** versioned emulators/LUTs, deterministic rebuilds, committed result manifests.
 
 ---
 
-## 2. Current state (honest baseline)
+## 2. The two modalities as a first-class axis
 
-- **Validated (spring/cold regime, Arctic):** SHEBA spring snow 6/7, summer bare ice 16/16 (inferred labels); FYI_bare emulator held-out spectral R² 0.998.
-- **The only independent ground-truth metric** is Morassutti pond depth (24% within ±25%).
-- **Independent hold-out (Smith/MOSAiC):** summer melting snow is optically degenerate with SSL/bare ice (5% → FYI_snow); fit RMS roughly doubles out of distribution. Spring numbers do **not** generalise to the melt season.
-- **Synthetic metrics (E1, demo) are inverse-crime numbers** — same forward model for generation and inversion.
-- **Untested:** any non-Arctic surface; open water and young ice against real spectra (both currently synthetic-only); scene-scale performance (>10 px never benchmarked); atmospheric / TOA coupling; BRDF/angular effects; confidence calibration.
-- **Known deferred physics:** linear liquidus (~31% brine-salinity error at −10 °C); no liquid-water content in melting-surface forward models.
+| | **Hyperspectral** | **Satellite multispectral** |
+|---|---|---|
+| Sources | ASD/field (350–2500 nm), drone imagers, EnMAP/PRISMA/EMIT (hyperspectral satellites) | Sentinel-2/3, Landsat 8/9, MODIS, PlanetScope, VIIRS |
+| Bands | 100s contiguous, full SWIR, narrow features | 4–13 broad bands, often VIS–NIR only |
+| Information content (DFS) | high — retrieve grain size, LWC, impurities, thickness | low — often only 1–3 DOF; classification + 1–2 params |
+| Dominant error source | instrument noise, surface heterogeneity | **atmospheric correction**, band-set limits, mixed pixels |
+| Degeneracy exposure | lower (narrow features separate parameters) | higher (broad bands + few of them) |
+| Prior reliance | light | heavy — priors do real work when bands are few |
+| Atmospheric handling | usually surface reflectance already | **TOA→surface is a hard dependency** |
 
----
-
-## 3. Development workstreams and priority tasks
-
-Ordered within each stream by priority; **[gate]** marks a task another stream depends on.
-
-### A. Probabilistic inversion & output contract  *(highest priority — unblocks the ensemble)*
-- **A1 [gate]** Replace argmin-χ² classification with proper Bayesian model selection → normalised **per-class posterior probabilities**. Define the output data contract the ensemble consumes: `{class: log_likelihood}`, parameter posteriors (mean+cov), quality bitmask, provenance vector.
-- **A2 [gate]** **Provenance separation:** compute and emit the classification both with flat priors (spectrum-only) and with metadata priors, and flag when they disagree (`prior_resolved`). Never let a prior silently flip a label without saying so.
-- **A3** Principled likelihood: replace the band-mask rescaling heuristic with a per-band noise model (instrument + forward-model error covariance). Band masks become down-weighting, not hard cuts.
-- **A4** Confidence **calibration**: reliability diagrams; calibrate posteriors against held-out data so probabilities are meaningful to the fusion layer.
-- **A5** Hierarchical / superclass reporting for degenerate clusters (`{melt bright granular}`, `{dark bare/thin ice}`), gated on `SPECTRALLY_AMBIGUOUS`; fine classes retained for parameter retrieval.
-- **A6** End-to-end uncertainty propagation (obs noise + forward-model error → parameter posterior).
-
-### B. Metadata → priors (the lever the spectrum lacks)
-- **B1 [gate]** Generic **metadata→prior adapter**: produces per-class log-priors + parameter regularisation from external inputs; `known_month` becomes one provider. Clean interface so the ensemble can supply or withhold each stream.
-- **B2** **Surface/skin temperature** prior (TIR or reanalysis) → maps onto existing `sea_ice_temperature`; breaks the dark cluster (open water ≈ −1.8 °C vs cold bare ice ≪ 0) and melt-vs-frozen. Highest leverage, lowest friction.
-- **B3** **Ice-age / region** prior (NSIDC EASE-grid age, or geography) attached to the `spatial_coords` already in the batch path → breaks FYI_bare ↔ MYI_bare (spectrally unbreakable, RMS 4.7).
-- **B4** Freezing-degree-day → Stefan-law thickness prior for young ice; freeze-up region/polynya likelihood.
-- **B5** Snow-presence prior (passive microwave / snow model / in-situ) — the *only* lever for snow ↔ SSL; coarse and hardest, lower priority.
-
-### C. Forward-model fidelity
-- **C1** **Cubic liquidus** (Assur) replacing the linear form; rebuild LUTs + emulators. Removes the known ~31% brine-salinity error in the validated regime.
-- **C2** **Liquid-water content** in the melting-surface (FYI_summer) forward model → closes the Smith SWIR misfit (p90 RMS 0.077) and makes melt-season grain/LWC retrieval meaningful (won't change classification — that's degenerate — but fixes the parameters).
-- **C3** Independent forward-model validation against the adding-doubling solver across **all regimes incl. cold ice** (the Cox & Weeks bug proved the validation suite couldn't detect a cold-regime physics error).
-- **C4** Atmospheric coupling: define and implement the TOA→surface contract (real satellite input is TOA; current model assumes surface reflectance). Either ingest an atmospheric correction or document the hard dependency.
-- **C5** BRDF / angular effects (open-water sun glint, surface anisotropy) for real sensor geometry; multi-angle support.
-
-### D. Empirical data collection — see §4 (the largest credibility gap).
-
-### E. Validation framework — see §5.
-
-### F. Deployment & engineering
-- **F1** Scale benchmark at real scene/mosaic size (timing + memory); currently only 10-px tested.
-- **F2** Vectorised inverse network behind the existing `SeaIceSceneResult` interface for regional scale (already designed-for; swap engine without changing exports).
-- **F3** Ensemble integration API + data-cube/STAC compatibility; versioned, reproducible emulator/LUT artifacts with a result manifest.
-- **F4** Domain-expert review gate on the melt-surface and young-ice physics before any operational claim.
+**Implications baked into the plan:**
+- Retrieval is **band-set-driven**: the same OE engine, but the number of
+  retrieved parameters is set by DFS, not hardcoded — hyperspectral retrieves a
+  rich state vector; a 4-band PlanetScope scene retrieves a class + one or two
+  parameters and reports the rest as prior-dominated.
+- The **satellite path needs an atmospheric-correction contract** (ingest L2A
+  surface reflectance, or couple an atmospheric model) — without it, satellite
+  "performance" is untrustworthy regardless of the optical model.
+- **Per-modality validation and benchmarking** — a single accuracy number
+  across modalities is meaningless.
+- Hyperspectral satellites (EnMAP, EMIT, PRISMA; future SBG/CHIME) are the
+  bridge case — global-ish coverage at high spectral resolution — and a
+  priority deployment target because they get the most out of the physics.
 
 ---
 
-## 4. Empirical data collection plan
+## 3. Current state (honest baseline)
 
-This is the binding constraint on credibility. Current evidence: ~23 SHEBA
-spectra + Smith/MOSAiC snow, Arctic-only, one in-situ ground-truth metric.
+- **Validated (spring/cold regime, Arctic, VIS–NIR):** SHEBA spring snow 6/7, summer bare ice 16/16 (inferred labels); FYI_bare emulator held-out spectral R² 0.998.
+- **Only independent ground-truth metric:** Morassutti pond depth (24% within ±25%).
+- **Independent hold-out (Smith/MOSAiC, full SWIR):** summer melting snow is optically degenerate with SSL/bare ice; fit RMS ~doubles out of distribution. Spring numbers do **not** generalise to the melt season.
+- **Synthetic metrics are inverse-crime numbers** (same forward model for generation and inversion).
+- **Untested:** non-Arctic surfaces; open water and young ice vs real spectra (synthetic-only); scene-scale performance; atmospheric/TOA coupling; BRDF/angular effects; confidence calibration; drone and hyperspectral-satellite modalities.
+- **Deferred physics:** linear liquidus (~31% brine-salinity error at −10 °C); no liquid-water content in melting-surface forward models.
+
+---
+
+## 4. Development workstreams and priority tasks
+
+Ordered within each stream by priority; **[gate]** marks a dependency for other streams.
+
+### A. Inversion core — optimal estimation & probabilistic output  *(spine; highest priority)*
+- **A1 [gate]** OE retrieval per surface-type emulator: parameter posterior (mean+cov), marginal likelihood, Jacobians, averaging kernels, **DFS**.
+- **A2 [gate]** Bayesian model selection across classes → normalised **per-class posterior probabilities** from marginal likelihoods.
+- **A3 [gate]** **Provenance separation:** emit spectrum-only likelihood *and* prior-on posterior; averaging kernel quantifies measurement-vs-prior contribution; flag `prior_resolved` when they disagree.
+- **A4** Output data contract (serves both mandates): `{class: marginal_loglik}`, parameter posteriors, DFS, averaging-kernel summary, quality bitmask, provenance vector.
+- **A5** **Information-content-aware retrieval:** choose the retrieved sub-state from DFS per observation; report prior-dominated parameters as such.
+- **A6** Confidence **calibration** against held-out data (reliability diagrams); posteriors must mean what they say.
+- **A7** Per-band error model (instrument + forward-model covariance) replacing the band-mask rescaling heuristic; band masks become weights.
+- **A8** Hierarchical/superclass reporting for degenerate clusters (`{melt bright granular}`, `{dark bare/thin ice}`) gated on ambiguity; fine classes retained for parameters.
+
+### B. Modality support  *(co-priority with A — the standalone product is these two paths)*
+**B-HS — Hyperspectral path**
+- **B-HS1** Robust instrument→model-grid resampling for arbitrary hyperspectral inputs (SRF/FWHM aware; extends D3); per-instrument config (ASD, drone, EnMAP, EMIT, PRISMA).
+- **B-HS2** Exploit full information: rich state-vector retrieval (grain size, LWC, impurities, thickness) where DFS supports it; narrowband feature use (liquid-water, grain-size bands).
+- **B-HS3** Sub-pixel / linear mixing for heterogeneous drone & satellite-hyperspectral pixels.
+
+**B-MS — Satellite multispectral path**
+- **B-MS1 [gate]** **Atmospheric-correction contract:** ingest L2A surface reflectance with documented assumptions, or couple an atmospheric model for TOA input. Without this, satellite results are not credible.
+- **B-MS2** Per-sensor band configurations and band-set-aware retrieval (DFS-limited); graceful degradation as bands drop.
+- **B-MS3** Sun-glint / BRDF handling for open water and low-sun geometry (critical at high latitude).
+- **B-MS4** Mixed-pixel handling at coarse resolution (MODIS/VIIRS 250 m–1 km).
+
+### C. Metadata, priors & ensemble interface
+- **C1 [gate]** Modular **metadata→prior adapter**: per-class log-priors + parameter priors from external inputs; toggleable per source so standalone uses everything and ensemble withholds what the fusion layer owns. `known_month` becomes one provider.
+- **C2** **Surface/skin temperature** prior (TIR/reanalysis) → maps onto `sea_ice_temperature`; breaks the dark cluster (open water ≈ −1.8 °C vs cold bare ice) and melt-vs-frozen.
+- **C3** **Ice-age/region** prior (NSIDC EASE-grid age, or geography) on the `spatial_coords` already in the batch path → breaks FYI_bare ↔ MYI_bare (spectrally unbreakable, RMS 4.7).
+- **C4** Freezing-degree-day → Stefan-law thickness prior; freeze-up/polynya likelihood for young ice.
+- **C5** Snow-presence prior (PMW / snow model / in-situ) — the only lever for snow ↔ SSL; coarse, lower priority.
+- **C6** **Ensemble interface spec:** documented contract for emitting spectrum-only per-class likelihoods + parameter posteriors + provenance into the fusion layer; defines what this stream owns vs what the ensemble supplies (SAR, met) to avoid double-counting.
+
+### D. Forward-model fidelity
+- **D1** **Cubic liquidus** (Assur) replacing the linear form; rebuild LUTs + emulators. Removes the known ~31% brine-salinity error in the validated regime.
+- **D2** **Liquid-water content** in the melting-surface (FYI_summer) forward model → closes the Smith SWIR misfit; makes melt-season grain/LWC retrieval meaningful.
+- **D3** Independent forward-model validation vs the adding-doubling solver across **all regimes incl. cold ice** (the Cox & Weeks bug proved the suite couldn't detect a cold-regime error).
+- **D4** BRDF / non-Lambertian surface and angular effects (couples to B-MS3).
+- **D5** Spectral coverage to full SWIR fidelity for hyperspectral (verify brine/LUT physics across 1000–2500 nm).
+
+### E. Empirical data collection — see §5.
+### F. Validation framework — see §6.
+
+### G. Standalone application & engineering
+- **G1** Productised API + CLI + notebook examples; clear single-spectrum, batch, and scene entry points for both modalities.
+- **G2** Scale benchmark at real scene/mosaic size (currently only 10-px tested); memory/timing.
+- **G3** Vectorised inverse network behind `SeaIceSceneResult` for regional mosaics (engine swap, exports unchanged).
+- **G4** Robustness: missing bands, noisy/atmospherically-imperfect input, out-of-range geometry, graceful failure with flags.
+- **G5** Reproducibility: versioned emulator/LUT artifacts, deterministic rebuilds, result manifests; data-cube/STAC compatibility.
+- **G6** Domain-expert review gate on melt-surface and young-ice physics before operational claims.
+
+---
+
+## 5. Empirical data collection plan
+
+Binding constraint on credibility. Current evidence: ~23 SHEBA spectra +
+Smith/MOSAiC snow, Arctic-only, one in-situ ground-truth metric.
 
 **Targeted gaps (priority order):**
-1. **Coincident spectral + structural ground truth** — spectra *with* measured snow depth, ice thickness, and surface type. This is what lets us validate *provenance* (snow vs ice), not just optics — the thing albedo alone cannot give.
-2. **Bare winter/cold ice spectra** (no snow, T < −15 °C) — `FYI_bare`/`MYI_bare` have *never* been validated against real spectra; the FY/MY split is unverified empirically.
-3. **Young ice / nilas / grease ice spectra** — currently zero; the model is anchored only to Grenfell & Maykut (1977) broadband brackets. Freeze-up campaigns (autumn/early winter).
-4. **Open-water spectra** — currently zero; the open-water model is fully self-inverting. Need real Arctic/Antarctic open-water and lead reflectance.
-5. **Non-Arctic (Antarctic) data** — all current data is Arctic; generalisation is untested. Antarctic ice has different salinity/snow regimes.
-6. **Satellite–in-situ matchups** — coincident Sentinel-2/Landsat/MODIS surface reflectance with field measurements, in the actual deployment modality (band mode, atmospheric correction included).
-7. **Multi-angle / BRDF** measurements for glint and anisotropy (C5).
+1. **Coincident spectral + structural ground truth** (spectra *with* measured snow depth, ice thickness, surface type) — validates *provenance*, which albedo alone cannot.
+2. **Bare winter/cold ice spectra** (no snow, T < −15 °C) — `FYI_bare`/`MYI_bare` never validated against real spectra.
+3. **Young ice / nilas / grease ice** (freeze-up campaigns) — currently zero; anchored only to Grenfell & Maykut broadband brackets.
+4. **Open-water and lead spectra** — currently zero; open-water model is self-inverting.
+5. **Non-Arctic (Antarctic) data** — all current data is Arctic.
+6. **Satellite–in-situ matchups** in the real deployment modality (band mode, *with* atmospheric correction) — for B-MS.
+7. **Hyperspectral-satellite scenes** (EnMAP/EMIT/PRISMA over sea ice) with coincident field data — for B-HS at the bridge case.
+8. **Multi-angle / BRDF** measurements (D4, B-MS3).
 
-**Candidate archives to mine before any new field cost:** MOSAiC (multiple legs,
-ROV + ASD + SUIT instruments; Arctic Data Center / PANGAEA), SHEBA, ICESCAPE,
-NSIDC, AWI/PANGAEA Antarctic campaigns (SIPEX, ISPOL, AnZone), and operational
-ice-chart archives (NIC, AARI, DMI) for scene-level labels. Curate into a single
-versioned validation corpus with standardised metadata (date, lat/lon, SZA, sky,
-surface type, structural measurements).
-
----
-
-## 5. Validation milestones (rigour framework)
-
-The goal is to convert today's optimistic, partly-circular numbers into
-defensible, regime-stratified, ensemble-relevant skill estimates.
-
-- **V1 — Freeze an independent test corpus** never used for tuning (start: a held-out MOSAiC leg + any Antarctic data). All headline numbers reported on it.
-- **V2 — Perturbed-physics (model-mismatch) validation:** generate synthetic spectra with deliberately wrong physics, invert with the nominal model → bounds the inverse-crime overstatement; converts "R² 0.99 under perfect physics" into a real degradation estimate.
-- **V3 — Per-regime validation:** cold/spring, melt-onset, peak-melt, freeze-up — reported separately, never as one headline (performance is demonstrably regime-dependent).
-- **V4 — Calibration validation:** reliability diagrams; posteriors must be calibrated to be fusable (ties to A4).
-- **V5 — Sensitivity analyses:** SZA beyond training bound, atmospheric-correction error, band-set degradation, noise level.
-- **V6 — Ensemble-relevant metric:** does adding this stream measurably improve scene classification against operational ice charts / expert labels, versus the ensemble without it? This is the only metric that matters for the stated end use.
+**Mine existing archives before any field cost:** MOSAiC (multiple legs; ROV +
+ASD + SUIT instruments — Arctic Data Center / PANGAEA), SHEBA, ICESCAPE, NSIDC,
+AWI/PANGAEA Antarctic (SIPEX, ISPOL, AnZone), EnMAP/EMIT/PRISMA L2 archives, and
+operational ice charts (NIC, AARI, DMI) for scene labels. Curate into one
+versioned validation corpus with standardised metadata.
 
 ---
 
-## 6. Deployment milestones
+## 6. Validation framework (rigour, per modality and per regime)
 
-- **D1** Probabilistic output contract frozen and documented (depends A1–A2).
-- **D2** Metadata-prior adapter live with provenance flagging (B1–B3).
-- **D3** Scene-scale benchmark passed; vectorised engine for regional mosaics (F1–F2).
-- **D4** TOA→surface pipeline or explicit, validated surface-reflectance contract (C4).
-- **D5** Ensemble integration: this stream emitting calibrated likelihoods into the fusion layer; V6 lift demonstrated.
-- **D6** Operational packaging (containers/cloud, reproducible artifacts) + domain-expert sign-off (F4).
+- **V1 — Freeze an independent test corpus** never used for tuning (held-out MOSAiC leg + any Antarctic data); all headline numbers reported on it.
+- **V2 — Perturbed-physics (model-mismatch) validation:** invert synthetic spectra generated with deliberately wrong physics → bounds the inverse-crime overstatement.
+- **V3 — Per-modality benchmarking:** separate hyperspectral and multispectral skill; for multispectral, per-sensor and as a function of band set / DFS.
+- **V4 — Per-regime validation:** cold/spring, melt-onset, peak-melt, freeze-up — reported separately.
+- **V5 — Calibration validation:** reliability diagrams; posterior coverage tests.
+- **V6 — Sensitivity analyses:** atmospheric-correction error (dominant for satellite), SZA beyond training, band degradation, noise level.
+- **V7 — Ensemble-relevant metric:** does adding this stream measurably improve scene classification vs operational ice charts / expert labels, versus the ensemble without it.
 
 ---
 
-## 7. Phased roadmap with exit gates
+## 7. Deployment milestones
 
-Phases are dependency-ordered; durations indicative (research, not fixed dates).
+- **D-A** Standalone hyperspectral app: rich retrieval + uncertainty + DFS, validated on field/drone data (mandate 1, hyperspectral).
+- **D-B** Standalone satellite app: atmospheric-correction contract + per-sensor retrieval, validated on satellite–in-situ matchups (mandate 1, multispectral).
+- **D-C** Probabilistic output contract frozen and documented (A1–A4).
+- **D-D** Metadata-prior adapter live with provenance flagging (C1–C3); standalone uses priors, ensemble interface withholds them.
+- **D-E** Scene/mosaic-scale engine (G2–G3).
+- **D-F** Ensemble integration: emitting calibrated spectrum-only likelihoods into the fusion layer; V7 lift demonstrated (mandate 2).
+- **D-G** Operational packaging + expert sign-off (G5–G6).
 
-**Phase 0 — Correctness & honest probabilistic core** *(near term)*
-Tasks: A1, A2, A3, C1, C3, V1, V2.
-**Exit gate:** calibrated per-class posteriors with spectral/prior provenance; cubic liquidus shipped; inverse-crime degradation bounded; an independent test corpus frozen.
+---
 
-**Phase 1 — Metadata priors & ensemble interface**
-Tasks: B1, B2, B3, A4, A5, V4, D1.
-**Exit gate:** demonstrated, *honestly-attributed* lift on the dark cluster and FY/MY split from temperature + ice-age priors on real data; calibrated, fusable output contract published.
+## 8. Phased roadmap with exit gates
 
-**Phase 2 — Empirical expansion & regime validation**
-Tasks: D-stream (data collection §4), V3, V5, C2.
-**Exit gate:** independent multi-campaign validation including ≥1 non-Arctic dataset; per-regime skill documented; melt-season SWIR fit improved; young-ice/open-water/bare-winter gaps at least partially filled with real spectra.
+Dependency-ordered; durations indicative (research, not fixed dates).
+
+**Phase 0 — Probabilistic core & correctness** *(near term)*
+A1–A4, A7, D1, D3, V1, V2.
+**Gate:** OE-based per-class posteriors with provenance and DFS; cubic liquidus shipped; inverse-crime degradation bounded; independent test corpus frozen.
+
+**Phase 1 — Both standalone modalities to first-class**
+B-HS1–2, B-MS1–2, A5, A6, A8, G1, G4, V3, V5.
+**Gate:** standalone hyperspectral *and* satellite paths validated end-to-end (incl. an atmospheric-correction contract for satellite); calibrated, DFS-aware retrieval; per-modality benchmarks published.
+
+**Phase 2 — Priors, ensemble interface & empirical expansion**
+C1–C4, C6, data collection (§5), V4, V6, D2.
+**Gate:** honestly-attributed prior lift on the dark cluster / FY-MY split on real data; ensemble contract published; independent multi-campaign + ≥1 non-Arctic validation; melt-season SWIR fit improved.
 
 **Phase 3 — Real-sensor fidelity & scale**
-Tasks: C4, C5, F1, F2.
-**Exit gate:** TOA→surface pipeline validated on satellite–in-situ matchups; scene/mosaic-scale benchmark passed.
+B-MS3–4, B-HS3, D4–D5, G2–G3.
+**Gate:** BRDF/glint + mixed-pixel handling; scene/mosaic-scale benchmark; hyperspectral-satellite matchups.
 
-**Phase 4 — Operational ensemble deployment**
-Tasks: D5, D6, F3, F4, V6.
-**Exit gate:** measurable improvement in operational scene classification vs the ensemble-without-this-stream; expert sign-off; reproducible deployment.
+**Phase 4 — Operational deployment (standalone + ensemble)**
+D-F, D-G, G5–G6, V7.
+**Gate:** standalone apps released; ensemble lift demonstrated; expert sign-off; reproducible deployment.
 
 ---
 
-## 8. Risk register & kill criteria (honest)
+## 9. Risk register & kill/rescope criteria (honest)
 
 | Risk | Likelihood | Mitigation / decision rule |
 |---|---|---|
-| Optical degeneracies are irreducible even with priors | medium | Accept as ensemble role; if even SAR/thermal/age can't lift V6, the stream's value is parameter retrieval, not classification — scope accordingly |
-| No coincident structural ground truth obtainable | medium | Provenance claims (snow vs ice) stay unvalidated → restrict claims to optical-state + parameters; do **not** ship structural labels |
-| Atmospheric correction dominates error on real satellite data | medium-high | Quantify in C4/V5; if it swamps the spectral signal, reposition as a field/drone tool, not satellite |
-| Cubic-liquidus/LWC rebuild shifts validated results unfavourably | low-medium | Phase-0 gate re-runs V1–V3 before accepting |
-| Calibration impossible with available data volume | medium | Report uncalibrated with explicit warning; fusion layer down-weights accordingly |
+| Atmospheric correction dominates satellite error | medium-high | Quantify in V6; if it swamps the signal, satellite mandate rescopes to L2A-only / hyperspectral-satellite, and field/drone becomes the primary standalone use |
+| Optical degeneracies irreducible even with priors | medium | Accept ensemble role; if SAR/thermal/age can't lift V7, value is parameter retrieval, scope classification claims accordingly |
+| No coincident structural ground truth obtainable | medium | Provenance (snow vs ice) stays unvalidated → ship optical-state + parameters, not structural labels |
+| Few-band satellite DFS too low for useful retrieval | medium | Report class + prior-dominated params honestly; position multispectral as classification-first, hyperspectral as retrieval-first |
+| Cubic-liquidus/LWC rebuild shifts validated results | low-med | Phase-0 gate re-runs V1–V2 before accepting |
+| Calibration infeasible with available data volume | medium | Report uncalibrated with explicit warning; fusion down-weights |
 
-**Kill / rescope criteria:** if Phase 1 shows priors cannot lift the dark
-cluster on real data **and** Phase 2 cannot obtain independent validation, the
-honest outcome is to ship this as a *parameter-retrieval and optical-state*
-tool with explicit non-classification scope — not an operational classifier.
+**Kill / rescope criteria:** if Phase 1 cannot get the satellite path past the
+atmospheric-correction barrier **and** Phase 2 cannot obtain independent
+validation, ship as a **hyperspectral field/drone retrieval tool** (where the
+physics is strongest and best-validated) plus an ensemble likelihood emitter —
+not an operational satellite classifier.
 
 ---
 
-## 9. Immediate next actions (this branch)
+## 10. Immediate next actions (this branch)
 
-The lowest-regret, highest-leverage starting set, all doable now:
-1. **C1 cubic liquidus** + rebuild (removes a known substantive physics error).
-2. **A1/A2 probabilistic output + provenance** (the ensemble's hard requirement).
-3. **B2 temperature prior** via the metadata adapter (highest-leverage lever).
-4. **V2 perturbed-physics validation** (bounds the inverse crime now, no new data).
-5. **V1 freeze the held-out MOSAiC corpus** (stop tuning against test data).
+Lowest-regret, highest-leverage, all doable now and serving **both** mandates:
+1. **A1–A3 OE core + provenance** — the spine; gives standalone calibrated retrieval *and* the fusable ensemble output from one implementation.
+2. **D1 cubic liquidus** + rebuild — removes a known substantive physics error.
+3. **B-MS1 atmospheric-correction contract** — without it the satellite mandate is not credible; cheapest to define early.
+4. **V2 perturbed-physics validation** + **V1 freeze the MOSAiC corpus** — bound the inverse crime and stop tuning against test data, no new data needed.
+5. **C1–C2 metadata adapter + temperature prior** — highest-leverage prior, and the modular toggle that lets the same code serve standalone (priors on) and ensemble (priors withheld).
 
-These convert the sharpest open critiques from "acknowledged" to "addressed or
-bounded" without waiting on field campaigns, and set up the probabilistic,
-fusable interface the ensemble needs.
+These establish the probabilistic, DFS-aware, dual-modality, provenance-honest
+core that both the standalone product and the ensemble depend on.
