@@ -170,6 +170,42 @@ approximation. Runtime is minutes per observation (vs seconds for L-BFGS-B) —
 use on selected pixels, not scenes. See [INVERSION.md](INVERSION.md) for
 sampler details and convergence diagnostics.
 
+### 2.5 Optimal estimation (`method="oe"`) — calibrated, with information content
+
+Optimal estimation (Rodgers 2000) is the principled Bayesian path: it combines
+the measurement (weighted by its error covariance) with the prior and returns a
+posterior mean **and covariance**, plus two diagnostics nothing else provides —
+the **averaging kernel** (how much of each answer came from the data vs the
+prior) and **degrees of freedom for signal (DFS)** (how many parameters the
+observation genuinely constrained). Classification becomes proper Bayesian model
+selection: per-surface-type **probabilities** from each type's model evidence.
+
+```python
+res = retrieve_sea_ice(observed=spectrum, solzen=60, direct=1, known_month=7,
+                       method="oe", obs_uncertainty=sigma_per_band)
+res.surface_type          # winner
+res.confidence            # winning type's posterior probability (calibrated)
+res.class_probabilities   # {type: probability}, sums to 1
+res.dfs                   # information content of the winning fit
+res.averaging_kernel_diag # {param: 0..1}  ~1 = measured, ~0 = prior-driven
+res.uncertainty           # 1-sigma per parameter (posterior covariance)
+```
+
+Why reach for it: it is the option that gives **calibrated uncertainty** (for an
+ensemble to fuse), **honest provenance** (the averaging kernel flags
+prior-driven answers — e.g. summer-snow brightness set by the seasonal prior,
+not the spectrum), and a per-band-set **information budget** (DFS is high for
+hyperspectral, low for 4-band satellite — so the same code retrieves a rich
+state from a spectrum but reports only what a few bands can support). Speed is
+comparable to or faster than L-BFGS-B per pixel. Worked demonstration:
+`examples/17_optimal_estimation.py`.
+
+> **Honest status:** the measurement covariance currently contains instrument
+> noise only. The forward-model-error term — which makes the *uncertainties*
+> (not the point estimates) trustworthy — is pending empirical calibration
+> against field residuals (see [SEA_ICE_DEVELOPMENT_PLAN.md](SEA_ICE_DEVELOPMENT_PLAN.md)).
+> Until then, treat OE error bars as optimistic.
+
 ---
 
 ## 3. Reading the result

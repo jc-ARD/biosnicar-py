@@ -219,3 +219,47 @@ class TestOEIntegration:
         assert 0.0 <= r.confidence <= 1.0
         assert r.confidence == pytest.approx(max(r.class_probabilities.values()))
         assert r.dfs is not None
+
+    def test_oe_agrees_with_lbfgsb_on_well_constrained_case(self):
+        """Validation: on a well-constrained spectrum, the OE point estimate
+        should agree with the established L-BFGS-B optimiser. (If it didn't,
+        the OE integration would be suspect.)"""
+        from biosnicar.sea_ice.emulator_configs import load_sea_ice_emulators
+        from biosnicar.inverse.optimize import retrieve
+        emu = load_sea_ice_emulators(["FYI_pond"])["FYI_pond"]
+        obs = self._pond_obs()
+        common = dict(observed=obs, parameters=["pond_depth", "black_carbon"],
+                      emulator=emu,
+                      fixed_params={"sea_ice_temperature": -4.0,
+                                    "solzen": 60, "direct": 1},
+                      obs_uncertainty=np.full(480, 0.005))
+        oe = retrieve(method="oe", **common)
+        lb = retrieve(method="L-BFGS-B", **common)
+        assert abs(oe.best_fit["pond_depth"] - lb.best_fit["pond_depth"]) < 0.02
+
+    def test_dfs_drops_with_fewer_bands(self):
+        """Validation of the headline OE behaviour: a full spectrum carries
+        more information (higher DFS) than a few satellite bands."""
+        from biosnicar.bands import to_platform
+        from biosnicar.sea_ice.emulator_configs import load_sea_ice_emulators
+        from biosnicar.inverse.optimize import retrieve
+        emu = load_sea_ice_emulators(["FYI_pond"])["FYI_pond"]
+        obs = self._pond_obs()
+        free = ["pond_depth", "sea_ice_temperature", "black_carbon"]
+        fixed = {"solzen": 60, "direct": 1}
+        hs = retrieve(observed=obs, parameters=free, emulator=emu,
+                      fixed_params=fixed, obs_uncertainty=np.full(480, 0.005),
+                      method="oe")
+        bands = ["B2", "B3", "B4", "B8"]
+        br = to_platform(obs, "sentinel2", flx_slr=emu.flx_slr)
+        y = np.array([getattr(br, b) for b in bands])
+        s2 = retrieve(observed=y, parameters=free, emulator=emu,
+                      platform="sentinel2", observed_band_names=bands,
+                      fixed_params=fixed, obs_uncertainty=np.full(len(bands), 0.02),
+                      method="oe")
+        assert hs.dfs > s2.dfs
+        # pond depth stays measured in both; temperature is the one that
+        # collapses onto the prior with only 4 VIS-NIR bands
+        assert hs.averaging_kernel_diag["pond_depth"] > 0.7
+        assert s2.averaging_kernel_diag["sea_ice_temperature"] < \
+            hs.averaging_kernel_diag["sea_ice_temperature"]

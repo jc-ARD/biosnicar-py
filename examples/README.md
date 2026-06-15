@@ -20,6 +20,7 @@ Self-contained example scripts covering the full BioSNICAR workflow. Each script
 | 14  | [sea_ice_emulator.py](14_sea_ice_emulator.py)        | Sea ice emulator training and prediction                                                     |
 | 15  | [sea_ice_inversion.py](15_sea_ice_inversion.py)      | `retrieve_sea_ice()`: classification, band mode, uncertainty, multi-scenario                 |
 | 16  | [sea_ice_scene_classification.py](16_sea_ice_scene_classification.py) | Young ice, open water, quality flags, batch scenes with NetCDF/H3 export   |
+| 17  | [optimal_estimation.py](17_optimal_estimation.py)    | OE retrieval (`method="oe"`): posterior uncertainty, averaging kernels, DFS, hyperspectral-vs-satellite information content, calibrated class probabilities |
 
 ## Running
 
