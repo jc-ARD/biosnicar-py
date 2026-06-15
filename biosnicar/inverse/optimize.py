@@ -356,6 +356,12 @@ def retrieve(
         result = _run_differential_evolution(
             opt_cost_fn, parameters, opt_bounds, opt_forward_fn, observed, method,
         )
+    elif method == "oe":
+        result = _run_oe(
+            parameters, opt_forward_fn, opt_bounds, opt_x0, observed,
+            obs_uncertainty, regularization, wavelength_mask,
+            platform, observed_band_names, flx_slr,
+        )
     else:
         result = _run_scipy_minimize(
             opt_cost_fn, parameters, opt_bounds, opt_x0,
@@ -366,7 +372,8 @@ def retrieve(
     result.flx_slr = flx_slr
 
     # --- Transform results back from log space ---
-    if use_log:
+    # (OE returns a fully linear-space result already — skip the back-transform.)
+    if use_log and method != "oe":
         for p in parameters:
             if p in _LOG_SPACE_PARAMS:
                 log_val = result.best_fit[p]
@@ -396,6 +403,111 @@ def retrieve(
             }
 
     return result
+
+
+def _run_oe(parameters, opt_forward_fn, opt_bounds, opt_x0, observed,
+            obs_uncertainty, regularization, wavelength_mask,
+            platform, observed_band_names, flx_slr):
+    """Optimal-estimation retrieval, bridging the engine to the log-space and
+    band-mode machinery of :func:`retrieve`.
+
+    Works in the optimiser's space (log10(x+1) for log parameters); priors,
+    bounds and the Jacobian are all in that space.  Returns a RetrievalResult
+    with linear-space best_fit/uncertainty plus the OE diagnostics (posterior
+    covariance, averaging-kernel diagonal, DFS, log-evidence).
+    """
+    from biosnicar.inverse.optimal_estimation import optimal_estimation
+
+    n = len(parameters)
+    ln10 = np.log(10.0)
+    bounds_arr = np.array(opt_bounds, dtype=float)
+
+    # --- forward model in optimiser space -> measurement vector ---
+    if platform is not None:
+        from biosnicar.bands import to_platform
+
+        def F(xvec):
+            kw = dict(zip(parameters, xvec))
+            band = to_platform(opt_forward_fn(**kw), platform, flx_slr=flx_slr)
+            return np.array([getattr(band, b) for b in observed_band_names])
+        y = np.asarray(observed, dtype=float)
+        sel = np.ones(y.size, dtype=bool)
+    else:
+        sel = np.ones(480, dtype=bool)
+        if wavelength_mask is not None:
+            sel = np.asarray(wavelength_mask, dtype=bool)
+        sel &= np.isfinite(np.asarray(observed, dtype=float))
+
+        def F(xvec):
+            kw = dict(zip(parameters, xvec))
+            return np.asarray(opt_forward_fn(**kw))[sel]
+        y = np.asarray(observed, dtype=float)[sel]
+
+    # --- measurement covariance S_e (diagonal) ---
+    if obs_uncertainty is not None:
+        sig_e = np.asarray(obs_uncertainty, dtype=float)
+        sig_e = sig_e[sel] if sig_e.size == sel.size else sig_e
+    else:
+        sig_e = np.full(y.size, 0.02)   # default 1-sigma; structural term TBD
+    S_e = sig_e ** 2
+
+    # --- prior mean x_a and covariance S_a in optimiser space ---
+    reg = regularization or {}
+    x_a = np.empty(n)
+    sig_a = np.empty(n)
+    for i, p in enumerate(parameters):
+        lo, hi = bounds_arr[i]
+        is_log = p in _LOG_SPACE_PARAMS
+        if p in reg:
+            mu_lin, sg_lin = reg[p]
+            if is_log:
+                x_a[i] = float(_to_log(mu_lin))
+                sig_a[i] = sg_lin / ((mu_lin + 1.0) * ln10)   # delta method
+            else:
+                x_a[i] = mu_lin
+                sig_a[i] = sg_lin
+        else:
+            # No explicit prior: weak/near-flat prior over the parameter range.
+            x_a[i] = opt_x0[i]
+            sig_a[i] = (hi - lo)
+        x_a[i] = float(np.clip(x_a[i], lo, hi))
+        sig_a[i] = float(max(sig_a[i], 1e-6))
+    S_a = sig_a ** 2
+
+    res = optimal_estimation(F, y, x_a, S_a, S_e, bounds=bounds_arr, x0=opt_x0)
+
+    # --- map back to linear space ---
+    best_fit, uncertainty, akd = {}, {}, {}
+    for i, p in enumerate(parameters):
+        xi = res.x[i]
+        sig_opt = float(np.sqrt(max(res.S[i, i], 0.0)))
+        if p in _LOG_SPACE_PARAMS:
+            lin = float(_from_log(xi))
+            best_fit[p] = lin
+            uncertainty[p] = float((lin + 1.0) * ln10 * sig_opt)
+        else:
+            best_fit[p] = float(xi)
+            uncertainty[p] = sig_opt
+        akd[p] = float(res.parameter_dfs[i])
+
+    predicted = opt_forward_fn(**dict(zip(parameters, res.x)))
+    post_cov = {(parameters[i], parameters[j]): float(res.S[i, j])
+                for i in range(n) for j in range(n)}
+
+    return RetrievalResult(
+        best_fit=best_fit,
+        cost=float(res.cost),
+        uncertainty=uncertainty,
+        predicted_albedo=np.asarray(predicted),
+        observed=np.asarray(observed, dtype=float),
+        converged=bool(res.converged),
+        method="oe",
+        n_function_evals=int(res.n_iter * (2 * n + 1)),
+        posterior_covariance=post_cov,
+        averaging_kernel_diag=akd,
+        dfs=float(res.dfs),
+        log_evidence=float(res.log_evidence),
+    )
 
 
 def _make_emulator_fn(emulator, parameters, fixed_params):

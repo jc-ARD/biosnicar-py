@@ -132,6 +132,17 @@ class SeaIceRetrievalResult:
     all_fits: Dict[str, "RetrievalResult"] = field(default_factory=dict)
     quality_flags: int = 0
 
+    # Optimal-estimation outputs (populated only when method="oe").
+    # class_probabilities: posterior probability per surface type from the
+    #   Laplace model evidence (proper Bayesian classification). For "oe",
+    #   `confidence` is the winning type's probability.
+    # dfs / averaging_kernel_diag: information content of the winning fit —
+    #   how much each parameter (and the retrieval overall) came from the
+    #   measurement vs the prior.
+    class_probabilities: Dict[str, float] = field(default_factory=dict)
+    dfs: Optional[float] = None
+    averaging_kernel_diag: Dict[str, float] = field(default_factory=dict)
+
     def quality_flag_description(self) -> Dict[str, bool]:
         """Unpack the quality bitmask into ``{flag_name: bool}``."""
         from biosnicar.sea_ice.quality_flags import describe_quality_flags
@@ -574,6 +585,23 @@ def retrieve_sea_ice(
     else:
         confidence = 1.0  # only one emulator ran
 
+    # Optimal estimation: classify by posterior model probability from the
+    # Laplace log-evidence (Bayesian model selection), not lowest cost.
+    # `confidence` becomes the winning type's probability (0–1).
+    class_probabilities: Dict[str, float] = {}
+    if method == "oe":
+        ev = {n: f.log_evidence for n, f in all_fits.items()
+              if f.log_evidence is not None}
+        if ev:
+            mx = max(ev.values())
+            w = {n: float(np.exp(e - mx)) for n, e in ev.items()}  # uniform class prior
+            tot = sum(w.values())
+            class_probabilities = {n: w[n] / tot for n in w}
+            winner_name = max(class_probabilities, key=class_probabilities.get)
+            winner_fit = all_fits[winner_name]
+            best_cost = cost_per_type.get(winner_name, winner_fit.cost)
+            confidence = class_probabilities[winner_name]
+
     winner_params = dict(winner_fit.best_fit)
     # Physical snow depth is derived from the (tau_snow, grain_radius)
     # parameterisation, clipped identically to _transform_fyi_snow so the
@@ -617,6 +645,9 @@ def retrieve_sea_ice(
         cost_per_type=cost_per_type,
         all_fits=all_fits,
         quality_flags=flags,
+        class_probabilities=class_probabilities,
+        dfs=winner_fit.dfs,
+        averaging_kernel_diag=dict(winner_fit.averaging_kernel_diag or {}),
     )
 
 

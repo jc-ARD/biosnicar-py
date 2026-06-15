@@ -123,6 +123,16 @@ class RetrievalResult:
     acceptance_fraction: Optional[float] = None
     autocorr_time: Optional[np.ndarray] = None
 
+    # Optimal-estimation fields (None unless method="oe").
+    # posterior_covariance: {(p_i, p_j): cov} over retrieved params (linear space).
+    # averaging_kernel_diag / dfs: information content — how much each parameter
+    #   (and the retrieval overall) came from the measurement vs the prior.
+    # log_evidence: Laplace ln p(y|model), used for surface-type classification.
+    posterior_covariance: Optional[Dict] = None
+    averaging_kernel_diag: Optional[Dict[str, float]] = None
+    dfs: Optional[float] = None
+    log_evidence: Optional[float] = None
+
     @property
     def ssa(self):
         """Specific surface area (m2 kg-1) derived from rds and rho.

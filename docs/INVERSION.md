@@ -76,7 +76,7 @@ Main entry point for parameter retrieval.
 | `x0`                  | dict          | None         | `{name: value}` overriding `DEFAULT_X0`                                                |
 | `regularization`      | dict          | None         | `{name: (prior_mean, prior_sigma)}` Gaussian priors                                    |
 | `wavelength_mask`     | ndarray[bool] | None         | Wavelength mask for spectral mode (True = include)                                     |
-| `method`              | str           | `"L-BFGS-B"` | `"L-BFGS-B"`, `"Nelder-Mead"`, `"differential_evolution"`, or `"mcmc"`                 |
+| `method`              | str           | `"L-BFGS-B"` | `"L-BFGS-B"`, `"Nelder-Mead"`, `"differential_evolution"`, `"mcmc"`, or `"oe"` (optimal estimation) |
 | `mcmc_walkers`        | int           | 32           | MCMC walkers (only for `method="mcmc"`)                                                |
 | `mcmc_steps`          | int           | 2000         | MCMC steps                                                                             |
 | `mcmc_burn`           | int           | 500          | MCMC burn-in steps to discard                                                          |
@@ -101,8 +101,35 @@ Main entry point for parameter retrieval.
 | `chains`              | ndarray or None | MCMC chains `(n_steps, n_walkers, n_params)`. Only for `method="mcmc"`. |
 | `acceptance_fraction` | float or None   | MCMC acceptance rate                                                    |
 | `autocorr_time`       | ndarray or None | MCMC autocorrelation time per parameter                                 |
+| `posterior_covariance`| dict or None    | OE posterior covariance `{(p_i,p_j): value}` (retrieval space). Only for `method="oe"`. |
+| `averaging_kernel_diag`| dict or None   | OE per-parameter information content (~1 measured, ~0 prior-driven). Only for `method="oe"`. |
+| `dfs`                 | float or None   | OE degrees of freedom for signal = how many parameters the data genuinely constrained. Only for `method="oe"`. |
+| `log_evidence`        | float or None   | OE Laplace log model-evidence (used for surface-type classification). Only for `method="oe"`. |
 
 `result.summary()` returns a human-readable string.
+
+### Optimal estimation (`method="oe"`)
+
+Optimal estimation (Rodgers 2000) replaces "find the best-fit point" with a full
+Bayesian retrieval: it combines the measurement (weighted by its error
+covariance `S_e`) with a prior (weighted by `S_a`) and returns a **posterior
+mean and covariance**, an **averaging kernel** (how much of each retrieved
+parameter came from the data vs the prior), and **degrees of freedom for signal**
+(DFS — how many parameters the observation genuinely constrained). It is the
+recommended path when calibrated uncertainty, honest provenance, or
+information-content diagnostics are needed — and it is what
+`retrieve_sea_ice(..., method="oe")` uses to produce **per-surface-type
+posterior probabilities** (`class_probabilities`) from each type's model
+evidence, instead of an ad-hoc lowest-cost vote.
+
+Priors are taken from `regularization` (Gaussian per-parameter); parameters with
+no prior get a weak prior spanning their range. `obs_uncertainty` supplies the
+diagonal of `S_e`. **Note:** `S_e` currently holds instrument noise only; the
+forward-model error term (which makes the posterior uncertainties trustworthy)
+is pending empirical calibration — until then OE point estimates are reliable
+but its error bars are optimistic. Speed is comparable to or faster than
+L-BFGS-B per pixel (a Gauss–Newton step uses a cheap emulator Jacobian);
+~20–25× the work of a single forward eval, vs ~thousands for MCMC.
 
 When `rds` and `rho` are both in `best_fit`, the `.ssa` and `.ssa_uncertainty` properties compute SSA and its propagated uncertainty from rds and rho.
 
