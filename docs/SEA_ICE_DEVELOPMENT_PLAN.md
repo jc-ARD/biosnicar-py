@@ -112,13 +112,14 @@ microseconds, so OE + model selection runs at scene scale.
 Ordered within each stream by priority; **[gate]** marks a dependency for other streams.
 
 ### A. Inversion core — optimal estimation & probabilistic output  *(spine; highest priority)*
-- **A1 [gate]** OE retrieval per surface-type emulator: parameter posterior (mean+cov), marginal likelihood, Jacobians, averaging kernels, **DFS**.
-- **A2 [gate]** Bayesian model selection across classes → normalised **per-class posterior probabilities** from marginal likelihoods.
-- **A3 [gate]** **Provenance separation:** emit spectrum-only likelihood *and* prior-on posterior; averaging kernel quantifies measurement-vs-prior contribution; flag `prior_resolved` when they disagree.
-- **A4** Output data contract (serves both mandates): `{class: marginal_loglik}`, parameter posteriors, DFS, averaging-kernel summary, quality bitmask, provenance vector.
+> **Status (2026-06-15):** A1, A2 ✅ done; A3 ◐ partial; A4–A8 pending.
+- **A1 [gate]** ✅ **DONE** — OE engine (`biosnicar/inverse/optimal_estimation.py`, `method="oe"`): parameter posterior (mean+cov), Jacobians, averaging kernels, **DFS**, Laplace evidence. Linear-Gaussian-exact, tested.
+- **A2 [gate]** ✅ **DONE** — `retrieve_sea_ice(method="oe")` classifies by per-type posterior probability from the model evidence (`class_probabilities`).
+- **A3 [gate]** ◐ **PARTIAL** — averaging kernel / DFS are emitted (the measurement-vs-prior split per parameter); still to do: the explicit priors-on/priors-off (spectrum-only) toggle and a `prior_resolved` disagreement flag.
+- **A4** Output data contract (serves both mandates): `{class: marginal_loglik}`, parameter posteriors, DFS, averaging-kernel summary, quality bitmask, provenance vector. *(result objects carry most of this; the formal contract/spec is not yet frozen.)*
 - **A5** **Information-content-aware retrieval:** choose the retrieved sub-state from DFS per observation; report prior-dominated parameters as such.
 - **A6** Confidence **calibration** against held-out data (reliability diagrams); posteriors must mean what they say.
-- **A7** Per-band error model (instrument + forward-model covariance) replacing the band-mask rescaling heuristic; band masks become weights.
+- **A7** Per-band error model (instrument + **forward-model covariance**) replacing the band-mask rescaling heuristic; band masks become weights. *(blocks trustworthy OE uncertainties — `S_e` is instrument-noise-only today; needs the field residuals being gathered.)*
 - **A8** Hierarchical/superclass reporting for degenerate clusters (`{melt bright granular}`, `{dark bare/thin ice}`) gated on ambiguity; fine classes retained for parameters.
 
 ### B. Modality support  *(co-priority with A — the standalone product is these two paths)*
@@ -255,12 +256,14 @@ not an operational satellite classifier.
 
 ## 10. Immediate next actions (this branch)
 
-Lowest-regret, highest-leverage, all doable now and serving **both** mandates:
-1. **A1–A3 OE core + provenance** — the spine; gives standalone calibrated retrieval *and* the fusable ensemble output from one implementation.
+Lowest-regret, highest-leverage, all serving **both** mandates:
+1. ✅ **A1–A2 OE core + Bayesian classification** — DONE (`method="oe"`). Remaining spine work: **A3** priors-on/off provenance toggle, **A7** forward-model `S_e` term (the blocker for trustworthy OE uncertainties — needs field residuals).
 2. **D1 cubic liquidus** + rebuild — removes a known substantive physics error.
 3. **B-MS1 atmospheric-correction contract** — without it the satellite mandate is not credible; cheapest to define early.
 4. **V2 perturbed-physics validation** + **V1 freeze the MOSAiC corpus** — bound the inverse crime and stop tuning against test data, no new data needed.
 5. **C1–C2 metadata adapter + temperature prior** — highest-leverage prior, and the modular toggle that lets the same code serve standalone (priors on) and ensemble (priors withheld).
 
 These establish the probabilistic, DFS-aware, dual-modality, provenance-honest
-core that both the standalone product and the ensemble depend on.
+core that both the standalone product and the ensemble depend on. The OE
+engine is in place; the next gating pieces are the `S_e` forward-model term
+(A7, needs field data) and the provenance toggle (A3).
