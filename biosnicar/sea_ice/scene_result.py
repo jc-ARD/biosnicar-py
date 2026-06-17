@@ -18,7 +18,6 @@ Requires the ``geo`` optional dependencies::
 """
 
 import json
-import warnings
 from collections import Counter
 from dataclasses import dataclass
 from typing import Any, List, Optional
@@ -37,7 +36,6 @@ SURFACE_TYPE_CODES = {
 }
 NO_DATA_CODE = 255
 
-_CODE_TO_TYPE = {v: k for k, v in SURFACE_TYPE_CODES.items()}
 
 _DEFAULT_RASTER_VARS = ["surface_type_code", "confidence", "cost", "quality_flags"]
 

@@ -59,7 +59,6 @@ Quan, X. & Fry, E. S. (1995). *Applied Optics*, 34, 3477.
 Pegau, W. S., Gray, D. & Zaneveld, J. R. V. (1997). *Limnol. Oceanogr.*, 42(3).
 """
 
-from pathlib import Path
 from typing import Optional
 
 import numpy as np

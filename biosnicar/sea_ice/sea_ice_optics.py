@@ -33,7 +33,7 @@ Picard et al. (2016) — ice complex RI (variant 'Pic16').
 Light et al. (2004) — sea ice radiative transfer benchmark.
 """
 
-from typing import Optional, Tuple
+from typing import Tuple
 
 import numpy as np
 
@@ -137,7 +137,6 @@ def compute_sea_ice_optics(
 
     # --- 4. Effective ice+brine RI via Maxwell-Garnett ---
     ri_eff = effective_ri_ice_brine(ri_ice, ri_brine, nu_b)
-    n_eff_re = np.real(ri_eff)
     n_eff_im = np.maximum(np.imag(ri_eff), 0.0)
 
     # --- 5. Absorption coefficient of the effective medium (m^-1) ---

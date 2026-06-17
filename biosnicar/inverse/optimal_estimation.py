@@ -25,7 +25,7 @@ Notation (Rodgers):
     DFS   degrees of freedom for signal = trace(A)
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Callable, Optional, Union
 
 import numpy as np
@@ -164,7 +164,6 @@ def optimal_estimation(
         return np.clip(v, bounds[:, 0], bounds[:, 1])
 
     x = _clip(x)
-    Sa_inv_full = None  # cache for the n×n prior precision
     if _is_diag(Sa_diag):
         Sa_inv = np.diag(1.0 / Sa_diag)
     else:

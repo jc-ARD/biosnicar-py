@@ -89,45 +89,10 @@ def _interpolate_sea_ice_lut(salinity_psu, temperature_C, density_kg_m3, bubble_
     rho_c = float(np.clip(density_kg_m3, rho_min, rho_max))
     bbl_c = float(np.clip(bubble_radius_um, bbl_min, bbl_max))
 
-    n_wvl = 480
-    pts = np.column_stack([
-        np.full(n_wvl, T_c),
-        np.full(n_wvl, S_c),
-        np.full(n_wvl, rho_c),
-        np.full(n_wvl, bbl_c),
-        np.arange(n_wvl, dtype=float),
-    ])
-
-    # The LUT axes are (T, S, rho, bbl); we need to include the wavelength
-    # band index. Since the LUT shape is (..., 480), we must loop or reshape.
-    # Simpler: query each of the 480 band slices. Use per-wavelength 4D query.
-    wvl_idx = np.arange(n_wvl)
-    tau_vals = np.array([
-        interp_tau(np.array([[T_c, S_c, rho_c, bbl_c]]))[0]
-        for _ in [None]
-    ] * n_wvl)  # placeholder; use vectorised form below
-
-    # Vectorised 4-D query: build (480,4) point array
-    query = np.column_stack([
-        np.full(n_wvl, T_c),
-        np.full(n_wvl, S_c),
-        np.full(n_wvl, rho_c),
-        np.full(n_wvl, bbl_c),
-    ])
-
-    # The LUT stores shape (nT, nS, nR, nB, 480). The interpolator was built
-    # over the first 4 axes at single wavelengths. We need to re-build
-    # interpolators that are called with a (1,4) point and return (480,).
-    # The current setup (built in _load_sea_ice_lut) uses a 4-D grid where
-    # the last dimension (480) is the output.  A RegularGridInterpolator with
-    # a 4-D points array (..., 4) returns scalar output per input point.
-    # We instead want vector output at one (T,S,rho,bbl) point.
-    #
-    # Solution: call with a single (1,4) point; the interpolator returns a
-    # (1,480) result because the LUT values axis is 480-wide. This works
-    # because scipy's RegularGridInterpolator supports multi-dimensional
-    # output values when the values array has extra trailing dims.
-
+    # The interpolators were built over the 4-D grid (T, S, rho, bbl) with the
+    # 480-band axis as multi-dimensional output values, so a single (1, 4)
+    # query point returns the full (480,) spectrum (RegularGridInterpolator
+    # supports vector-valued outputs).
     pt = np.array([[T_c, S_c, rho_c, bbl_c]])
     tau_per_m = interp_tau(pt)[0]   # shape (480,)
     ssa_vals = interp_ssa(pt)[0]

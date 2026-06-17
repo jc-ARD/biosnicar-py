@@ -41,7 +41,7 @@ Usage::
 """
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
+from typing import Dict, Optional
 
 import numpy as np
 
@@ -191,7 +191,7 @@ class SeaIceRetrievalResult:
         from biosnicar.sea_ice.ice_chart_mapping import map_to_wmo
         wmo = map_to_wmo(self)
         lines = [
-            f"SeaIceRetrievalResult",
+            "SeaIceRetrievalResult",
             f"  Surface type   : {self.surface_type}  (confidence={self.confidence:.3f})",
             f"  Description    : {self.surface_description}",
             f"  WMO stage      : {wmo.stage_of_development} — {wmo.melt_stage}",

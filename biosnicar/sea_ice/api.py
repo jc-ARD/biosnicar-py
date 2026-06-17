@@ -41,12 +41,7 @@ from typing import List, Optional, Union
 
 import numpy as np
 
-from biosnicar.sea_ice.presets import (
-    FYI_WINTER_BARE,
-    FYI_WINTER_SNOW,
-    MYI_WINTER_BARE,
-    _resolve_preset,
-)
+from biosnicar.sea_ice.presets import _resolve_preset
 
 
 # ---------------------------------------------------------------------------
