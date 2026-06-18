@@ -103,7 +103,7 @@ microseconds, so OE + model selection runs at scene scale.
 - **Independent hold-out (Smith/MOSAiC, full SWIR):** summer melting snow is optically degenerate with SSL/bare ice; fit RMS ~doubles out of distribution. Spring numbers do **not** generalise to the melt season.
 - **Synthetic metrics are inverse-crime numbers** (same forward model for generation and inversion).
 - **Untested:** non-Arctic surfaces; open water and young ice vs real spectra (synthetic-only); scene-scale performance; atmospheric/TOA coupling; BRDF/angular effects; confidence calibration; drone and hyperspectral-satellite modalities.
-- **Deferred physics:** linear liquidus (~31% brine-salinity error at −10 °C); no liquid-water content in melting-surface forward models.
+- **Deferred physics:** ~~linear liquidus~~ ✅ fixed (D1: liquidus now derived from Frankenstein & Garner 1967 brine volume, ~30 % cold-ice error removed); still pending: no liquid-water content in melting-surface forward models.
 
 ---
 
@@ -143,7 +143,7 @@ Ordered within each stream by priority; **[gate]** marks a dependency for other 
 - **C6** **Ensemble interface spec:** documented contract for emitting spectrum-only per-class likelihoods + parameter posteriors + provenance into the fusion layer; defines what this stream owns vs what the ensemble supplies (SAR, met) to avoid double-counting.
 
 ### D. Forward-model fidelity
-- **D1** **Cubic liquidus** (Assur) replacing the linear form; rebuild LUTs + emulators. Removes the known ~31% brine-salinity error in the validated regime.
+- **D1** ✅ **DONE** — liquidus replaced: derived from the Frankenstein & Garner (1967) brine-volume relation by salt mass balance (the verifiable path; the Assur-fit Notz & Worster 2009 coefficients were paywalled). LUTs + emulators rebuilt. Removes the ~30 % cold-ice brine-salinity error. (`brine_volume.py`)
 - **D2** **Liquid-water content** in the melting-surface (FYI_summer) forward model → closes the Smith SWIR misfit; makes melt-season grain/LWC retrieval meaningful.
 - **D3** Independent forward-model validation vs the adding-doubling solver across **all regimes incl. cold ice** (the Cox & Weeks bug proved the suite couldn't detect a cold-regime error).
 - **D4** BRDF / non-Lambertian surface and angular effects (couples to B-MS3).
@@ -215,7 +215,7 @@ Dependency-ordered; durations indicative (research, not fixed dates).
 
 **Phase 0 — Probabilistic core & correctness** *(near term)*
 A1–A4, A7, D1, D3, V1, V2.
-**Gate:** OE-based per-class posteriors with provenance and DFS; cubic liquidus shipped; inverse-crime degradation bounded; independent test corpus frozen.
+**Gate:** OE-based per-class posteriors with provenance and DFS; ✅ liquidus fix shipped (D1); inverse-crime degradation bounded; independent test corpus frozen.
 
 **Phase 1 — Both standalone modalities to first-class**
 B-HS1–2, B-MS1–2, A5, A6, A8, G1, G4, V3, V5.
@@ -258,7 +258,7 @@ not an operational satellite classifier.
 
 Lowest-regret, highest-leverage, all serving **both** mandates:
 1. ✅ **A1–A2 OE core + Bayesian classification** — DONE (`method="oe"`). Remaining spine work: **A3** priors-on/off provenance toggle, **A7** forward-model `S_e` term (the blocker for trustworthy OE uncertainties — needs field residuals).
-2. **D1 cubic liquidus** + rebuild — removes a known substantive physics error.
+2. ✅ **D1 liquidus fix** (F&G 1967-derived) — DONE; removed the ~30 % cold-ice brine-salinity error.
 3. **B-MS1 atmospheric-correction contract** — without it the satellite mandate is not credible; cheapest to define early.
 4. **V2 perturbed-physics validation** + **V1 freeze the MOSAiC corpus** — bound the inverse crime and stop tuning against test data, no new data needed.
 5. **C1–C2 metadata adapter + temperature prior** — highest-leverage prior, and the modular toggle that lets the same code serve standalone (priors on) and ensemble (priors withheld).

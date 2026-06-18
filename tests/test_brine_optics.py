@@ -1,7 +1,8 @@
 """Tests for the improved brine complex refractive index module.
 
 Key physics changes in v0.2:
-  - Brine RI now computed at the liquidus salinity S_b = -18.7 × T_C,
+  - Brine RI computed at the liquidus salinity from Frankenstein &
+    Garner (1967) brine volume via salt mass balance (see brine_volume.py),
     not the bulk ice salinity.  At T=-10°C, S_b ≈ 187 psu.
   - LUT is T-only (2D: nT × 480), since S_b is determined by T.
   - NaCl has no absorption above 400 nm: _K_VIS_ALPHA = 0.
@@ -43,7 +44,7 @@ class TestBrineLUT:
         # Average real RI at 500 nm
         n_warm = data["n_re"][idx_warm, 29]   # index 29 ≈ 0.5 µm
         n_cold = data["n_re"][idx_cold, 29]
-        # Colder → higher liquidus S_b → higher real RI (capped at 250 psu)
+        # Colder → higher liquidus S_b → higher real RI (S_b -5°C≈83, -20°C≈233 psu)
         assert n_cold >= n_warm, "Colder brine should have higher real RI"
 
 
@@ -70,13 +71,14 @@ class TestComputeBrineRfidx:
 
     def test_colder_temp_increases_real_ri(self):
         """Colder T → higher liquidus S_b → larger Q&F real-part correction."""
-        ri_warm = compute_brine_rfidx(-5.0)    # S_b ≈  94 psu
-        ri_cold = compute_brine_rfidx(-15.0)   # S_b ≈ 250 psu (capped)
+        ri_warm = compute_brine_rfidx(-5.0)    # S_b ≈  83 psu
+        ri_cold = compute_brine_rfidx(-15.0)   # S_b ≈ 207 psu
         assert np.mean(np.real(ri_cold)) > np.mean(np.real(ri_warm))
 
     def test_liquidus_correction_significant(self):
-        """At T=-10°C, S_b=187 psu gives a real-RI correction > 0.03 (vs
-        the v0.1 value of 0.0016 at bulk S=8 psu).
+        """At T=-10°C the liquidus S_b≈150 psu (Frankenstein & Garner 1967,
+        derived) gives a real-RI correction > 0.03, vs the v0.1 value of
+        0.0016 at bulk S=8 psu — an order-of-magnitude larger brine contrast.
         """
         ri = compute_brine_rfidx(-10.0)
         import pandas as pd
@@ -88,7 +90,7 @@ class TestComputeBrineRfidx:
         n_brine_500 = float(np.real(ri[29]))
         delta_n = n_brine_500 - n_water_500
         assert delta_n > 0.03, (
-            f"Δn_re at -10°C should be > 0.03 (liquidus S_b=187 psu), got {delta_n:.4f}"
+            f"Δn_re at -10°C should be > 0.03 (liquidus S_b≈150 psu), got {delta_n:.4f}"
         )
 
     def test_nir_k_near_water(self):

@@ -72,22 +72,26 @@ At T = −10 °C and S = 8 psu, ν_b ≈ 0.045 (4.5% of the ice is liquid brine)
 
 ### Brine refractive index — liquidus constraint
 
-A critical physical insight: brine inside sea ice is not at the bulk ice salinity. It is at the **liquidus (phase-equilibrium) salinity** determined by temperature alone:
+A critical physical insight: brine inside sea ice is not at the bulk ice salinity. It is at the **liquidus (phase-equilibrium) salinity** determined by temperature alone. We obtain it by inverting the **Frankenstein & Garner (1967)** brine-volume relation `Vb = 10⁻³·S·(−49.185/T + 0.532)` (valid −0.5 to −22.9 °C) through salt mass balance — all the salt resides in the brine, so the bulk salinity cancels and S_b depends on temperature only:
 
 ```
-S_brine ≈ −18.7 × T_C    (psu)    [linear liquidus approximation]
+S_brine(T)  from  ρ_ice = S_b·ρ_b·10⁻³·(−49.185/T + 0.532)   [Frankenstein & Garner 1967, derived]
+            ≈ 36 psu at −2 °C, ≈ 150 psu at −10 °C
+            held at the ~233 psu NaCl·2H₂O eutectic below −22.9 °C
 ```
 
-At T = −10 °C this gives S_brine ≈ 187 psu — roughly 23× the typical bulk ice salinity of 8 psu. The v0.1 implementation mistakenly used the bulk salinity (8 psu) in the RI formula, making the brine-ice optical contrast 23–47× too small. This has been corrected in v0.2.
+This is a *derived* liquidus (honest caveat: it inverts a brine-*volume* fit using a linear brine-density model ρ_b = 1000 + 0.8·S_b kg m⁻³, rather than fitting Assur (1958) phase data directly as Notz & Worster (2009) do; it is least reliable near the eutectic, where it is capped). It replaced the earlier linear "warm-ice" law `S_b ≈ −18.7·T` (Notz et al. 2005), which overestimates brine salinity by ~30 % at −10 °C (187 vs 150 psu).
 
-**Real part** — Quan & Fry (1995) full wavelength-dependent formula applied at the liquidus salinity S_brine, capped at 250 psu (near the NaCl eutectic at ~−21 °C):
+At T = −10 °C this gives S_brine ≈ 150 psu — roughly 19× the typical bulk ice salinity of 8 psu. The v0.1 implementation mistakenly used the bulk salinity (8 psu) in the RI formula, making the brine-ice optical contrast an order of magnitude too small; corrected in v0.2, and the liquidus refined from linear to the F&G-derived form in v0.4.
+
+**Real part** — Quan & Fry (1995) full wavelength-dependent formula applied at the liquidus salinity S_brine (which self-caps at the ~233 psu eutectic):
 
 ```
 n(S_b, T, λ) = n₀ + (n₁ + n₂T + n₃T²)·S_b + n₄T²
              + (n₅ + n₆·S_b + n₇·T)/λ + n₈/λ² + n₉/λ³
 ```
 
-where λ is in nm. Formula covers 400–700 nm; salt contribution fixed at the 700-nm value in NIR (weakly wavelength-dependent beyond the visible). At T = −10 °C this gives Δn_re ≈ +0.037 vs the v0.1 value of +0.002 — a 23× increase.
+where λ is in nm. Formula covers 400–700 nm; salt contribution fixed at the 700-nm value in NIR (weakly wavelength-dependent beyond the visible). At T = −10 °C (S_brine ≈ 150 psu) this gives Δn_re ≈ +0.03 vs the v0.1 value of +0.002 — an order-of-magnitude increase.
 
 **Imaginary part** — NaCl has **no absorption above 400 nm**. The v0.1 multiplicative correction was physically wrong and has been removed. The corrected implementation adds only:
 1. A small UV ionic contribution (Cl⁻ electronic band, decaying to essentially zero by 0.4 µm)
@@ -168,7 +172,7 @@ non-zero only in the blue/green. Typical BBA: 0.02 at SZA 20°, 0.06–0.07 at
 
 | Approximation | Effect | When it matters |
 |---|---|---|
-| Linear liquidus S_b = −18.7·T (capped at 250 psu) | Overestimates brine salinity below ≈−8 °C vs the true sub-linear liquidus (+31% at −10 °C) | Cold-ice brine absorption; partially absorbed into emulator training |
+| Liquidus S_b(T) derived from F&G (1967) brine volume by salt balance (not a direct Assur fit) | Within a few psu of accepted values for −2 to −15 °C; saturates against the ~233 psu eutectic below ≈−18 °C, where inverting a volume fit is least reliable | Very cold ice (< −18 °C) |
 | CW83 gas-free brine volume + separate density-balance air fraction | ~5% brine-volume overestimate vs the bulk-density-consistent CW83 form | Cold, dense ice |
 | CW83 cold-branch polynomial clamped at −30 °C | No brine-volume change below −30 °C (polynomial validity limit) | Extreme winter T < −30 °C |
 
@@ -176,9 +180,8 @@ non-zero only in the blue/green. Typical BBA: 0.02 at SZA 20°, 0.06–0.07 at
 
 | Approximation | Effect | When it matters |
 |---|---|---|
-| Liquidus linear approximation S_b = −18.7T | ±5% error in S_brine at T < −15 °C (near eutectic) | Very cold ice |
+| Liquidus S_b(T) from F&G (1967) brine volume, salt-balance inverted | Few-psu accuracy −2 to −15 °C; saturates at the ~233 psu eutectic below ≈−18 °C | Very cold ice |
 | Q&F (1995) real-part formula extrapolated above 40 psu | ~10% error in Δn_re at S_b > 100 psu | T < −5 °C |
-| Liquidus salinity capped at 250 psu | Underestimates real-part correction below −13 °C | Very cold ice |
 | Air bubble scattering uses pure-ice LUT | < 5% error in scattering | All conditions |
 | Maxwell-Garnett for spherical inclusions only | < 5% for ν_b < 0.15 | Near-melting ice (T > −3 °C) |
 | Snow layer treated as fresh water | Overestimates snow albedo for salty snow | Snow on FYI |

@@ -3,13 +3,18 @@
 Physics
 -------
 Brine in sea ice pockets is at the **liquidus** (phase-equilibrium) salinity,
-which is determined by temperature alone:
+determined by temperature alone.  We use ``brine_salinity_at_temp(T)`` from
+``brine_volume.py``, derived from the Frankenstein & Garner (1967) brine-volume
+relation by salt mass balance (see that module for the full derivation and
+citation):
 
-    S_brine ≈ -18.7 × T_C  (psu)           (linear liquidus approximation)
+    S_brine(-10 °C) ≈ 150 psu               (Frankenstein & Garner 1967, derived)
 
-At T = -10 °C this gives S_brine ≈ 187 psu — roughly 23× the typical bulk
-ice salinity of 8 psu.  Using the bulk salinity in RI calculations (as in
-v0.1) underestimates the brine-ice optical contrast by up to 50×.
+At T = -10 °C this gives S_brine ≈ 150 psu — roughly 19× the typical bulk ice
+salinity of 8 psu.  Using the bulk salinity in RI calculations (as in v0.1)
+underestimates the brine-ice optical contrast by an order of magnitude.  (The
+earlier linear law S_b ≈ -18.7·T gave 187 psu here — ~25 % high; the true
+liquidus is strongly sub-linear.)
 
 The corrected implementation computes brine RI at the liquidus salinity,
 then applies Maxwell-Garnett mixing at the appropriate brine volume fraction
@@ -46,8 +51,10 @@ Known limitations
 - Quan & Fry (1995) calibrated to S ≤ 40 psu; extrapolated to 40–500 psu
   (typical brine range).  Error in real-part correction estimated < 10% based
   on the Lorentz-Lorenz mixing-rule comparison.
-- Liquidus formula S_b = -18.7 T is a linear approximation; real seawater
-  liquidus is slightly nonlinear.
+- Liquidus salinity is the Frankenstein & Garner (1967) brine-volume relation
+  inverted by salt mass balance (see brine_volume.py); a *derived* liquidus,
+  not a direct fit to Assur (1958) phase data, and least reliable near the
+  -22.9 °C eutectic where it saturates at ~233 psu.
 - Imaginary-part ionic correction is an order-of-magnitude estimate.
 - A rigorous treatment requires direct laboratory measurement of brine RI
   at sub-zero temperatures and high salinities (e.g. Friedlander et al. 2022).
@@ -92,10 +99,9 @@ _K_IONIC_DECAY     = 25.0      # e-folding scale (µm⁻¹) — Cl⁻ band zero 
 # when extrapolated to liquidus brine salinities (100–400 psu).
 _K_VIS_ALPHA       = 0.0
 
-# Cap on liquidus salinity for optical calculations.
-# Beyond ~16°C below freezing the NaCl eutectic is approached; the linear
-# liquidus S_b = -18.7T overestimates actual brine salinity.  Capping at
-# 250 psu (≈ T = -13°C) limits extrapolation error in the Q&F formula.
+# Safety cap on liquidus salinity for the Quan & Fry optical correction.
+# brine_salinity_at_temp already self-caps at the ~233 psu NaCl·2H₂O eutectic,
+# so this is a redundant belt-and-braces bound (kept ≥ eutectic).
 _S_BRINE_CAP = 250.0   # psu
 
 _lut_interp_re: Optional[object] = None

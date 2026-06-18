@@ -415,6 +415,32 @@ All favourable retrieval numbers were checked against training-data recycling:
 7. **Do *not* add a melting-snow spectral class — it would not separate** (see §6.5). The actionable melt-season fixes are instead: (a) add liquid-water content to the melting-surface (FYI_summer) forward model to close the SWIR misfit and make grain/LWC retrieval meaningful, and (b) use ancillary/structural data (snow depth, temporal context) when the "snow vs ice" provenance label is required — albedo alone cannot recover it.
 8. **Validate against a non-Arctic (Antarctic) campaign** — all current empirical data is Arctic; generalisation beyond it is untested.
 
+## 6.6 D1 — brine liquidus correction (2026-06-18, revalidation)
+
+The brine liquidus salinity was changed from the linear warm-ice law
+`S_b ≈ −18.7·T` (Notz et al. 2005) to a relation **derived from the Frankenstein
+& Garner (1967) brine-volume equation by salt mass balance** (see
+`biosnicar/sea_ice/brine_volume.py`). This removes the linear law's ~30 %
+cold-ice overestimate (at −10 °C: 187 → ~150 psu, vs accepted ~145 psu).
+LUTs and all six emulators were rebuilt.
+
+**Revalidation showed no regression** (compare §6.3):
+
+| Block | Pre-D1 | Post-D1 |
+|---|---|---|
+| Spring snow, full spectrum | 6/7 | 6/7 |
+| Summer bare ice, full spectrum | 16/16 | 16/16 |
+| Summer bare ice, Sentinel-2 | 14/16 | **15/16** |
+| Pond depth ±25 % (Morassutti, 120) | 28–29 | 28 |
+| FYI_bare held-out spectral R² | 0.9985 | 0.9978 |
+
+The change is concentrated in cold ice (T < −8 °C); spring-snow classification
+(the most cold-sensitive block) is unchanged and summer S2 improved marginally.
+Honest caveat: this is a *derived* liquidus (it inverts a brine-volume fit with
+a linear brine-density model), not a direct fit to Assur (1958) phase data such
+as Notz & Worster (2009); it is least reliable near the −22.9 °C eutectic, where
+it saturates at ~233 psu.
+
 ## 6.5 Is summer snow vs bare ice a taxonomy gap or a true degeneracy?
 
 Tested directly (`python` analysis over the observed populations), and the

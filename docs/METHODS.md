@@ -67,10 +67,12 @@ F1(T) = −4.732 − 22.45T − 0.6397T² − 0.01074T³     (−22.9 ≤ T ≤ 
 Brine inside sea ice pockets is at the **liquidus** (phase-equilibrium) salinity determined by temperature:
 
 ```
-S_brine = −18.7 × T_C    (psu, capped at 250 psu near the NaCl eutectic)
+S_brine(T) = salt-mass-balance inversion of the Frankenstein & Garner (1967)
+             brine-volume relation; ≈150 psu at −10 °C; held at the
+             ~233 psu NaCl·2H₂O eutectic below −22.9 °C
 ```
 
-At T = −10 °C, S_brine ≈ 187 psu — far above typical bulk ice salinity (6–12 psu). Using bulk salinity in RI calculations (as in v0.1) underestimates the brine-ice optical contrast by 23–47×.
+The brine liquidus salinity is **derived from the Frankenstein & Garner (1967)** brine-volume relation `Vb = 10⁻³·S·(−49.185/T + 0.532)` by salt mass balance (see `biosnicar/sea_ice/brine_volume.py` for the derivation). This replaced the earlier linear law `S_b ≈ −18.7·T`, which overestimates brine salinity by ~30 % at −10 °C (187 vs ~150 psu). At T = −10 °C, S_brine ≈ 150 psu — far above typical bulk ice salinity (6–12 psu). Using bulk salinity in RI calculations (as in v0.1) underestimates the brine-ice optical contrast by an order of magnitude.
 
 The brine real refractive index is computed using the full Quan & Fry (1995) wavelength-dependent formula at S_brine and T, applied to the 400–700 nm range with the salt contribution held fixed at its 700-nm value beyond the visible. Brine has no significant absorption above 400 nm (NaCl does not absorb in visible/NIR); k_brine ≈ k_water for λ > 0.4 µm.
 
@@ -86,7 +88,7 @@ Absorption comes from the imaginary part of n_eff = √ε_eff. Scattering comes 
 
 Sea ice requires the **adding-doubling solver** (default). The Toon solver does not handle the Fresnel interface correctly.
 
-Known approximations: Q&F (1995) extrapolated to S_brine > 40 psu; liquidus linear approximation; Maxwell-Garnett valid for ν_b < 0.3; bubble scattering uses pure-ice LUT (< 5% error). See [docs/sea_ice.md](sea_ice.md) for detail.
+Known approximations: Q&F (1995) extrapolated to S_brine > 40 psu; liquidus *derived* from F&G (1967) brine volume (not a direct Assur fit), least reliable near the −22.9 °C eutectic; Maxwell-Garnett valid for ν_b < 0.3; bubble scattering uses pure-ice LUT (< 5% error). See [docs/sea_ice.md](sea_ice.md) for detail.
 
 ### 1.3 Melt ponds (layer_type = 5)
 

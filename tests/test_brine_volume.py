@@ -100,3 +100,35 @@ class TestBrineVolumeVectorised:
     def test_scalar_returns_float(self):
         result = compute_brine_volume(8.0, -10.0)
         assert isinstance(result, float)
+
+
+class TestBrineSalinityLiquidus:
+    """Frankenstein & Garner (1967)-derived liquidus salinity S_b(T)."""
+
+    def test_check_values_against_accepted_liquidus(self):
+        from biosnicar.sea_ice.brine_volume import brine_salinity_at_temp as Sb
+        # Accepted Assur-based brine salinities (psu); F&G-derived should be
+        # within a few psu in the well-constrained -2 to -10 C range.
+        assert abs(Sb(-2.0) - 36) < 4
+        assert abs(Sb(-5.0) - 87) < 6
+        assert abs(Sb(-10.0) - 145) < 10
+
+    def test_below_linear_law_in_cold_regime(self):
+        from biosnicar.sea_ice.brine_volume import brine_salinity_at_temp as Sb
+        # The whole point of D1: well below the old linear -18.7*T at cold T.
+        assert Sb(-10.0) < 0.9 * (18.7 * 10)
+
+    def test_monotonic_and_eutectic_cap(self):
+        import numpy as np
+        from biosnicar.sea_ice.brine_volume import brine_salinity_at_temp as Sb
+        T = np.linspace(-2, -30, 100)
+        s = Sb(T)
+        assert np.all(np.diff(s) >= -1e-9)          # non-decreasing as T falls
+        assert s.max() <= 233.0 + 1e-6              # eutectic cap
+        assert Sb(-30.0) == Sb(-22.9)              # held below eutectic
+
+    def test_scalar_and_vector(self):
+        import numpy as np
+        from biosnicar.sea_ice.brine_volume import brine_salinity_at_temp as Sb
+        assert isinstance(Sb(-10.0), float)
+        assert Sb(np.array([-5.0, -10.0])).shape == (2,)
