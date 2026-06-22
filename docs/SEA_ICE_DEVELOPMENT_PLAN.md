@@ -112,10 +112,10 @@ microseconds, so OE + model selection runs at scene scale.
 Ordered within each stream by priority; **[gate]** marks a dependency for other streams.
 
 ### A. Inversion core — optimal estimation & probabilistic output  *(spine; highest priority)*
-> **Status (2026-06-15):** A1, A2 ✅ done; A3 ◐ partial; A4–A8 pending.
+> **Status (2026-06-22):** A1, A2, A3 ✅ done; A4–A8 pending.
 - **A1 [gate]** ✅ **DONE** — OE engine (`biosnicar/inverse/optimal_estimation.py`, `method="oe"`): parameter posterior (mean+cov), Jacobians, averaging kernels, **DFS**, Laplace evidence. Linear-Gaussian-exact, tested.
 - **A2 [gate]** ✅ **DONE** — `retrieve_sea_ice(method="oe")` classifies by per-type posterior probability from the model evidence (`class_probabilities`).
-- **A3 [gate]** ◐ **PARTIAL** — averaging kernel / DFS are emitted (the measurement-vs-prior split per parameter); still to do: the explicit priors-on/priors-off (spectrum-only) toggle and a `prior_resolved` disagreement flag.
+- **A3 [gate]** ✅ **DONE** — averaging kernel / DFS emitted per parameter (measurement-vs-prior split); plus `retrieve_sea_ice(use_priors=False)` for a **spectrum-only** retrieval (drops the `known_month` season priors, their per-emulator Vb translation, and the melt-season young-ice exclusion), and `flag_prior_influence=True` which runs a spectrum-only shadow pass and sets `prior_resolved` (True when the metadata prior changed the winning class) with `spectrum_only_surface_type` / `spectrum_only_class_probabilities` for transparency. Per-parameter provenance via `result.prior_dominated_parameters()`. (`biosnicar/sea_ice/retrieve.py`)
 - **A4** Output data contract (serves both mandates): `{class: marginal_loglik}`, parameter posteriors, DFS, averaging-kernel summary, quality bitmask, provenance vector. *(result objects carry most of this; the formal contract/spec is not yet frozen.)*
 - **A5** **Information-content-aware retrieval:** choose the retrieved sub-state from DFS per observation; report prior-dominated parameters as such.
 - **A6** Confidence **calibration** against held-out data (reliability diagrams); posteriors must mean what they say.
@@ -257,7 +257,7 @@ not an operational satellite classifier.
 ## 10. Immediate next actions (this branch)
 
 Lowest-regret, highest-leverage, all serving **both** mandates:
-1. ✅ **A1–A2 OE core + Bayesian classification** — DONE (`method="oe"`). Remaining spine work: **A3** priors-on/off provenance toggle, **A7** forward-model `S_e` term (the blocker for trustworthy OE uncertainties — needs field residuals).
+1. ✅ **A1–A3 OE core + Bayesian classification + provenance** — DONE (`method="oe"`; `use_priors` / `flag_prior_influence` / `prior_resolved`). Remaining spine work: **A7** forward-model `S_e` term (the blocker for trustworthy OE uncertainties — needs field residuals).
 2. ✅ **D1 liquidus fix** (F&G 1967-derived) — DONE; removed the ~30 % cold-ice brine-salinity error.
 3. **B-MS1 atmospheric-correction contract** — without it the satellite mandate is not credible; cheapest to define early.
 4. **V2 perturbed-physics validation** + **V1 freeze the MOSAiC corpus** — bound the inverse crime and stop tuning against test data, no new data needed.
@@ -265,5 +265,5 @@ Lowest-regret, highest-leverage, all serving **both** mandates:
 
 These establish the probabilistic, DFS-aware, dual-modality, provenance-honest
 core that both the standalone product and the ensemble depend on. The OE
-engine is in place; the next gating pieces are the `S_e` forward-model term
-(A7, needs field data) and the provenance toggle (A3).
+engine and provenance toggle (A3) are in place; the next gating piece is the
+`S_e` forward-model term (A7, needs field data).

@@ -263,3 +263,81 @@ class TestOEIntegration:
         assert hs.averaging_kernel_diag["pond_depth"] > 0.7
         assert s2.averaging_kernel_diag["sea_ice_temperature"] < \
             hs.averaging_kernel_diag["sea_ice_temperature"]
+
+
+def test_prior_dominated_parameters_unit():
+    """prior_dominated_parameters() thresholds the averaging-kernel diagonal."""
+    from biosnicar.sea_ice.retrieve import SeaIceRetrievalResult
+    r = SeaIceRetrievalResult(
+        surface_type="FYI_pond", surface_description="", confidence=1.0,
+        parameters={}, uncertainty={}, predicted_albedo=np.zeros(1),
+        observed=np.zeros(1), cost=0.0, converged=True, flx_slr=None,
+        averaging_kernel_diag={"measured": 0.92, "prior_bound": 0.15},
+    )
+    flags = r.prior_dominated_parameters()           # default threshold 0.5
+    assert flags == {"measured": False, "prior_bound": True}
+    # threshold is adjustable
+    assert r.prior_dominated_parameters(threshold=0.95)["measured"] is True
+
+
+@pytest.mark.skipif(not _BUILT, reason="pre-built sea ice emulators not found")
+class TestA3PriorProvenance:
+    """A3: priors-on/priors-off (spectrum-only) toggle and prior_resolved flag."""
+
+    def _young_ice_obs(self):
+        from biosnicar.drivers.run_model import run_model
+        truth = dict(ice_thickness_cm=6.0, sea_ice_temperature=-8.0,
+                     sea_ice_salinity=20.0, ocean_albedo=0.05,
+                     solzen=60, direct=1)
+        a = np.asarray(run_model(
+            **SEA_ICE_EMULATOR_CONFIGS["young_ice"]["transform_fn"](truth)).albedo)
+        return np.clip(a + np.random.default_rng(2).normal(0, 0.004, 480), 0, 1)
+
+    def _pond_obs(self):
+        from biosnicar.drivers.run_model import run_model
+        truth = dict(pond_depth=0.25, sea_ice_temperature=-4.0,
+                     black_carbon=100.0, solzen=60, direct=1)
+        a = np.asarray(run_model(
+            **SEA_ICE_EMULATOR_CONFIGS["FYI_pond"]["transform_fn"](truth)).albedo)
+        return np.clip(a + np.random.default_rng(1).normal(0, 0.005, 480), 0, 1)
+
+    def _common(self, obs):
+        from biosnicar.sea_ice.emulator_configs import load_sea_ice_emulators
+        return dict(observed=obs, emulators=load_sea_ice_emulators(),
+                    solzen=60, direct=1, method="oe",
+                    obs_uncertainty=np.full(480, 0.004))
+
+    def test_use_priors_toggle_changes_candidate_set(self):
+        """known_month excludes young_ice in melt season; use_priors=False keeps it."""
+        from biosnicar.sea_ice.retrieve import retrieve_sea_ice
+        common = self._common(self._young_ice_obs())
+        on = retrieve_sea_ice(known_month=7, **common)
+        off = retrieve_sea_ice(known_month=7, use_priors=False, **common)
+        assert "young_ice" not in on.class_probabilities      # excluded by prior
+        assert "young_ice" in off.class_probabilities          # spectrum-only keeps it
+
+    def test_prior_resolved_true_when_prior_flips_class(self):
+        """A young-ice spectrum: spectrum alone says young_ice, the melt-season
+        prior forbids it -> the classification is resolved by the prior."""
+        from biosnicar.sea_ice.retrieve import retrieve_sea_ice
+        r = retrieve_sea_ice(known_month=7, flag_prior_influence=True,
+                             **self._common(self._young_ice_obs()))
+        assert r.spectrum_only_surface_type == "young_ice"
+        assert r.surface_type != "young_ice"
+        assert r.prior_resolved is True
+        assert r.spectrum_only_class_probabilities                # populated
+
+    def test_prior_resolved_false_when_spectrum_agrees(self):
+        """A clean pond: prior and spectrum agree -> not prior-resolved."""
+        from biosnicar.sea_ice.retrieve import retrieve_sea_ice
+        r = retrieve_sea_ice(known_month=7, flag_prior_influence=True,
+                             **self._common(self._pond_obs()))
+        assert r.prior_resolved is False
+        assert r.spectrum_only_surface_type == r.surface_type
+
+    def test_prior_resolved_none_without_metadata_prior(self):
+        """No known_month -> no active prior -> nothing to diagnose."""
+        from biosnicar.sea_ice.retrieve import retrieve_sea_ice
+        r = retrieve_sea_ice(flag_prior_influence=True,
+                             **self._common(self._pond_obs()))
+        assert r.prior_resolved is None

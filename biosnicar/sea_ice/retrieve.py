@@ -143,6 +143,30 @@ class SeaIceRetrievalResult:
     dfs: Optional[float] = None
     averaging_kernel_diag: Dict[str, float] = field(default_factory=dict)
 
+    # A3 provenance — priors-on vs spectrum-only (populated only when
+    # retrieve_sea_ice is called with flag_prior_influence=True and the
+    # automatic metadata priors are active):
+    #   prior_resolved: True if the metadata prior (known_month) changed the
+    #     winning surface type relative to a spectrum-only retrieval — i.e. the
+    #     classification is resolved by the prior, not the spectrum.  None when
+    #     not diagnosed or no metadata prior was active.
+    #   spectrum_only_*: the spectrum-only winner and its class distribution,
+    #     kept alongside prior_resolved so the disagreement is transparent.
+    prior_resolved: Optional[bool] = None
+    spectrum_only_surface_type: Optional[str] = None
+    spectrum_only_class_probabilities: Dict[str, float] = field(default_factory=dict)
+
+    def prior_dominated_parameters(self, threshold: float = 0.5) -> Dict[str, bool]:
+        """Per-parameter provenance from the averaging kernel (``method="oe"``).
+
+        Returns ``{param: prior_dominated}`` where the value is True when the
+        parameter's averaging-kernel diagonal is below *threshold* — i.e. its
+        retrieved value came mostly from the prior rather than the measurement
+        (low information content).  Empty unless ``method="oe"`` populated
+        ``averaging_kernel_diag``.
+        """
+        return {p: (a < threshold) for p, a in self.averaging_kernel_diag.items()}
+
     def quality_flag_description(self) -> Dict[str, bool]:
         """Unpack the quality bitmask into ``{flag_name: bool}``."""
         from biosnicar.sea_ice.quality_flags import describe_quality_flags
@@ -326,6 +350,8 @@ def retrieve_sea_ice(
     regularization=None,
     wavelength_mask=None,
     known_month=None,
+    use_priors=True,
+    flag_prior_influence=False,
     mcmc_walkers=32,
     mcmc_steps=2000,
     mcmc_burn=500,
@@ -399,6 +425,21 @@ def retrieve_sea_ice(
 
         Any explicit *regularization* dict passed by the caller is merged on
         top of the season priors — caller values take precedence.
+    use_priors : bool
+        When True (default), the automatic *known_month*-derived priors are
+        applied: the seasonal temperature/thickness priors, their per-emulator
+        brine-volume translation, and the melt-season young-ice exclusion.
+        When False, none of these are applied — the retrieval and
+        classification are **spectrum-only** (an explicit *regularization* dict
+        you pass is still honoured; only the metadata-derived priors are
+        dropped).  Use this to see what the spectrum alone constrains.
+    flag_prior_influence : bool
+        When True and the metadata priors are actually active, run one extra
+        spectrum-only pass and populate the result's provenance fields
+        (``prior_resolved``, ``spectrum_only_surface_type``,
+        ``spectrum_only_class_probabilities``).  ``prior_resolved`` is True if
+        the prior changed the winning surface type.  Costs a second emulator-
+        fleet fit, so it is opt-in (off by default).
 
     Returns
     -------
@@ -450,10 +491,15 @@ def retrieve_sea_ice(
     elif surface_types is not None:
         emulators = {k: v for k, v in emulators.items() if k in surface_types}
 
+    # Snapshot the candidate fleet before any prior-driven exclusion, so the
+    # spectrum-only shadow pass (flag_prior_influence) sees the full fleet.
+    emulators_full = dict(emulators)
+
     # Young ice cannot exist in the melt season — exclude it from the
     # candidate fleet when the month is known (unless it is the only
-    # candidate, in which case the caller asked for it explicitly).
-    if (known_month is not None and 5 <= int(known_month) <= 9
+    # candidate, in which case the caller asked for it explicitly).  This is a
+    # metadata prior, so it is skipped under spectrum-only (use_priors=False).
+    if (use_priors and known_month is not None and 5 <= int(known_month) <= 9
             and "young_ice" in emulators and len(emulators) > 1):
         emulators = {k: v for k, v in emulators.items() if k != "young_ice"}
 
@@ -468,7 +514,7 @@ def retrieve_sea_ice(
     # These prevent emulators from fitting with physically impossible temperatures,
     # which is the primary cause of summer bare ice misclassification.
     season_priors: Dict[str, tuple] = {}
-    if known_month is not None:
+    if use_priors and known_month is not None:
         m = int(known_month)
         if 5 <= m <= 9:      # melt season — May through September
             season_priors["sea_ice_temperature"]   = (-4.0, 3.0)   # near-melting
@@ -631,7 +677,7 @@ def retrieve_sea_ice(
         cost_per_type=cost_per_type,
     )
 
-    return SeaIceRetrievalResult(
+    result = SeaIceRetrievalResult(
         surface_type=winner_name,
         surface_description=_SURFACE_TYPE_DESCRIPTIONS.get(winner_name, winner_name),
         confidence=min(confidence, 1.0),
@@ -649,6 +695,38 @@ def retrieve_sea_ice(
         dfs=winner_fit.dfs,
         averaging_kernel_diag=dict(winner_fit.averaging_kernel_diag or {}),
     )
+
+    # A3 provenance: when requested and the metadata priors are actually
+    # active, re-run spectrum-only and flag whether the prior changed the
+    # classification.  Skipped (prior_resolved stays None) when no metadata
+    # prior was active — there is then nothing for the prior to resolve.
+    if flag_prior_influence and use_priors and season_priors:
+        shadow = retrieve_sea_ice(
+            observed=observed,
+            emulators=emulators_full,
+            platform=platform,
+            observed_band_names=observed_band_names,
+            obs_uncertainty=obs_uncertainty,
+            method=method,
+            solzen=solzen,
+            direct=direct,
+            fixed_params=fixed_params,
+            bounds=bounds,
+            x0=x0,
+            regularization=regularization,
+            wavelength_mask=wavelength_mask,
+            known_month=known_month,
+            use_priors=False,
+            flag_prior_influence=False,
+            mcmc_walkers=mcmc_walkers,
+            mcmc_steps=mcmc_steps,
+            mcmc_burn=mcmc_burn,
+        )
+        result.spectrum_only_surface_type = shadow.surface_type
+        result.spectrum_only_class_probabilities = dict(shadow.class_probabilities)
+        result.prior_resolved = shadow.surface_type != result.surface_type
+
+    return result
 
 
 # ── Batch retrieval ──────────────────────────────────────────────────────────

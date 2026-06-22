@@ -189,7 +189,32 @@ res.class_probabilities   # {type: probability}, sums to 1
 res.dfs                   # information content of the winning fit
 res.averaging_kernel_diag # {param: 0..1}  ~1 = measured, ~0 = prior-driven
 res.uncertainty           # 1-sigma per parameter (posterior covariance)
+res.prior_dominated_parameters()  # {param: True if prior-driven (kernel < 0.5)}
 ```
+
+**Spectrum-only vs priors-on (provenance).** The `known_month` priors are
+powerful — they can change the *classification*, not just sharpen parameters
+(e.g. excluding young ice in the melt season). To see what the spectrum says on
+its own, and to flag when the prior made the call:
+
+```python
+# Spectrum-only: drop the metadata priors (season temperature/thickness priors,
+# their per-emulator brine-volume translation, and the young-ice exclusion).
+res = retrieve_sea_ice(observed=spectrum, solzen=60, direct=1, known_month=7,
+                       method="oe", use_priors=False)
+
+# Or keep priors on but diagnose their influence in one call (runs a spectrum-
+# only shadow pass — costs a second emulator-fleet fit):
+res = retrieve_sea_ice(observed=spectrum, solzen=60, direct=1, known_month=7,
+                       method="oe", flag_prior_influence=True)
+res.prior_resolved                    # True if the prior changed the winner
+res.spectrum_only_surface_type        # what the spectrum alone classifies as
+res.spectrum_only_class_probabilities # its full class distribution
+```
+
+`prior_resolved` is `None` when no metadata prior was active (nothing to
+resolve). This is the lever the ensemble uses to withhold priors it owns, and
+the honesty flag for standalone results that hinge on a seasonal assumption.
 
 Why reach for it: it is the option that gives **calibrated uncertainty** (for an
 ensemble to fuse), **honest provenance** (the averaging kernel flags
