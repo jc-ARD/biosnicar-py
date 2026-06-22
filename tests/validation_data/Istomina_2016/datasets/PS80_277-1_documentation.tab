@@ -1,0 +1,26 @@
+/* DATA DESCRIPTION:
+Citation:	Istomina, Larysa; Nicolaus, Marcel; Perovich, Donald K (2016): Documentation of ice station PS80/277-1 (ROV 4) [dataset]. PANGAEA, https://doi.org/10.1594/PANGAEA.867282, 
+	In: Istomina, L et al. (2016): Surface spectral albedo complementary to ROV transmittance measurements at 6 ice stations during POLARSTERN cruise ARK-XXVII/3 (IceArc) in 2012 [dataset publication series]. PANGAEA, https://doi.org/10.1594/PANGAEA.867292
+Other version:	Gallery of photographs from ice station PS80/277-1 (ROV 4) (URI: https://www.pangaea.de/helpers/hs.php?s=SeaIce&d=PS/PS80_Albedo_ROV/PS80_277-1&t=PS80/277-1%20-%20ROV%204&ID=867282)
+Coverage:	MEDIAN LATITUDE: 82.888666 * MEDIAN LONGITUDE: 129.952917 * SOUTH-BOUND LATITUDE: 82.882500 * WEST-BOUND LONGITUDE: 129.776333 * NORTH-BOUND LATITUDE: 82.894833 * EAST-BOUND LONGITUDE: 130.129500
+	DATE/TIME START: 2012-08-26T04:28:00 * DATE/TIME END: 2012-08-26T05:24:00
+	MINIMUM ELEVATION: -4173.0 m * MAXIMUM ELEVATION: -4161.0 m
+Event(s):	PS80/277-1 (Ice station #4) * LATITUDE START: 82.882500 * LONGITUDE START: 130.129500 * LATITUDE END: 82.894833 * LONGITUDE END: 129.776333 * DATE/TIME START: 2012-08-25T10:33:00 * DATE/TIME END: 2012-08-26T17:36:00 * ELEVATION START: -4161.0 m * ELEVATION END: -4173.0 m * CAMPAIGN: ARK-XXVII/3 (PS80 IceArc) * BASIS: Polarstern (URI: https://doi.org/10.17815/jlsrf-3-163) * METHOD/DEVICE: Ice station (ICE) * COMMENT: Position sensor: Ship's GPS; Wind speed start: 0.4 kn; Wind speed end: 0.2 kn; Sea ice coverage start: 90 %; Sea ice coverage end: 70 %
+Parameter(s):	DATE/TIME (Date/Time) * GEOCODE * PI: Istomina, Larysa (https://orcid.org/0000-0002-0946-1386, larysa.istomina@awi.de) * COMMENT: UTC
+	File name (File name) * PI: Istomina, Larysa (https://orcid.org/0000-0002-0946-1386, larysa.istomina@awi.de)
+	Comment (Comment) * PI: Istomina, Larysa (https://orcid.org/0000-0002-0946-1386, larysa.istomina@awi.de)
+	File size [kByte] (File size) * PI: Istomina, Larysa (https://orcid.org/0000-0002-0946-1386, larysa.istomina@awi.de)
+	Uniform resource locator/link to image (URL image) * PI: Istomina, Larysa (https://orcid.org/0000-0002-0946-1386, larysa.istomina@awi.de)
+License:	Creative Commons Attribution 3.0 Unported (CC-BY-3.0) (URI: https://creativecommons.org/licenses/by/3.0/)
+Size:	36 data points
+*/
+Date/Time	File name	Comment	File size [kByte]	URL image
+2012-08-26T04:28	ROV 4Larm | 260812Larm1icee00000	fine white ice e	754	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_277-1/260812Larm1icee00000.jpg
+2012-08-26T04:33	ROV 4Larm | 260812Larm2pond1e00000	dark cleanopen 30cm pond e	682	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_277-1/260812Larm2pond1e00000.jpg
+2012-08-26T04:40	ROV 4Larm | 260812Larm2pond2e00000	dark open ice pieces 30cm pond e	702	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_277-1/260812Larm2pond2e00000.jpg
+2012-08-26T04:45	ROV 4Larm | 260812Larm4ice2e00000	fine white ice not too porous e	765	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_277-1/260812Larm4ice2e00000.jpg
+2012-08-26T04:53	pure surf 4 | 260812purbp1e00000	light blue pond fr slushy bottom e	734	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_277-1/260812purbp1e00000.jpg
+2012-08-26T04:56	pure surf 4 | 260812purice1e00000	white ice fine e	835	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_277-1/260812purice1e00000.jpg
+2012-08-26T05:01	pure surf 4 | 260812purice2e00000	darker ice coarse e	683	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_277-1/260812purice2e00000.jpg
+2012-08-26T05:18	pure surf 4 | 260812purbp2de00000	darker part of blue pond 50cm e	739	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_277-1/260812purbp2de00000.jpg
+2012-08-26T05:24	pure surf 4 | 260812purdpw3e00000	dark open pond white bulbs inside 30cm e	634	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_277-1/260812purdpw3e00000.jpg

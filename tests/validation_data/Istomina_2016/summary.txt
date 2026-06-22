@@ -1,0 +1,25 @@
+/* DATA DESCRIPTION:
+Citation:	Istomina, Larysa; Nicolaus, Marcel; Perovich, Donald K (2016): Surface spectral albedo complementary to ROV transmittance measurements at 6 ice stations during POLARSTERN cruise ARK-XXVII/3 (IceArc) in 2012 [dataset publication series]. PANGAEA, https://doi.org/10.1594/PANGAEA.867292
+Abstract:	The dataset consists of spectra and photographs of the surface (sea ice and melt ponds) obtained in the Central Arctic during the Polarstern cruise ARK-XXVII/3 at 6 ice stations. The spectra were measured with a portable spectroradiometer ASD FieldSpecPro 3. The photographs were taken with a digital camera Olympus C765 in the "Auto" mode. The measurements have been performed every 10 meters along 100 m ROV transects (transects used for underice ROV flights) where available. Otherwise the albedo measurements have been done at the selected cites complementary to point transmitance measurements or at cites featuring characteristic sea ice surface.
+Related to:	Malinka, Aleksey; Zege, Eleonora; Heygster, Georg; Istomina, Larysa (2016): Reflective properties of white sea ice and snow. The Cryosphere, 10(6), 2541-2557, https://doi.org/10.5194/tc-10-2541-2016
+Coverage:	MEDIAN LATITUDE: 83.423646 * MEDIAN LONGITUDE: 102.616858 * SOUTH-BOUND LATITUDE: 81.884667 * WEST-BOUND LONGITUDE: 31.109500 * NORTH-BOUND LATITUDE: 85.226000 * EAST-BOUND LONGITUDE: 131.128670
+	DATE/TIME START: 2012-08-09T08:08:00 * DATE/TIME END: 2012-09-09T15:12:00
+License:	Creative Commons Attribution 3.0 Unported (CC-BY-3.0) (URI: https://creativecommons.org/licenses/by/3.0/)
+Size:	14 datasets
+*/
+/* TABULAR SUMMARY OF DATASETS LISTED IN THIS COLLECTION: */
+Filename	Citation of child dataset
+PS80_224-1_ALB-R.tab	Istomina, Larysa; Nicolaus, Marcel; Perovich, Donald K (2016): Surface spectral albedo complementary to ROV transmittance measurements at ice station PS80/224-1 (ROV 1). https://doi.org/10.1594/PANGAEA.867285
+PS80_224-1_documentation.tab	Istomina, Larysa; Nicolaus, Marcel; Perovich, Donald K (2016): Documentation of ice station PS80/224-1 (ROV 1). https://doi.org/10.1594/PANGAEA.867279
+PS80_237-1_ALB-R.tab	Istomina, Larysa; Nicolaus, Marcel; Perovich, Donald K (2016): Surface spectral albedo complementary to ROV transmittance measurements at ice station PS80/237-1 (ROV 2). https://doi.org/10.1594/PANGAEA.867286
+PS80_237-1_documentation.tab	Istomina, Larysa; Nicolaus, Marcel; Perovich, Donald K (2016): Documentation of ice station PS80/237-1 (ROV 2). https://doi.org/10.1594/PANGAEA.867280
+PS80_255-1_ALB-R.tab	Istomina, Larysa; Nicolaus, Marcel; Perovich, Donald K (2016): Surface spectral albedo complementary to ROV transmittance measurements at ice station PS80/255-1 (ROV 3). https://doi.org/10.1594/PANGAEA.867287
+PS80_255-1_documentation.tab	Istomina, Larysa; Nicolaus, Marcel; Perovich, Donald K (2016): Documentation of ice station PS80/255-1 (ROV 3). https://doi.org/10.1594/PANGAEA.867281
+PS80_277-1_ALB-R_Larm.tab	Istomina, Larysa; Nicolaus, Marcel; Perovich, Donald K (2016): Surface spectral albedo complementary to ROV transmittance measurements at ice station PS80/277-1 (ROV 4 Larm). https://doi.org/10.1594/PANGAEA.867288
+PS80_277-1_ALB-R_pur.tab	Istomina, Larysa; Nicolaus, Marcel; Perovich, Donald K (2016): Surface spectral albedo complementary to ROV transmittance measurements at ice station PS80/277-1 (ROV 4 pur). https://doi.org/10.1594/PANGAEA.867289
+PS80_277-1_documentation.tab	Istomina, Larysa; Nicolaus, Marcel; Perovich, Donald K (2016): Documentation of ice station PS80/277-1 (ROV 4). https://doi.org/10.1594/PANGAEA.867282
+PS80_323-1_ALB-R.tab	Istomina, Larysa; Nicolaus, Marcel; Perovich, Donald K (2016): Surface spectral albedo complementary to ROV transmittance measurements at ice station PS80/323-1 (ROV 5). https://doi.org/10.1594/PANGAEA.867290
+PS80_323-1_documentation.tab	Istomina, Larysa; Nicolaus, Marcel; Perovich, Donald K (2016): Documentation of ice station PS80/323-1 (ROV 5). https://doi.org/10.1594/PANGAEA.867283
+PS80_335-1_ALB-R.tab	Istomina, Larysa; Nicolaus, Marcel; Perovich, Donald K (2016): Surface spectral albedo complementary to ROV transmittance measurements at ice station PS80/335-1 (ROV 6). https://doi.org/10.1594/PANGAEA.867291
+PS80_335-1_documentation.tab	Istomina, Larysa; Nicolaus, Marcel; Perovich, Donald K (2016): Documentation of ice station PS80/335-1 (ROV 6). https://doi.org/10.1594/PANGAEA.867284
+PS80_initial_state_of_sky_conditions.tab	Istomina, Larysa; Nicolaus, Marcel; Perovich, Donald K (2016): Initial state of sky conditions. https://doi.org/10.1594/PANGAEA.867307

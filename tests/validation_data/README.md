@@ -19,6 +19,7 @@ Empirical datasets and validation scripts for the BioSNICAR sea ice extension (`
 | `sheba_classification_validation.py` | classification across spectral windows (VIS vs VIS+SWIR) + label provenance | SHEBA + Morassutti | **current (historical motivation)** — the VIS+SWIR degeneracy it documents is now handled automatically by per-emulator band masks (C2); kept for provenance/regression |
 | `parameter_retrieval_validation.py` | synthetic per-parameter recovery (bias/RMSE/R²/DFS-style) | forward-model, seed 2026 | **current** — synthetic (inverse-crime); see caveat in script |
 | `../../scripts/smith_retrieval_validation.py` | **independent-campaign** retrieval hold-out | Smith/MOSAiC 2020, 350–2500 nm | **current** — the strongest independent test (different year/site/instrument) |
+| `istomina_retrieval_validation.py` | **second independent-campaign** retrieval hold-out | Istomina/IceArc 2012, 350–2500 nm | **current** — corroborates Smith on a 2nd site/year; coarse field-note labels (informational only, see script) |
 | `../../scripts/plot_sheba_fits.py` | observed-vs-retrieved spectra figures | SHEBA | **current** — figures |
 | `../../scripts/plot_inversion_performance.py` | confusion matrix + parameter scatter + young-ice curve | synthetic | **current** — synthetic demo (disclaimed in-figure) |
 | `../../scripts/experiments/fyi_bare_audit.py` | FYI_bare emulator accuracy + degeneracy | held-out forward-model, seed 777 | **current** — emulator audit backbone |
@@ -184,6 +185,41 @@ Line codes and their physical meaning:
 
 ---
 
+### 4. Istomina et al. (2016) — IceArc surface spectral albedo
+
+| Field | Value |
+|---|---|
+| Citation | Istomina, L., Nicolaus, M. & Perovich, D. K. (2016). PANGAEA |
+| DOI | [10.1594/PANGAEA.867292](https://doi.org/10.1594/PANGAEA.867292) (CC-BY-3.0) |
+| Campaign | *Polarstern* ARK-XXVII/3 (IceArc), 6 ice stations |
+| Location | Central Arctic Ocean, ~83°N |
+| Period | August – September 2012 |
+| Instrument | ASD FieldSpec Pro 3 |
+| Spectral range | 350–2500 nm |
+| Format | PANGAEA `.tab` per station: one `*_ALB-R*.tab` (albedo, columns `Alb (spectrum_id)`) + one `*_documentation.tab` (per-spectrum free-text `Comment` labels, joined on the spectrum id after `\| `). |
+
+**What we use:** all surface albedo spectra (sky/incident references — comments
+containing "sky" — are excluded). 121 spectra across all 6 stations after the
+finite-and-[0,1] albedo mask.
+
+**Honest scope — second independent campaign, not a clean classification test:**
+- **Labels are operator field notes**, with a station-varying convention
+  (`surf ice` vs `melting darker ice e` vs `turq pond whole fov e`). They are
+  mapped to coarse `ice` / `open_pond` / `frozen_pond` labels for an
+  *informational* breakdown only — never a pass/fail gate.
+- **The 2012 ponds are largely refrozen** (thin ice lids, "ice 2–3 cm"):
+  optically thin ice over water, **not** the liquid-water `FYI_pond` class.
+- The raw ASD albedo has out-of-range values in noisy SWIR / water-vapour bands;
+  the loader masks to finite ∈ [0,1] and requires ≥100 usable bands (≥20 in the
+  VIS) per spectrum.
+
+Used (like Smith) as an out-of-distribution melt-season hold-out for coarse
+ice placement and spectral-fit quality — see `docs/sea_ice_validation.md` §6.5.
+A fast parser-only regression guard lives in `tests/test_istomina_validation.py`
+(the full retrieval run stays a manual script, like SHEBA/Smith).
+
+---
+
 ## Running the global validation
 
 ### `run_global_validation.py` — combined entry point
@@ -320,6 +356,7 @@ The `ObsRecord` dataclass is intentionally minimal — it stores the mean spectr
 - Grenfell, T. C., and B. Light (2007). SHEBA Spectral Albedo. UCAR/NCAR EOL 13.825. doi:10.5065/D6765CQ1
 - Smith, M. M. et al. (2021). MOSAiC Leg 4 Surface Spectral Albedo. Arctic Data Center. doi:10.18739/A2FT8DK8Z
 - Morassutti, M. (1995). Sea Ice Melt Pond Data from the Canadian Arctic. NSIDC G01169. doi:10.7265/N55Q4T1C
+- Istomina, L., Nicolaus, M. & Perovich, D. K. (2016). Surface spectral albedo complementary to ROV transmittance measurements at 6 ice stations during POLARSTERN cruise ARK-XXVII/3 (IceArc) in 2012. PANGAEA. doi:10.1594/PANGAEA.867292
 - Cox, G. F. N. & Weeks, W. F. (1983). Equations for brine volumes in sea ice. *J. Glaciology*, 29(102).
 - Sihvola, A. (1999). *Electromagnetic Mixing Formulas*. IEE.
 - Timco, G. W. & Frederking, R. M. W. (1996). A review of sea ice density. *Cold Reg. Sci. Tech.*, 24(1).

@@ -1,0 +1,49 @@
+/* DATA DESCRIPTION:
+Citation:	Istomina, Larysa; Nicolaus, Marcel; Perovich, Donald K (2016): Documentation of ice station PS80/224-1 (ROV 1) [dataset]. PANGAEA, https://doi.org/10.1594/PANGAEA.867279, 
+	In: Istomina, L et al. (2016): Surface spectral albedo complementary to ROV transmittance measurements at 6 ice stations during POLARSTERN cruise ARK-XXVII/3 (IceArc) in 2012 [dataset publication series]. PANGAEA, https://doi.org/10.1594/PANGAEA.867292
+Other version:	Gallery of photographs from ice station PS80/224-1 (ROV 1) (URI: https://www.pangaea.de/helpers/hs.php?s=SeaIce&d=PS/PS80_Albedo_ROV/PS80_224-1&t=PS80/224-1%20-%20ROV%201&ID=867279)
+Coverage:	MEDIAN LATITUDE: 84.042167 * MEDIAN LONGITUDE: 31.111665 * SOUTH-BOUND LATITUDE: 84.033833 * WEST-BOUND LONGITUDE: 31.109500 * NORTH-BOUND LATITUDE: 84.050500 * EAST-BOUND LONGITUDE: 31.113830
+	DATE/TIME START: 2012-08-11T07:40:00 * DATE/TIME END: 2012-08-11T10:48:00
+	MINIMUM ELEVATION: -4013.0 m * MAXIMUM ELEVATION: -4011.0 m
+Event(s):	PS80/224-1 (Ice station #1) * LATITUDE START: 84.050500 * LONGITUDE START: 31.113830 * LATITUDE END: 84.033833 * LONGITUDE END: 31.109500 * DATE/TIME START: 2012-08-09T08:08:00 * DATE/TIME END: 2012-08-11T12:23:00 * ELEVATION START: -4013.0 m * ELEVATION END: -4011.0 m * CAMPAIGN: ARK-XXVII/3 (PS80 IceArc) * BASIS: Polarstern (URI: https://doi.org/10.17815/jlsrf-3-163) * METHOD/DEVICE: Ice station (ICE) * COMMENT: Position sensor: Ship's GPS; Wind speed start: 0.2 kn; Wind speed end: 0.2 kn; Sea ice coverage start: 95 %; Sea ice coverage end: 95 %
+Parameter(s):	DATE/TIME (Date/Time) * GEOCODE * PI: Istomina, Larysa (https://orcid.org/0000-0002-0946-1386, larysa.istomina@awi.de) * COMMENT: UTC
+	File name (File name) * PI: Istomina, Larysa (https://orcid.org/0000-0002-0946-1386, larysa.istomina@awi.de)
+	Comment (Comment) * PI: Istomina, Larysa (https://orcid.org/0000-0002-0946-1386, larysa.istomina@awi.de)
+	File size [kByte] (File size) * PI: Istomina, Larysa (https://orcid.org/0000-0002-0946-1386, larysa.istomina@awi.de)
+	Uniform resource locator/link to image (URL image) * PI: Istomina, Larysa (https://orcid.org/0000-0002-0946-1386, larysa.istomina@awi.de)
+License:	Creative Commons Attribution 3.0 Unported (CC-BY-3.0) (URI: https://creativecommons.org/licenses/by/3.0/)
+Size:	120 data points
+*/
+Date/Time	File name	Comment	File size [kByte]	URL image
+2012-08-11T07:40	ROV 1 | 110812ROVtransect26e00000	surf	775	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_224-1/110812ROVtransect26e00000.jpg
+2012-08-11T07:45	ROV 1 | 110812ROVtransect25e00000	surf		
+2012-08-11T07:54	ROV 1 | 110812ROVtransect24e00000	surf	669	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_224-1/110812ROVtransect24e00000.jpg
+2012-08-11T08:00	ROV 1 | 110812ROVtransect23e00000	surf	767	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_224-1/110812ROVtransect23e00000.jpg
+2012-08-11T08:06	ROV 1 | 110812ROVtransect23epondbor00000	surf pond border	761	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_224-1/110812ROVtransect23epondbor00000.jpg
+2012-08-11T08:08	ROV 1 | 110812ROVtransect23ipondbor00000	sky pond border		
+2012-08-11T08:14	ROV 1 | 110812ROVtransect23e24p00000	surf middle of frozen blue pond 23 24 ice 2-3cm	816	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_224-1/110812ROVtransect23e24p00000.jpg
+2012-08-11T08:16	ROV 1 | 110812ROVtransect23i24p00000	sky middle of frozen blue pond 23 24 ice 2-3cm		
+2012-08-11T08:19	ROV 1 | 110812ROVtransect22e00000	surf ice	798	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_224-1/110812ROVtransect22e00000.jpg
+2012-08-11T08:25	ROV 1 | 110812ROVtransect21e00000	surf ice	778	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_224-1/110812ROVtransect21e00000.jpg
+2012-08-11T08:31	ROV 1 | 110812ROVtransect19e00000	surf ice footsteps	706	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_224-1/110812ROVtransect19e00000.jpg
+2012-08-11T08:36	ROV 1 | 110812ROVtransect18e00000	surf ice	741	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_224-1/110812ROVtransect18e00000.jpg
+2012-08-11T08:41	ROV 1 | 110812ROVtransect17e00000	surf ice ridge	792	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_224-1/110812ROVtransect17e00000.jpg
+2012-08-11T08:46	ROV 1 | 110812ROVtransect1716pe00000	surf frozen pond 17 16 bubbles not all fov	814	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_224-1/110812ROVtransect1716pe00000.jpg
+2012-08-11T08:52	ROV 1 | 110812ROVtransect16e00000	surf frozen dark pond with ice ridges	730	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_224-1/110812ROVtransect16e00000.jpg
+2012-08-11T08:57	ROV 1 | 110812ROVtransect160pe00000	surf dark frozen pond 0 16 middle whole fov bubbl	778	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_224-1/110812ROVtransect160pe00000.jpg
+2012-08-11T09:02	ROV 1 | 110812ROVtransect0e00000	surf dark frozen pond 0 bubbl border	755	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_224-1/110812ROVtransect0e00000.jpg
+2012-08-11T09:10	ROV 1 | 110812ROVtransect3e00000	surf dark frozen pond 3 whole fov		
+2012-08-11T09:15	ROV 1 | 110812ROVtransect4e00000	surf lighter frozen pond 4 whole fov	798	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_224-1/110812ROVtransect4e00000.jpg
+2012-08-11T09:20	ROV 1 | 110812ROVtransect5e00000	surf ice	737	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_224-1/110812ROVtransect5e00000.jpg
+2012-08-11T09:25	ROV 1 | 110812ROVtransect6e00000	surf little dark pond	719	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_224-1/110812ROVtransect6e00000.jpg
+2012-08-11T09:31	ROV 1 | 110812ROVtransect7e00000	surf ice with dark ponds at edge fov	730	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_224-1/110812ROVtransect7e00000.jpg
+2012-08-11T09:36	ROV 1 | 110812ROVtransect78pe00000	surf dark pond 7 8 frozen	723	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_224-1/110812ROVtransect78pe00000.jpg
+2012-08-11T09:41	ROV 1 | 110812ROVtransect89pe00000	surf dark pond 8 9 frozen	728	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_224-1/110812ROVtransect89pe00000.jpg
+2012-08-11T09:47	ROV 1 | 110812ROVtransect1112pe00000	surf dark pond 11 12 frozen	743	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_224-1/110812ROVtransect1112pe00000.jpg
+2012-08-11T10:17	ROV 1 | 110812ROVtransect8e00000	surf ice	715	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_224-1/110812ROVtransect8e00000.jpg
+2012-08-11T10:22	ROV 1 | 110812ROVtransect9e00000	surf ice	731	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_224-1/110812ROVtransect9e00000.jpg
+2012-08-11T10:27	ROV 1 | 110812ROVtransect11e00000	surf border of dark pond 11	748	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_224-1/110812ROVtransect11e00000.jpg
+2012-08-11T10:32	ROV 1 | 110812ROVtransect12e00000	surf border of dark pond 12	773	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_224-1/110812ROVtransect12e00000.jpg
+2012-08-11T10:41	ROV 1 | 110812ROVtransect13e00000	surf ice	756	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_224-1/110812ROVtransect13e00000.jpg
+2012-08-11T10:44	ROV 1 | 110812ROVtransect14e00000	surf ice	744	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_224-1/110812ROVtransect14e00000.jpg
+2012-08-11T10:48	ROV 1 | 110812ROVtransect15e00000	surf ice	681	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_224-1/110812ROVtransect15e00000.jpg

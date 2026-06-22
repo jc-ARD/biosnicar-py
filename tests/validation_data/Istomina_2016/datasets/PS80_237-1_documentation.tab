@@ -1,0 +1,39 @@
+/* DATA DESCRIPTION:
+Citation:	Istomina, Larysa; Nicolaus, Marcel; Perovich, Donald K (2016): Documentation of ice station PS80/237-1 (ROV 2) [dataset]. PANGAEA, https://doi.org/10.1594/PANGAEA.867280, 
+	In: Istomina, L et al. (2016): Surface spectral albedo complementary to ROV transmittance measurements at 6 ice stations during POLARSTERN cruise ARK-XXVII/3 (IceArc) in 2012 [dataset publication series]. PANGAEA, https://doi.org/10.1594/PANGAEA.867292
+Other version:	Gallery of photographs from ice station PS80/237-1 (ROV 2) (URI: https://www.pangaea.de/helpers/hs.php?s=SeaIce&d=PS/PS80_Albedo_ROV/PS80_237-1&t=PS80/237-1%20-%20ROV%202&ID=867280)
+Coverage:	MEDIAN LATITUDE: 83.960083 * MEDIAN LONGITUDE: 76.803999 * SOUTH-BOUND LATITUDE: 83.933667 * WEST-BOUND LONGITUDE: 75.504667 * NORTH-BOUND LATITUDE: 83.986500 * EAST-BOUND LONGITUDE: 78.103330
+	DATE/TIME START: 2012-08-15T11:19:00 * DATE/TIME END: 2012-08-15T14:24:00
+	MINIMUM ELEVATION: -3484.0 m * MAXIMUM ELEVATION: -3424.0 m
+Event(s):	PS80/237-1 (Ice station #2) * LATITUDE START: 83.986500 * LONGITUDE START: 78.103330 * LATITUDE END: 83.933667 * LONGITUDE END: 75.504667 * DATE/TIME START: 2012-08-14T13:10:00 * DATE/TIME END: 2012-08-16T18:42:00 * ELEVATION START: -3484.0 m * ELEVATION END: -3424.0 m * CAMPAIGN: ARK-XXVII/3 (PS80 IceArc) * BASIS: Polarstern (URI: https://doi.org/10.17815/jlsrf-3-163) * METHOD/DEVICE: Ice station (ICE) * COMMENT: Position sensor: Ship's GPS; Wind speed start: 0.3 kn; Wind speed end: 0.6 kn; Sea ice coverage start: 90 %; Sea ice coverage end: 80 %
+Parameter(s):	DATE/TIME (Date/Time) * GEOCODE * PI: Istomina, Larysa (https://orcid.org/0000-0002-0946-1386, larysa.istomina@awi.de) * COMMENT: UTC
+	File name (File name) * PI: Istomina, Larysa (https://orcid.org/0000-0002-0946-1386, larysa.istomina@awi.de)
+	Comment (Comment) * PI: Istomina, Larysa (https://orcid.org/0000-0002-0946-1386, larysa.istomina@awi.de)
+	File size [kByte] (File size) * PI: Istomina, Larysa (https://orcid.org/0000-0002-0946-1386, larysa.istomina@awi.de)
+	Uniform resource locator/link to image (URL image) * PI: Istomina, Larysa (https://orcid.org/0000-0002-0946-1386, larysa.istomina@awi.de)
+License:	Creative Commons Attribution 3.0 Unported (CC-BY-3.0) (URI: https://creativecommons.org/licenses/by/3.0/)
+Size:	88 data points
+*/
+Date/Time	File name	Comment	File size [kByte]	URL image
+2012-08-15T11:19	ROV 2 | 150812ROV13icee00000	surf greyer ice	780	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_237-1/150812ROV13icee00000.jpg
+2012-08-15T11:22	ROV 2 | 150812ROV12icee00000	surf greyer ice	772	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_237-1/150812ROV12icee00000.jpg
+2012-08-15T11:28	ROV 2 | 150812ROV11icee00000	surf greyer ice	781	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_237-1/150812ROV11icee00000.jpg
+2012-08-15T11:33	ROV 2 | 150812ROV9icee00000	surf greyer ice	789	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_237-1/150812ROV9icee00000.jpg
+2012-08-15T11:36	ROV 2 | 150812ROV8icee00000	surf white ice at pond	777	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_237-1/150812ROV8icee00000.jpg
+2012-08-15T11:44	ROV 2 | 150812ROV7pbe00000	surf darker pond border trans layer white ice	735	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_237-1/150812ROV7pbe00000.jpg
+2012-08-15T11:51	ROV 2 | 150812ROV6wicee00000	surf white ice at pond	661	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_237-1/150812ROV6wicee00000.jpg
+2012-08-15T11:55	ROV 2 | 150812ROV67pbwe00000	surf dark pond 6 7 border white ice	743	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_237-1/150812ROV67pbwe00000.jpg
+2012-08-15T11:59	ROV 2 | 150812ROV4icee00000	surf greyer ice	837	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_237-1/150812ROV4icee00000.jpg
+2012-08-15T12:03	ROV 2 | 150812ROV2icee00000	surf not so grey ice, no pond near	826	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_237-1/150812ROV2icee00000.jpg
+2012-08-15T12:06	ROV 2 | 150812ROV1icee00000	surf ice	807	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_237-1/150812ROV1icee00000.jpg
+2012-08-15T12:25	ROV 2 | 150812ROV14icee00000	surf ice	738	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_237-1/150812ROV14icee00000.jpg
+2012-08-15T12:28	ROV 2 | 150812ROV15icee00000	surf ice a bit sastr	843	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_237-1/150812ROV15icee00000.jpg
+2012-08-15T12:33	ROV 2 | 150812ROV16icere00000	surf ice ridge even	829	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_237-1/150812ROV16icere00000.jpg
+2012-08-15T12:37	ROV 2 | 150812ROV18icee00000	surf ice grey with white	730	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_237-1/150812ROV18icee00000.jpg
+2012-08-15T13:49	ROV 2 | 150812ROV19icepe00000	surf ice with grey ice cov little pond	687	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_237-1/150812ROV19icepe00000.jpg
+2012-08-15T13:54	ROV 2 | 150812ROV20icee00000	surf iceridgy darker	740	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_237-1/150812ROV20icee00000.jpg
+2012-08-15T14:00	ROV 2 | 150812ROV21icee00000	surf ridgy dark backgr white hilld ice	696	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_237-1/150812ROV21icee00000.jpg
+2012-08-15T14:05	ROV 2 | 150812ROV22icee00000	surfridgy darkrer than 21 backgr white hillsice	670	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_237-1/150812ROV22icee00000.jpg
+2012-08-15T14:10	ROV 2 | 150812ROV23icee00000	surf ice regular coarse	778	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_237-1/150812ROV23icee00000.jpg
+2012-08-15T14:14	ROV 2 | 150812ROV24icee00000	coarse dark white ridges ice surf	646	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_237-1/150812ROV24icee00000.jpg
+2012-08-15T14:24	ROV 2 | 150812ROV0pbe00000	not too dark pond border 0 surf	829	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_237-1/150812ROV0pbe00000.jpg

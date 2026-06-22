@@ -311,6 +311,53 @@ behaves like the rest, so this is not an extrapolation artifact.  Net: spring
 classification generalises; **summer snow/bare-ice discrimination does not**, and
 the headline SHEBA numbers should be read as spring-regime performance.
 
+## 6.5 Second independent-campaign hold-out — Istomina et al. (2016) IceArc
+
+A third campaign, fully independent of the SHEBA tuning set and a second
+out-of-distribution test alongside Smith: Istomina, Nicolaus & Perovich (2016),
+PANGAEA [doi:10.1594/PANGAEA.867292](https://doi.org/10.1594/PANGAEA.867292)
+(CC-BY-3.0). Surface spectral albedo at 6 ice stations during *Polarstern*
+cruise ARK-XXVII/3 (IceArc), Central Arctic **~83°N, Aug–Sep 2012**, ASD
+FieldSpec Pro 3 (350–2500 nm). Run with
+`python tests/validation_data/istomina_retrieval_validation.py`.
+
+This is **late-melt-season** data, so it probes the same regime that tempered the
+Smith numbers — not a clean per-class classification benchmark. Two honest
+caveats shape how it is used:
+
+1. **Labels are operator field notes, not controlled surface types.** The
+   per-spectrum comments vary by station (`surf ice` vs `melting darker ice e`
+   vs `turq pond whole fov e`) and pond labels are FOV-contaminated
+   (`pond edge`, `pond at edge of fov`). They are mapped to a coarse
+   ice/open-pond/frozen-pond label for an *informational* breakdown only, never
+   a pass/fail gate.
+2. **The 2012 "ponds" are largely refrozen** (thin ice lids, `ice 2–3 cm`).
+   Optically these are thin ice over water, **not** the liquid-water `FYI_pond`
+   class — they are expected to read as bright bare ice, and are reported in
+   their own row rather than scored as pond misses.
+
+**Result (121 surface spectra across all 6 stations):**
+
+| Labelled surface (operator note) | n | Retrieved class (top) | Median VIS RMS |
+|---|---|---|---|
+| ice | 84 | 100 % ice-like (73 % FYI_summer, 14 % FYI_snow, 13 % FYI_bare) | 0.015 |
+| "open" pond (FOV-contaminated) | 18 | 0 % water/pond — reads as bright ice (FYI_summer/FYI_bare) | 0.015 |
+| frozen pond (thin lid) | 19 | 84 % FYI_bare (thin ice over water) | 0.032 |
+| **overall** | **121** | — | **0.017** |
+
+**Interpretation.** Every ice-labelled spectrum classifies into the melt-season
+ice cluster (FYI_summer / FYI_bare / FYI_snow) — none into open water, young ice,
+or a winter class — confirming the retrieval places genuinely independent summer
+Arctic ice correctly at the coarse level. The overall median VIS RMS of 0.017 is
+identical to Smith (0.017) and ~2× the SHEBA spring value (0.008), reproducing
+the same out-of-distribution fit degradation rather than a new failure. The pond
+rows behave exactly as the physics predicts: bright/refrozen ponds read as bright
+ice, consistent with the documented melt-season snow/SSL/bare-ice degeneracy
+(§6.4) and the absence of a refrozen-pond class. Net: Istomina **corroborates the
+Smith conclusion on a second site/year/instrument** — coarse summer-ice placement
+generalises; fine melt-season surface-type discrimination from albedo alone does
+not.
+
 ## 7. Young ice validation — Grenfell & Maykut (1977)
 
 The `young_ice` thin-slab forward model (layer_type=6, two-stream slab over ocean; frazil

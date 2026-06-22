@@ -1,0 +1,40 @@
+/* DATA DESCRIPTION:
+Citation:	Istomina, Larysa; Nicolaus, Marcel; Perovich, Donald K (2016): Documentation of ice station PS80/255-1 (ROV 3) [dataset]. PANGAEA, https://doi.org/10.1594/PANGAEA.867281, 
+	In: Istomina, L et al. (2016): Surface spectral albedo complementary to ROV transmittance measurements at 6 ice stations during POLARSTERN cruise ARK-XXVII/3 (IceArc) in 2012 [dataset publication series]. PANGAEA, https://doi.org/10.1594/PANGAEA.867292
+Other version:	Gallery of photographs from ice station PS80/255-1 (ROV 3) (URI: https://www.pangaea.de/helpers/hs.php?s=SeaIce&d=PS/PS80_Albedo_ROV/PS80_255-1&t=PS80/255-1%20-%20ROV%203&ID=867281)
+Coverage:	MEDIAN LATITUDE: 82.906501 * MEDIAN LONGITUDE: 109.759417 * SOUTH-BOUND LATITUDE: 82.670670 * WEST-BOUND LONGITUDE: 109.589500 * NORTH-BOUND LATITUDE: 83.142333 * EAST-BOUND LONGITUDE: 109.929333
+	DATE/TIME START: 2012-08-21T07:48:00 * DATE/TIME END: 2012-08-21T09:40:00
+	MINIMUM ELEVATION: -3608.0 m * MAXIMUM ELEVATION: -3569.0 m
+Event(s):	PS80/255-1 (Ice station #3) * LATITUDE START: 82.670670 * LONGITUDE START: 109.589500 * LATITUDE END: 83.142333 * LONGITUDE END: 109.929333 * DATE/TIME START: 2012-08-20T08:48:00 * DATE/TIME END: 2012-08-22T11:49:00 * ELEVATION START: -3569.0 m * ELEVATION END: -3608.0 m * CAMPAIGN: ARK-XXVII/3 (PS80 IceArc) * BASIS: Polarstern (URI: https://doi.org/10.17815/jlsrf-3-163) * METHOD/DEVICE: Ice station (ICE) * COMMENT: Position sensor: Ship's GPS; Wind speed start: 0.6 kn; Wind speed end: 0.9 kn; Sea ice coverage start: 95 %; Sea ice coverage end: 95 %
+Parameter(s):	DATE/TIME (Date/Time) * GEOCODE * PI: Istomina, Larysa (https://orcid.org/0000-0002-0946-1386, larysa.istomina@awi.de) * COMMENT: UTC
+	File name (File name) * PI: Istomina, Larysa (https://orcid.org/0000-0002-0946-1386, larysa.istomina@awi.de)
+	Comment (Comment) * PI: Istomina, Larysa (https://orcid.org/0000-0002-0946-1386, larysa.istomina@awi.de)
+	File size [kByte] (File size) * PI: Istomina, Larysa (https://orcid.org/0000-0002-0946-1386, larysa.istomina@awi.de)
+	Uniform resource locator/link to image (URL image) * PI: Istomina, Larysa (https://orcid.org/0000-0002-0946-1386, larysa.istomina@awi.de)
+License:	Creative Commons Attribution 3.0 Unported (CC-BY-3.0) (URI: https://creativecommons.org/licenses/by/3.0/)
+Size:	92 data points
+*/
+Date/Time	File name	Comment	File size [kByte]	URL image
+2012-08-21T07:48	ROV 3 | 200812ROV14icee00000	melting darker ice e	703	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_255-1/200812ROV14icee00000.jpg
+2012-08-21T07:56	ROV 3 | 200812ROV1415psmalle00000	pond 14 15 small turq snow covered e	720	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_255-1/200812ROV1415psmalle00000.jpg
+2012-08-21T08:00	ROV 3 | 200812ROV15icee00000	15 melting ice dark backgr e	692	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_255-1/200812ROV15icee00000.jpg
+2012-08-21T08:04	ROV 3 | 200812ROV16icee00000	16 whiter ice e	750	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_255-1/200812ROV16icee00000.jpg
+2012-08-21T08:09	ROV 3 | 200812ROV18icee00000	18 whiter ice e	759	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_255-1/200812ROV18icee00000.jpg
+2012-08-21T08:13	ROV 3 | 200812ROV20icee00000	20 melting ice dark backgr e	673	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_255-1/200812ROV20icee00000.jpg
+2012-08-21T08:17	ROV 3 | 200812ROV21icee00000	21 melting ice dark backgr e	685	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_255-1/200812ROV21icee00000.jpg
+2012-08-21T08:31	ROV 3 | 200812ROV0pe00000	0 turq pond whole fov e	707	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_255-1/200812ROV0pe00000.jpg
+2012-08-21T08:44	ROV 3 | 200812ROV1pe00000	pond 1 alg white ice formation at bottom bubbl e	673	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_255-1/200812ROV1pe00000.jpg
+2012-08-21T08:48	ROV 3 | 200812ROV3icee00000	ice 3 melting but finer structure darker e	713	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_255-1/200812ROV3icee00000.jpg
+2012-08-21T08:51	ROV 3 | 200812ROV5icee00000	ice 5 melting but finer structure darker e	711	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_255-1/200812ROV5icee00000.jpg
+2012-08-21T08:54	ROV 3 | 200812ROV6pe00000	turq pond 6 fr yelll alg bubbl e	685	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_255-1/200812ROV6pe00000.jpg
+2012-08-21T09:00	ROV 3 | 200812ROV6afterpe00000	turq pond after 6 op a lot yelll alg e	761	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_255-1/200812ROV6afterpe00000.jpg
+2012-08-21T09:03	ROV 3 | 200812ROV7icee00000	ice 7 melting fine not too dark e	673	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_255-1/200812ROV7icee00000.jpg
+2012-08-21T09:07	ROV 3 | 200812ROV8cracke00000	8 narrow 1 m crack fr bubbl alg e	683	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_255-1/200812ROV8cracke00000.jpg
+2012-08-21T09:12	ROV 3 | 200812ROV9icee00000	9melt ice coarse porouos darker e	703	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_255-1/200812ROV9icee00000.jpg
+2012-08-21T09:15	ROV 3 | 200812ROV11icee00000	11 melt ice coarse porouos darker e	681	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_255-1/200812ROV11icee00000.jpg
+2012-08-21T09:18	ROV 3 | 200812ROV12icee00000	12 melt ice coarse porouos darker e	700	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_255-1/200812ROV12icee00000.jpg
+2012-08-21T09:21	ROV 3 | 200812ROV13futpe00000	13 future pond, bare ice no sc l dark e	804	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_255-1/200812ROV13futpe00000.jpg
+2012-08-21T09:32	ROV 3 | 200812ROV22icee00000	22 porouos ice e	733	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_255-1/200812ROV22icee00000.jpg
+2012-08-21T09:35	ROV 3 | 200812ROV24icee00000	24 whiter finer ice e	672	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_255-1/200812ROV24icee00000.jpg
+2012-08-21T09:38	ROV 3 | 200812ROV25icee00000	25 whiter finer ice e	694	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_255-1/200812ROV25icee00000.jpg
+2012-08-21T09:40	ROV 3 | 200812ROV26icee00000	26 whiter finer ice e	670	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_255-1/200812ROV26icee00000.jpg

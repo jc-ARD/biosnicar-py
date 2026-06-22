@@ -1,0 +1,40 @@
+/* DATA DESCRIPTION:
+Citation:	Istomina, Larysa; Nicolaus, Marcel; Perovich, Donald K (2016): Documentation of ice station PS80/323-1 (ROV 5) [dataset]. PANGAEA, https://doi.org/10.1594/PANGAEA.867283, 
+	In: Istomina, L et al. (2016): Surface spectral albedo complementary to ROV transmittance measurements at 6 ice stations during POLARSTERN cruise ARK-XXVII/3 (IceArc) in 2012 [dataset publication series]. PANGAEA, https://doi.org/10.1594/PANGAEA.867292
+Other version:	Gallery of photographs from ice station PS80/323-1 (ROV 5) (URI: https://www.pangaea.de/helpers/hs.php?s=SeaIce&d=PS/PS80_Albedo_ROV/PS80_323-1&t=PS80/323-1%20-%20ROV%205&ID=867283)
+Coverage:	MEDIAN LATITUDE: 81.905083 * MEDIAN LONGITUDE: 131.008085 * SOUTH-BOUND LATITUDE: 81.884667 * WEST-BOUND LONGITUDE: 130.887500 * NORTH-BOUND LATITUDE: 81.925500 * EAST-BOUND LONGITUDE: 131.128670
+	DATE/TIME START: 2012-09-05T03:34:00 * DATE/TIME END: 2012-09-05T05:19:00
+	MINIMUM ELEVATION: -4032.0 m * MAXIMUM ELEVATION: -4031.0 m
+Event(s):	PS80/323-1 (Ice station #5) * LATITUDE START: 81.925500 * LONGITUDE START: 131.128670 * LATITUDE END: 81.884667 * LONGITUDE END: 130.887500 * DATE/TIME START: 2012-09-04T11:00:00 * DATE/TIME END: 2012-09-05T15:00:00 * ELEVATION START: -4031.0 m * ELEVATION END: -4032.0 m * CAMPAIGN: ARK-XXVII/3 (PS80 IceArc) * BASIS: Polarstern (URI: https://doi.org/10.17815/jlsrf-3-163) * METHOD/DEVICE: Ice station (ICE) * COMMENT: Position sensor: Ship's GPS; Wind speed start: 0.5 kn; Wind speed end: 0.4 kn; Sea ice coverage start: 95 %; Sea ice coverage end: 95 %
+Parameter(s):	DATE/TIME (Date/Time) * GEOCODE * PI: Istomina, Larysa (https://orcid.org/0000-0002-0946-1386, larysa.istomina@awi.de) * COMMENT: UTC
+	File name (File name) * PI: Istomina, Larysa (https://orcid.org/0000-0002-0946-1386, larysa.istomina@awi.de)
+	Comment (Comment) * PI: Istomina, Larysa (https://orcid.org/0000-0002-0946-1386, larysa.istomina@awi.de)
+	File size [kByte] (File size) * PI: Istomina, Larysa (https://orcid.org/0000-0002-0946-1386, larysa.istomina@awi.de)
+	Uniform resource locator/link to image (URL image) * PI: Istomina, Larysa (https://orcid.org/0000-0002-0946-1386, larysa.istomina@awi.de)
+License:	Creative Commons Attribution 3.0 Unported (CC-BY-3.0) (URI: https://creativecommons.org/licenses/by/3.0/)
+Size:	92 data points
+*/
+Date/Time	File name	Comment	File size [kByte]	URL image
+2012-09-05T03:34	ROV 5 | 050912ROVice15e00000	ridgy ice fine sastr e	794	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_323-1/050912ROVice15e00000.jpg
+2012-09-05T03:38	ROV 5 | 050912ROVpond1514e00000	grey fr bubbl bot all fov small pond e	739	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_323-1/050912ROVpond1514e00000.jpg
+2012-09-05T03:43	ROV 5 | 050912ROVice14e00000	rough sastr 3cm pond edge e	812	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_323-1/050912ROVice14e00000.jpg
+2012-09-05T03:47	ROV 5 | 050912ROVice13e00000	ice ridge smooth e	805	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_323-1/050912ROVice13e00000.jpg
+2012-09-05T03:50	ROV 5 | 050912ROVice12i00000	smooth flat ice snow e	748	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_323-1/050912ROVice12i00000.jpg
+2012-09-05T03:53	ROV 5 | 050912ROVice11e00000	smooth flat ice snow e	741	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_323-1/050912ROVice11e00000.jpg
+2012-09-05T03:57	ROV 5 | 050912ROVice9e00000	rougher flat ice snow e	796	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_323-1/050912ROVice9e00000.jpg
+2012-09-05T04:00	ROV 5 | 050912ROVice7e00000	mixedflat ice snow e	782	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_323-1/050912ROVice7e00000.jpg
+2012-09-05T04:05	ROV 5 | 050912ROVice6e00000	rougher flat ice snow e	772	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_323-1/050912ROVice6e00000.jpg
+2012-09-05T04:09	ROV 5 | 050912ROVice5e00000	rougher flat ice snow e	744	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_323-1/050912ROVice5e00000.jpg
+2012-09-05T04:13	ROV 5 | 050912ROVice3e00000	smoother flat ice snow e	752	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_323-1/050912ROVice3e00000.jpg
+2012-09-05T04:18	ROV 5 | 050912ROVice1e00000	smoother sastr flat ice snow e	757	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_323-1/050912ROVice1e00000.jpg
+2012-09-05T04:20	ROV 5 | 050912ROVpond01e00000	rouhg edges grey pond border e	776	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_323-1/050912ROVpond01e00000.jpg
+2012-09-05T04:24	ROV 5 | 050912ROVice0e00000	smoother snow ice e	779	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_323-1/050912ROVice0e00000.jpg
+2012-09-05T04:48	ROV 5 | 050912ROVice16e00000	pond edge very roug e	800	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_323-1/050912ROVice16e00000.jpg
+2012-09-05T04:52	ROV 5 | 050912ROVice18e00000	pond edge very roug e	772	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_323-1/050912ROVice18e00000.jpg
+2012-09-05T04:56	ROV 5 | 050912ROVpond20e00000	crack rough grey snow covered e	753	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_323-1/050912ROVpond20e00000.jpg
+2012-09-05T05:03	ROV 5 | 050912ROVice21e00000	smooth ice snow e	741	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_323-1/050912ROVice21e00000.jpg
+2012-09-05T05:07	ROV 5 | 050912ROVice22e00000	smooth ice snow e	758	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_323-1/050912ROVice22e00000.jpg
+2012-09-05T05:09	ROV 5 | 050912ROVice23e00000	crack rough snow cov e	809	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_323-1/050912ROVice23e00000.jpg
+2012-09-05T05:13	ROV 5 | 050912ROVice24e00000	crack rough snow cov e	795	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_323-1/050912ROVice24e00000.jpg
+2012-09-05T05:16	ROV 5 | 050912ROVice26e00000	crack rough snow cov e	816	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_323-1/050912ROVice26e00000.jpg
+2012-09-05T05:19	ROV 5 | 050912ROVice28e00000	smooth snoew e	786	https://hs.pangaea.de/Images/SeaIce/PS/PS80_Albedo_ROV/PS80_323-1/050912ROVice28e00000.jpg
