@@ -25,6 +25,8 @@ can occur).  See docs/TIR_CRITERION_BUG.md for full analysis.
 """
 
 import sys
+from pathlib import Path
+
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -186,6 +188,7 @@ for ax, sza, xlo, xhi, regions in panels:
 axes[1].set_xlabel("Wavelength (µm)")
 
 fig.tight_layout()
-plt.savefig("tir_fix_verification.png", dpi=150, bbox_inches="tight")
-print("Plot saved to tir_fix_verification.png")
+_out = Path(__file__).resolve().parents[1] / "images" / "tir_fix_verification.png"
+plt.savefig(_out, dpi=150, bbox_inches="tight")
+print(f"Plot saved to {_out}")
 plt.show()

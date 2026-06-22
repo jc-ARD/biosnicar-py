@@ -8,7 +8,7 @@ Learn the fundamentals of radiative transfer in snow and ice, explore real BioSN
 
 ### **[Full documentation at biosnicar.vercel.app](https://biosnicar.vercel.app)**
 
-<img src="./example-output.jpg" width=500>
+<img src="./images/example-output.jpg" width=500>
 
 BioSNICAR computes 480-band spectral albedo (0.2–5.0 µm) from the physical properties of ice (grain/bubble size, density, layer structure) and the concentrations of light-absorbing particles (black carbon, mineral dust, snow and glacier algae). Two radiative transfer solvers are available: the Toon et al. (1989) matrix method and a vectorised adding-doubling solver with Fresnel-reflecting layers (Briegleb & Light 2007; Dang et al. 2019; Whicker et al. 2022). A coupled bio-optical model enables calculation of algal optical properties from pigment inventories (Cook et al. 2017, 2020; Chevrollier et al. 2023).
 
@@ -304,7 +304,7 @@ A browser-based GUI is available at [bit.ly/bio-snicar](https://bit.ly/bio-snica
 ./start_app.sh
 ```
 
-<img src="./app.png" width=500>
+<img src="./images/app.png" width=500>
 
 
 ## Configuration
