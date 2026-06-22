@@ -18,10 +18,10 @@ Empirical datasets and validation scripts for the BioSNICAR sea ice extension (`
 | `sea_ice_emulator_sheba_validation.py` | classification + satellite bands + pond depth (blocks A–E) | SHEBA + Morassutti, VIS–NIR | **current** — primary inversion validation |
 | `sheba_classification_validation.py` | classification across spectral windows (VIS vs VIS+SWIR) + label provenance | SHEBA + Morassutti | **current (historical motivation)** — the VIS+SWIR degeneracy it documents is now handled automatically by per-emulator band masks (C2); kept for provenance/regression |
 | `parameter_retrieval_validation.py` | synthetic per-parameter recovery (bias/RMSE/R²/DFS-style) | forward-model, seed 2026 | **current** — synthetic (inverse-crime); see caveat in script |
-| `../../scripts/smith_retrieval_validation.py` | **independent-campaign** retrieval hold-out | Smith/MOSAiC 2020, 350–2500 nm | **current** — the strongest independent test (different year/site/instrument) |
+| `smith_retrieval_validation.py` | **independent-campaign** retrieval hold-out | Smith/MOSAiC 2020, 350–2500 nm | **current** — the strongest independent test (different year/site/instrument) |
 | `istomina_retrieval_validation.py` | **second independent-campaign** retrieval hold-out | Istomina/IceArc 2012, 350–2500 nm | **current** — corroborates Smith on a 2nd site/year; coarse field-note labels (informational only, see script) |
-| `../../scripts/plot_sheba_fits.py` | observed-vs-retrieved spectra figures | SHEBA | **current** — figures |
-| `../../scripts/plot_inversion_performance.py` | confusion matrix + parameter scatter + young-ice curve | synthetic | **current** — synthetic demo (disclaimed in-figure) |
+| `plot_sheba_fits.py` | observed-vs-retrieved spectra figures | SHEBA | **current** — figures |
+| `plot_inversion_performance.py` | confusion matrix + parameter scatter + young-ice curve | synthetic | **current** — synthetic demo (disclaimed in-figure) |
 | `../../scripts/experiments/fyi_bare_audit.py` | FYI_bare emulator accuracy + degeneracy | held-out forward-model, seed 777 | **current** — emulator audit backbone |
 | `run_global_validation.py` | **forward-model preset** accuracy (FYI_WINTER_SNOW/BARE), *not* the inversion | Grenfell + Smith | **current but distinct track** — validates the forward presets, not `retrieve_sea_ice()`; Smith melt-season "failures" are an expected season mismatch |
 
@@ -59,12 +59,23 @@ All scripts are self-contained: they locate their data relative to their own fil
 
 ## Folder structure
 
+All validation scripts live **here** (co-located with the data they read).
+`scripts/` at the repo root holds only emulator/LUT *builders*, the `sweep_demo`,
+and the `experiments/` audits — nothing that validates `retrieve_sea_ice()`.
+
 ```
 tests/validation_data/
 │
 ├── README.md                          ← this file
-├── run_global_validation.py           ← main entry point: all datasets combined
-├── global_results.json                ← machine-readable results (last run)
+├── run_global_validation.py           ← forward-preset entry point (all datasets)
+├── sea_ice_emulator_sheba_validation.py   ← primary inversion validation
+├── sheba_classification_validation.py     ← spectral-window classification
+├── parameter_retrieval_validation.py      ← synthetic per-parameter recovery
+├── smith_retrieval_validation.py          ← independent campaign (MOSAiC 2020)
+├── istomina_retrieval_validation.py       ← 2nd independent campaign (IceArc 2012)
+├── plot_sheba_fits.py                      ← observed-vs-retrieved figures
+├── plot_inversion_performance.py           ← confusion matrix / scatter figures
+├── global_results.json                ← machine-readable results (git-ignored)
 │
 ├── figures/
 │   └── global/
@@ -87,6 +98,10 @@ tests/validation_data/
 ├── smith_2021/                        ← MOSAiC 2020 dataset
 │   └── resource_map_doi_10_18739_A2FT8DK8Z/
 │       └── data/SpectralAlbedoData/   ← 124 processed CSV files
+│
+├── Istomina_2016/                     ← IceArc 2012 dataset (PANGAEA .tab, ~2 MB)
+│   ├── summary.txt
+│   └── datasets/                      ← per-station ALB-R + documentation .tab
 │
 └── morassutti1995/                    ← Canadian Arctic melt ponds 1994
     ├── validate_morassutti1995.py

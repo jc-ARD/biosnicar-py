@@ -261,7 +261,7 @@ the −5 °C FYI_snow bound and near-zero black carbon — expected saturations,
 not errors.
 
 Observed-vs-retrieved spectra figures for every date:
-`python scripts/plot_sheba_fits.py` → `figures/sheba_fits/`.
+`python tests/validation_data/plot_sheba_fits.py` → `figures/sheba_fits/`.
 
 ## 6.4 Independent-campaign hold-out — Smith et al. (2021) MOSAiC
 
@@ -274,7 +274,7 @@ mask.  44 snow-surface transect positions (`surface_type='S'`, change-in-inciden
 ≤ 10%) were inverted with per-record SZA (from UTC + ship lat/lon),
 per-record diffuse/direct flag from the MOSAiC sky codes (29/44 diffuse —
 "completely overcast, solar disk not visible"), and `known_month`.  Run with
-`python scripts/smith_retrieval_validation.py`.
+`python tests/validation_data/smith_retrieval_validation.py`.
 
 **Result (honest — this tempers the SHEBA numbers):**
 

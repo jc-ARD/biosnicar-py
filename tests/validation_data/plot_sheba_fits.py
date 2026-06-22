@@ -25,9 +25,10 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
-ROOT = Path(__file__).resolve().parents[1]
+HERE = Path(__file__).resolve().parent
+ROOT = HERE.parents[1]                       # repo root (tests/validation_data -> repo)
 sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(ROOT / "tests" / "validation_data"))
+sys.path.insert(0, str(HERE))
 
 from sea_ice_emulator_sheba_validation import (  # noqa: E402
     WL_NM, catalogue, obs_to_snicar, parse_albv,

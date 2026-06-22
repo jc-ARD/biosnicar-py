@@ -51,9 +51,10 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
-ROOT = Path(__file__).resolve().parents[1]
+HERE = Path(__file__).resolve().parent
+ROOT = HERE.parents[1]                       # repo root (tests/validation_data -> repo)
 sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(ROOT / "tests" / "validation_data"))
+sys.path.insert(0, str(HERE))
 
 from run_global_validation import load_smith  # noqa: E402
 

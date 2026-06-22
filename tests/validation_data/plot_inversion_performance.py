@@ -45,7 +45,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]   # repo root (tests/validation_data -> repo)
 sys.path.insert(0, str(ROOT))
 
 from biosnicar.drivers.run_model import run_model
