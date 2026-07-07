@@ -26,7 +26,7 @@ Requires the pre-built emulator at data/emulators/glacier_ice_8_param_default.np
 
 import numpy as np
 
-from biosnicar import run_model, to_platform
+from biosnicar import DATA_DIR, run_model, to_platform
 from biosnicar.drivers.sweep import parameter_sweep
 
 PLOT = True
@@ -127,7 +127,6 @@ print("Part 3: Inverse retrieval from PlanetScope observations")
 print("=" * 60)
 
 try:
-    from biosnicar import DATA_DIR
     from biosnicar.emulator import Emulator
     from biosnicar.inverse import retrieve
     from biosnicar.inverse.result import _compute_ssa

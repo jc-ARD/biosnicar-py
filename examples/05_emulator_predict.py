@@ -10,7 +10,7 @@ import time
 
 import numpy as np
 
-from biosnicar import run_model, run_emulator
+from biosnicar import DATA_DIR, run_emulator, run_model
 from biosnicar.emulator import Emulator
 
 PLOT = False
@@ -19,8 +19,6 @@ PLOT = False
 # Example 1: Load the default emulator
 # ======================================================================
 print("=== Example 1: Load default emulator ===\n")
-from biosnicar import DATA_DIR
-
 emu = Emulator.load(DATA_DIR / "emulators" / "glacier_ice_8_param_default.npz")
 print(f"  {emu!r}")
 print(f"  Parameters: {emu.param_names}")
