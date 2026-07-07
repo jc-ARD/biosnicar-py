@@ -26,7 +26,7 @@ Requires the pre-built emulator at data/emulators/glacier_ice_8_param_default.np
 
 import numpy as np
 
-from biosnicar import run_model, to_platform
+from biosnicar import DATA_DIR, run_model, to_platform
 from biosnicar.drivers.sweep import parameter_sweep
 
 PLOT = True
@@ -131,7 +131,7 @@ try:
     from biosnicar.inverse import retrieve
     from biosnicar.inverse.result import _compute_ssa
 
-    emu = Emulator.load("data/emulators/glacier_ice_8_param_default.npz")
+    emu = Emulator.load(DATA_DIR / "emulators" / "glacier_ice_8_param_default.npz")
 
     # Fixed parameters that are known a priori
     fixed = {"solzen": 50, "direct": 1, "dust": 1000, "snow_algae": 0}

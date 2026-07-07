@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=61.0"]
+requires = ["setuptools>=62.3.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -60,6 +60,12 @@ dev     = ["pytest", "scikit-learn>=1.0", "emcee>=3", "streamlit", "plotly"]
 "Bug Tracker"   = "https://github.com/jmcook1186/biosnicar-py/issues"
 "Source"        = "https://github.com/jmcook1186/biosnicar-py"
 "Documentation" = "https://biosnicar-go-py.readthedocs.io/en/latest/"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.package-data]
+biosnicar = ["data/**/*"]
 
 [tool.setuptools.dynamic]
 version = {attr = "biosnicar.__version__"}

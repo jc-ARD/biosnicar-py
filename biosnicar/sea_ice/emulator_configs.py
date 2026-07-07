@@ -28,8 +28,12 @@ from pathlib import Path
 
 import numpy as np
 
+import biosnicar
+
 # ── Absolute path to the emulator data directory ────────────────────────────
-_DATA_DIR = Path(__file__).resolve().parents[2] / "data" / "emulators"
+# Resolved from the packaged data dir (see biosnicar.DATA_DIR) so it works for
+# source, editable, and installed-wheel layouts alike.
+_DATA_DIR = biosnicar.DATA_DIR / "emulators"
 
 # Classification band masks (C2).  Applied ONLY to the classification
 # chi-squared in retrieve_sea_ice() — never to parameter fitting.

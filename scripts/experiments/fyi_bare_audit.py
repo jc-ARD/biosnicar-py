@@ -28,10 +28,11 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+import biosnicar
 from biosnicar.emulator import Emulator, _latin_hypercube
 from biosnicar.sea_ice.emulator_configs import SEA_ICE_EMULATOR_CONFIGS
 
-EXP_DIR = Path(__file__).resolve().parents[2] / "data" / "emulators" / "experiments"
+EXP_DIR = biosnicar.DATA_DIR / "emulators" / "experiments"
 HOLDOUT_PATH = EXP_DIR / "fyi_bare_holdout.npz"
 RESULTS_PATH = EXP_DIR / "fyi_bare_audit_results.json"
 

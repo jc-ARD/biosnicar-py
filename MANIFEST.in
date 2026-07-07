@@ -1,0 +1,5 @@
+# Ship packaged data tree in sdist
+recursive-include biosnicar/data *
+
+global-exclude *.py[cod]
+global-exclude __pycache__/*

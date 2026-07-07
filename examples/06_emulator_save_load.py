@@ -11,6 +11,7 @@ from pathlib import Path
 
 import numpy as np
 
+from biosnicar import DATA_DIR
 from biosnicar.emulator import Emulator
 
 # ======================================================================
@@ -86,7 +87,7 @@ for key in [
 # Example 5: Load the pre-built default emulator
 # ======================================================================
 print("\n=== Example 5: Load default emulator ===\n")
-default = Emulator.load("data/emulators/glacier_ice_8_param_default.npz")
+default = Emulator.load(DATA_DIR / "emulators" / "glacier_ice_8_param_default.npz")
 print(f"  {default!r}")
 
 # Clean up

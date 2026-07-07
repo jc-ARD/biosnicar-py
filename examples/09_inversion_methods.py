@@ -24,7 +24,7 @@ import time
 
 import numpy as np
 
-from biosnicar import run_model
+from biosnicar import DATA_DIR, run_model
 from biosnicar.emulator import Emulator
 from biosnicar.inverse import retrieve
 from biosnicar.inverse.result import _compute_ssa
@@ -37,7 +37,7 @@ MCMC = False
 # ======================================================================
 
 # Load the pre-built 8-parameter glacier ice emulator.
-emu = Emulator.load("data/emulators/glacier_ice_8_param_default.npz")
+emu = Emulator.load(DATA_DIR / "emulators" / "glacier_ice_8_param_default.npz")
 
 # Parameters that are known a priori and will NOT be retrieved.
 # Dust is fixed at 1000 ppb (low spectral sensitivity — see docs).

@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on `Keep a Changelog <https://keepachangelog.com/en/1.0.0/>`_,
 and this project adheres to `Semantic Versioning <https://semver.org/spec/v2.0.0.html>`_.
 
+Unreleased
+----------
+
+Fixed
+~~~~~
+- **Package data now ships with the wheel/sdist** (``pyproject.toml``,
+  ``MANIFEST.in``, ``biosnicar/__init__.py``).
+
+  The ``data/`` tree (optical properties, band SRFs, pigments, pre-built
+  emulators) lived as a *sibling* of the package, so ``pip install biosnicar``
+  produced a distribution containing **no data files**. At runtime the loader
+  resolved ``site-packages/data/emulators/*.npz`` — a path that did not exist —
+  and calls such as ``load_sea_ice_emulators()`` failed with
+  ``FileNotFoundError``. It only worked from editable/source checkouts (where
+  ``data/`` happened to sit one level up), which is why CI (``pip install -e .``)
+  never caught it.
+
+  ``data/`` now lives inside the package at ``biosnicar/data/`` and is declared
+  as package-data. ``biosnicar.DATA_DIR`` / ``PROJECT_ROOT`` resolve within the
+  installed package, so source, editable, and installed-wheel layouts all work.
+  Added ``tests/test_packaged_data.py`` to guard the invariant.
+
 v0.2-sea-ice (2026-06-03)
 --------------------------
 

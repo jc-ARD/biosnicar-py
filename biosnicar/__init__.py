@@ -2,7 +2,7 @@ from pathlib import Path
 
 __version__ = "2.2.0"
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+PROJECT_ROOT = Path(__file__).resolve().parent
 DATA_DIR = PROJECT_ROOT / "data"
 
 

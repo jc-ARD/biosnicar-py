@@ -17,7 +17,7 @@ compared to ~73% for rds and ~33% for rho when retrieved separately.
 
 import numpy as np
 
-from biosnicar import run_model
+from biosnicar import DATA_DIR, run_model
 from biosnicar.emulator import Emulator
 from biosnicar.inverse import retrieve
 from biosnicar.inverse.result import _compute_ssa
@@ -32,7 +32,7 @@ PLOT = True
 # black_carbon, snow_algae, glacier_algae, dust, direct, solzen) and was
 # trained on 50,000 LHS samples of solid ice (layer_type=1).  It predicts
 # 480-band spectral albedo in ~microseconds.
-emu = Emulator.load("data/emulators/glacier_ice_8_param_default.npz")
+emu = Emulator.load(DATA_DIR / "emulators" / "glacier_ice_8_param_default.npz")
 print(f"Emulator: {emu!r}\n")
 
 # Parameters that are known a priori and will NOT be retrieved.
