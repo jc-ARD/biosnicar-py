@@ -36,7 +36,9 @@ PLOT = False
 # own emulator using Emulator.build() — see example 04.
 
 print("Step 1: Load emulator\n")
-emu = Emulator.load("data/emulators/glacier_ice_8_param_default.npz")
+from biosnicar import DATA_DIR
+
+emu = Emulator.load(DATA_DIR / "emulators" / "glacier_ice_8_param_default.npz")
 print(f"  {emu!r}")
 
 # ======================================================================

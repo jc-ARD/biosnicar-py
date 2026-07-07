@@ -17,7 +17,7 @@ import xarray as xr
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-DATA_DIR = BASE_DIR / "data" / "OP_data" / "480band"
+DATA_DIR = BASE_DIR / "biosnicar" / "data" / "OP_data" / "480band"
 
 
 def convert_lap_files():

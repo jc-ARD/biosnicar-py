@@ -1,0 +1,6 @@
+# Ship the packaged data tree in the sdist. The wheel picks these up via
+# [tool.setuptools.package-data] in pyproject.toml; sdists honour MANIFEST.in.
+recursive-include biosnicar/data *
+
+global-exclude *.py[cod]
+global-exclude __pycache__/*

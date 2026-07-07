@@ -11,14 +11,10 @@ Usage:
 
 from pathlib import Path
 
+import biosnicar
 from biosnicar.emulator import Emulator
 
-OUTPUT = (
-    Path(__file__).resolve().parent.parent
-    / "data"
-    / "emulators"
-    / "glacier_ice_8_param_default.npz"
-)
+OUTPUT = biosnicar.DATA_DIR / "emulators" / "glacier_ice_8_param_default.npz"
 
 
 def main():

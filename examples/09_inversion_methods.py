@@ -37,7 +37,9 @@ MCMC = False
 # ======================================================================
 
 # Load the pre-built 8-parameter glacier ice emulator.
-emu = Emulator.load("data/emulators/glacier_ice_8_param_default.npz")
+from biosnicar import DATA_DIR
+
+emu = Emulator.load(DATA_DIR / "emulators" / "glacier_ice_8_param_default.npz")
 
 # Parameters that are known a priori and will NOT be retrieved.
 # Dust is fixed at 1000 ppb (low spectral sensitivity — see docs).

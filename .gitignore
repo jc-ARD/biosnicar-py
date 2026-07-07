@@ -32,8 +32,8 @@ app/node_modules
 *dask*
 
 # A1 audit artifacts — regenerable via scripts/experiments/fyi_bare_audit.py
-data/emulators/experiments/*.npz
-data/emulators/experiments/experiments_log.txt
+biosnicar/data/emulators/experiments/*.npz
+biosnicar/data/emulators/experiments/experiments_log.txt
 
 # Regenerable validation/demo figures
 figures/

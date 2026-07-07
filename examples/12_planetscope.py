@@ -127,11 +127,12 @@ print("Part 3: Inverse retrieval from PlanetScope observations")
 print("=" * 60)
 
 try:
+    from biosnicar import DATA_DIR
     from biosnicar.emulator import Emulator
     from biosnicar.inverse import retrieve
     from biosnicar.inverse.result import _compute_ssa
 
-    emu = Emulator.load("data/emulators/glacier_ice_8_param_default.npz")
+    emu = Emulator.load(DATA_DIR / "emulators" / "glacier_ice_8_param_default.npz")
 
     # Fixed parameters that are known a priori
     fixed = {"solzen": 50, "direct": 1, "dust": 1000, "snow_algae": 0}

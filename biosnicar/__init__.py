@@ -2,7 +2,17 @@ from pathlib import Path
 
 __version__ = "2.2.0"
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+# Data (optical properties, band SRFs, pigments, pre-built emulators) ships
+# *inside* the package as package-data, so these resolve correctly whether
+# biosnicar is run from a source checkout, an editable install, or a wheel
+# installed into site-packages.  Prior to this, ``data/`` was a sibling of the
+# package and paths were derived from ``parent.parent``, which pointed at
+# ``site-packages/data`` (nonexistent) for a normal ``pip install``.
+#
+# ``PROJECT_ROOT`` now means "the biosnicar package root" — the directory that
+# contains ``data/``.  Consumers that join ``PROJECT_ROOT / "data" / ...`` or
+# use ``DATA_DIR`` keep working unchanged.
+PROJECT_ROOT = Path(__file__).resolve().parent
 DATA_DIR = PROJECT_ROOT / "data"
 
 

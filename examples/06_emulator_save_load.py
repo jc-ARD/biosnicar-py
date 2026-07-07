@@ -86,7 +86,9 @@ for key in [
 # Example 5: Load the pre-built default emulator
 # ======================================================================
 print("\n=== Example 5: Load default emulator ===\n")
-default = Emulator.load("data/emulators/glacier_ice_8_param_default.npz")
+from biosnicar import DATA_DIR
+
+default = Emulator.load(DATA_DIR / "emulators" / "glacier_ice_8_param_default.npz")
 print(f"  {default!r}")
 
 # Clean up
