@@ -17,6 +17,9 @@ N_WVL = len(WVL)
 # Module-level SRF cache: {sensor_name: {band_name: np.array(480)}}
 _srf_cache = {}
 
+# Stacked-SRF cache: {(sensor_name, band_order): np.array (n_bands, 480)}
+_srf_stack_cache = {}
+
 
 def load_srf(sensor_name):
     """Load a CSV spectral response function and cache it.
@@ -75,6 +78,48 @@ def srf_convolve(albedo, flx_slr, srf):
     if denom == 0:
         return np.nan
     return float(np.sum(albedo * weight) / denom)
+
+
+def load_srf_stack(sensor_name, band_names):
+    """Load several bands' SRFs as one stacked ``(n_bands, 480)`` array.
+
+    Cached per ``(sensor_name, band_names)`` so the stack is built once.  Rows
+    follow the order of *band_names*; pass the result to
+    :func:`srf_convolve_stack` to convolve every band in a single matmul.
+
+    Returns
+    -------
+    np.ndarray (n_bands, 480)
+    """
+    key = (sensor_name, tuple(band_names))
+    if key not in _srf_stack_cache:
+        srf = load_srf(sensor_name)
+        _srf_stack_cache[key] = np.array([srf[b] for b in band_names])
+    return _srf_stack_cache[key]
+
+
+def srf_convolve_stack(albedo, flx_slr, srf_stack):
+    """Flux-weighted SRF convolution for a stack of bands at once.
+
+    Vectorised equivalent of :func:`srf_convolve`, applied row-wise to
+    ``srf_stack`` of shape ``(n_bands, 480)``.  Bands with zero flux-weight are
+    returned as NaN, matching the single-band case.
+
+    Parameters
+    ----------
+    albedo : np.ndarray (480,)
+    flx_slr : np.ndarray (480,)
+    srf_stack : np.ndarray (n_bands, 480)
+
+    Returns
+    -------
+    np.ndarray (n_bands,)
+        Band-averaged albedo per row.
+    """
+    weight = srf_stack * flx_slr
+    denom = weight.sum(axis=1)
+    num = weight @ np.asarray(albedo, dtype=float)
+    return np.divide(num, denom, out=np.full(denom.shape, np.nan), where=denom != 0)
 
 
 def interval_average(albedo, flx_slr, lo_um, hi_um):

@@ -28,7 +28,7 @@ Oa21   1020          40
 """
 
 from biosnicar.bands import BandResult, _register
-from biosnicar.bands._core import load_srf, srf_convolve
+from biosnicar.bands._core import load_srf_stack, srf_convolve_stack
 
 SRF_NAME = "sentinel3_olci"
 
@@ -40,11 +40,11 @@ BAND_NAMES = [
 
 
 def _sentinel3(albedo, flx_slr):
-    srf = load_srf(SRF_NAME)
     r = BandResult("sentinel3")
 
-    for name in BAND_NAMES:
-        r._set_band(name, srf_convolve(albedo, flx_slr, srf[name]))
+    bands = srf_convolve_stack(albedo, flx_slr, load_srf_stack(SRF_NAME, BAND_NAMES))
+    for name, value in zip(BAND_NAMES, bands):
+        r._set_band(name, float(value))
 
     # I2DBA = Oa12 / Oa08  (2-band diagnostic absorption)
     r._set_index("I2DBA", r.Oa12 / r.Oa08 if r.Oa08 != 0 else float("nan"))

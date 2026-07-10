@@ -3,7 +3,15 @@
 import numpy as np
 import pytest
 
-from biosnicar.bands._core import WVL, N_WVL, interval_average, srf_convolve, load_srf
+from biosnicar.bands._core import (
+    WVL,
+    N_WVL,
+    interval_average,
+    srf_convolve,
+    srf_convolve_stack,
+    load_srf,
+    load_srf_stack,
+)
 from biosnicar.bands import BandResult, to_platform
 
 
@@ -66,6 +74,46 @@ class TestSRFConvolve:
         """Zero SRF should return NaN."""
         srf = np.zeros(N_WVL)
         assert np.isnan(srf_convolve(flat_albedo, uniform_flux, srf))
+
+
+class TestSRFConvolveStack:
+    """srf_convolve_stack is the vectorised equivalent of srf_convolve."""
+
+    def test_matches_single_band(self, ramp_albedo, uniform_flux):
+        """Row-wise stack result equals looping srf_convolve per band."""
+        names = ["B2", "B3", "B4", "B8A"]
+        srf = load_srf("sentinel2_msi")
+        stack = load_srf_stack("sentinel2_msi", names)
+        got = srf_convolve_stack(ramp_albedo, uniform_flux, stack)
+        want = [srf_convolve(ramp_albedo, uniform_flux, srf[n]) for n in names]
+        assert got == pytest.approx(want, rel=1e-12)
+
+    def test_flat_albedo_tophat(self, flat_albedo, uniform_flux):
+        """Flat albedo + tophat SRFs → 0.5 for every band."""
+        stack = np.zeros((2, N_WVL))
+        stack[0, 10:20] = 1.0
+        stack[1, 30:50] = 1.0
+        out = srf_convolve_stack(flat_albedo, uniform_flux, stack)
+        assert out == pytest.approx(0.5)
+
+    def test_zero_srf_row_is_nan(self, flat_albedo, uniform_flux):
+        """A zero-SRF row is NaN; other rows are unaffected."""
+        stack = np.zeros((2, N_WVL))
+        stack[1, 10:20] = 1.0
+        out = srf_convolve_stack(flat_albedo, uniform_flux, stack)
+        assert np.isnan(out[0])
+        assert out[1] == pytest.approx(0.5)
+
+
+class TestLoadSRFStack:
+    def test_order_and_shape(self):
+        """Stack rows follow the requested band order and match load_srf."""
+        names = ["B3", "B1", "B8A"]
+        srf = load_srf("sentinel2_msi")
+        stack = load_srf_stack("sentinel2_msi", names)
+        assert stack.shape == (len(names), N_WVL)
+        for i, name in enumerate(names):
+            assert np.array_equal(stack[i], srf[name])
 
 
 # ── GCM platforms ───────────────────────────────────────────────────

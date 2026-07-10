@@ -14,7 +14,7 @@ Band   Centre (nm)  Range (nm)
 """
 
 from biosnicar.bands import BandResult, _register
-from biosnicar.bands._core import load_srf, srf_convolve
+from biosnicar.bands._core import load_srf_stack, srf_convolve_stack
 
 SRF_NAME = "landsat8_oli"
 
@@ -22,11 +22,11 @@ BAND_NAMES = ["B1", "B2", "B3", "B4", "B5", "B6", "B7"]
 
 
 def _landsat8(albedo, flx_slr):
-    srf = load_srf(SRF_NAME)
     r = BandResult("landsat8")
 
-    for name in BAND_NAMES:
-        r._set_band(name, srf_convolve(albedo, flx_slr, srf[name]))
+    bands = srf_convolve_stack(albedo, flx_slr, load_srf_stack(SRF_NAME, BAND_NAMES))
+    for name, value in zip(BAND_NAMES, bands):
+        r._set_band(name, float(value))
 
     # NDSI = (B3 − B6) / (B3 + B6)
     denom = r.B3 + r.B6

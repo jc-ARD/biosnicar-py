@@ -21,7 +21,7 @@ Band   Centre (nm)  Width (nm)   Centre (µm)  Half-width (µm)
 """
 
 from biosnicar.bands import BandResult, _register
-from biosnicar.bands._core import load_srf, srf_convolve
+from biosnicar.bands._core import load_srf_stack, srf_convolve_stack
 
 SRF_NAME = "sentinel2_msi"
 
@@ -33,11 +33,11 @@ BAND_NAMES = [
 
 
 def _sentinel2(albedo, flx_slr):
-    srf = load_srf(SRF_NAME)
     r = BandResult("sentinel2")
 
-    for name in BAND_NAMES:
-        r._set_band(name, srf_convolve(albedo, flx_slr, srf[name]))
+    bands = srf_convolve_stack(albedo, flx_slr, load_srf_stack(SRF_NAME, BAND_NAMES))
+    for name, value in zip(BAND_NAMES, bands):
+        r._set_band(name, float(value))
 
     # NDSI = (B3 − B11) / (B3 + B11)
     denom = r.B3 + r.B11
