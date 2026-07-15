@@ -201,3 +201,64 @@ class TestBatchRetrieval:
         ds = scene.to_xarray()
         flags = ds["quality_flags"].values.ravel()
         assert flags[0] & 0x20  # open_water informational bit
+
+
+class TestBatchAuditRegressions:
+    """Regressions from the 2026-07 audit (B7): failed-pixel provenance,
+    partial-coverage spectral pixels, and OE/provenance field carriage."""
+
+    def test_failed_record_flagged_not_clean(self):
+        """An attempted-but-failed pixel must carry NO_RETRIEVAL, not look
+        like clean no-data input."""
+        from biosnicar.sea_ice.quality_flags import QualityFlag
+        recs = _records() + [{"__failed__": True}]
+        ds = SeaIceSceneResult.from_records(recs).to_xarray()
+        assert ds["surface_type"].values[-1] == "retrieval_failed"
+        assert int(ds["quality_flags"].values[-1]) & QualityFlag.NO_RETRIEVAL
+        assert int(ds["surface_type_code"].values[-1]) == NO_DATA_CODE
+        # ...and the clean no-data pixel stays flag-free
+        assert int(ds["quality_flags"].values[1]) == 0
+
+    def test_oe_provenance_fields_carried(self):
+        """dfs / class probabilities / prior_resolved survive into the scene."""
+        recs = _records()
+        recs[0] = dict(recs[0], dfs=2.5,
+                       class_probabilities={"open_water": 0.9, "FYI_pond": 0.1},
+                       prior_resolved=True,
+                       spectrum_only_surface_type="FYI_pond")
+        ds = SeaIceSceneResult.from_records(recs).to_xarray()
+        assert float(ds["dfs"].values[0]) == pytest.approx(2.5)
+        assert float(ds["prob_open_water"].values[0]) == pytest.approx(0.9)
+        assert int(ds["prior_resolved"].values[0]) == 1
+        assert int(ds["prior_resolved"].values[2]) == -1     # not diagnosed
+        assert np.isnan(float(ds["dfs"].values[2]))
+
+    def test_provenance_arrays_absent_when_unused(self):
+        """No OE/provenance records -> no extra arrays (schema stays lean)."""
+        ds = SeaIceSceneResult.from_records(_records()).to_xarray()
+        assert "dfs" not in ds and "prior_resolved" not in ds
+        assert not [v for v in ds.data_vars if v.startswith("prob_")]
+
+    @pytest.mark.skipif(not BUILT, reason="pre-built emulators not found")
+    def test_partial_coverage_spectral_pixel_retrieved(self):
+        """A spectral pixel with NaN outside instrument coverage must be
+        retrieved through the wavelength mask, not dropped as no-data."""
+        from biosnicar.drivers.run_model import run_model
+        fleet = load_sea_ice_emulators(["FYI_pond"])
+        pond = np.asarray(run_model(
+            **SEA_ICE_EMULATOR_CONFIGS["FYI_pond"]["transform_fn"](dict(
+                pond_depth=0.25, sea_ice_temperature=-4, black_carbon=100,
+                solzen=60, direct=1,
+            ))
+        ).albedo)
+        partial = pond.copy()
+        partial[250:] = np.nan                    # instrument stops mid-SWIR
+        too_few = np.full(480, np.nan)
+        too_few[:10] = pond[:10]                  # below the 20-band minimum
+        obs = np.array([pond, partial, too_few])
+        scene = retrieve_sea_ice_batch(obs, n_jobs=1, chunksize=4,
+                                       emulators=fleet, solzen=60, direct=1)
+        stypes = scene.to_xarray()["surface_type"].values
+        assert stypes[0] == "FYI_pond"
+        assert stypes[1] == "FYI_pond"            # partial coverage retrieved
+        assert stypes[2] == "no_data"             # too few bands -> no-data

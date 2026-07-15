@@ -88,6 +88,7 @@ class TestDescribe:
         assert set(d.keys()) == {
             "poor_fit", "low_confidence", "at_bounds", "spectrally_ambiguous",
             "no_convergence", "open_water_likely", "young_ice_likely",
+            "no_retrieval",
         }
         assert not any(d.values())
 

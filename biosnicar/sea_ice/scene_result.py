@@ -76,11 +76,23 @@ class SeaIceSceneResult:
         *latlon* is an (N, 2) array of (lat, lon) per pixel.
         """
         xr = _require("xarray", "SeaIceSceneResult")
+        from biosnicar.sea_ice.quality_flags import QualityFlag
+
+        def _ok(r):
+            return r is not None and not r.get("__failed__")
 
         n = len(records)
         param_names = sorted({
-            p for r in records if r is not None for p in r["parameters"]
+            p for r in records if _ok(r) for p in r["parameters"]
         })
+        prob_types = sorted({
+            t for r in records if _ok(r)
+            for t in r.get("class_probabilities", {})
+        })
+        any_provenance = any(
+            _ok(r) and r.get("prior_resolved") is not None for r in records
+        )
+        any_dfs = any(_ok(r) and r.get("dfs") is not None for r in records)
 
         stype = np.full(n, "no_data", dtype="U16")
         code = np.full(n, NO_DATA_CODE, dtype=np.uint8)
@@ -89,9 +101,19 @@ class SeaIceSceneResult:
         qflags = np.zeros(n, dtype=np.uint8)
         params = {p: np.full(n, np.nan, dtype=np.float32) for p in param_names}
         uncs = {p: np.full(n, np.nan, dtype=np.float32) for p in param_names}
+        probs = {t: np.full(n, np.nan, dtype=np.float32) for t in prob_types}
+        dfs = np.full(n, np.nan, dtype=np.float32)
+        # prior_resolved: -1 = not diagnosed, 0 = spectrum agrees, 1 = the
+        # metadata prior changed the winning class (A3 provenance).
+        prior_res = np.full(n, -1, dtype=np.int8)
+        so_code = np.full(n, NO_DATA_CODE, dtype=np.uint8)
 
         for i, r in enumerate(records):
             if r is None:
+                continue                          # no-data input, not attempted
+            if r.get("__failed__"):
+                stype[i] = "retrieval_failed"
+                qflags[i] = QualityFlag.NO_RETRIEVAL
                 continue
             stype[i] = r["surface_type"]
             code[i] = SURFACE_TYPE_CODES.get(r["surface_type"], NO_DATA_CODE)
@@ -103,6 +125,14 @@ class SeaIceSceneResult:
             for p, v in r.get("uncertainty", {}).items():
                 if p in uncs and np.isfinite(v):
                     uncs[p][i] = v
+            for t, v in r.get("class_probabilities", {}).items():
+                probs[t][i] = v
+            if r.get("dfs") is not None:
+                dfs[i] = r["dfs"]
+            if r.get("prior_resolved") is not None:
+                prior_res[i] = int(bool(r["prior_resolved"]))
+                so_code[i] = SURFACE_TYPE_CODES.get(
+                    r.get("spectrum_only_surface_type"), NO_DATA_CODE)
 
         if shape is not None:
             dims = ("y", "x")
@@ -123,6 +153,13 @@ class SeaIceSceneResult:
         for p in param_names:
             data_vars[f"param_{p}"] = (dims, _r(params[p]))
             data_vars[f"unc_{p}"] = (dims, _r(uncs[p]))
+        for t in prob_types:
+            data_vars[f"prob_{t}"] = (dims, _r(probs[t]))
+        if any_dfs:
+            data_vars["dfs"] = (dims, _r(dfs))
+        if any_provenance:
+            data_vars["prior_resolved"] = (dims, _r(prior_res))
+            data_vars["spectrum_only_surface_type_code"] = (dims, _r(so_code))
 
         if latlon is not None:
             latlon = np.asarray(latlon, dtype=np.float32).reshape(n, 2)

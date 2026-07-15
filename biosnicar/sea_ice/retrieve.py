@@ -771,6 +771,15 @@ def retrieve_sea_ice(
 
 # ── Batch retrieval ──────────────────────────────────────────────────────────
 
+# Minimum finite bands for a spectral pixel to be worth retrieving; resampled
+# field/drone spectra legitimately carry NaN outside instrument coverage.
+_MIN_FINITE_BANDS = 20
+
+# Sentinel record for a pixel that was attempted but failed (distinct from
+# None = masked/no-data input that was never attempted).
+_FAILED_RECORD = {"__failed__": True}
+
+
 def _result_to_record(result: SeaIceRetrievalResult) -> dict:
     """Reduce a retrieval result to the lightweight per-pixel record kept
     in batch output (drops spectra and per-emulator fits)."""
@@ -781,6 +790,14 @@ def _result_to_record(result: SeaIceRetrievalResult) -> dict:
         "quality_flags": int(result.quality_flags),
         "parameters": {k: float(v) for k, v in result.parameters.items()},
         "uncertainty": {k: float(v) for k, v in result.uncertainty.items()},
+        # OE / provenance outputs (None / empty outside method="oe" or
+        # flag_prior_influence) — carried so batch users don't pay for
+        # them and get nothing back.
+        "dfs": None if result.dfs is None else float(result.dfs),
+        "class_probabilities": {k: float(v) for k, v
+                                in result.class_probabilities.items()},
+        "prior_resolved": result.prior_resolved,
+        "spectrum_only_surface_type": result.spectrum_only_surface_type,
     }
 
 
@@ -788,18 +805,28 @@ def _retrieve_chunk(chunk_obs, emulators, kwargs):
     """Worker: run retrieve_sea_ice on each pixel of a chunk."""
     import warnings
 
+    band_mode = kwargs.get("platform") is not None
     records = []
     for obs in chunk_obs:
-        if not np.all(np.isfinite(obs)):
-            records.append(None)
+        finite = np.isfinite(obs)
+        # Band mode needs every band; spectral mode tolerates partial
+        # coverage (retrieve_sea_ice folds NaN into the wavelength mask)
+        # but needs enough bands to constrain anything.
+        usable = finite.all() if band_mode else finite.sum() >= _MIN_FINITE_BANDS
+        if not usable:
+            records.append(None)                 # no-data input, not attempted
             continue
         try:
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
                 result = retrieve_sea_ice(observed=obs, emulators=emulators, **kwargs)
             records.append(_result_to_record(result))
+        except ValueError:
+            # Configuration/caller error — deterministic per scene, so
+            # swallowing it would silently fail every pixel.  Fail loudly.
+            raise
         except Exception:  # noqa: BLE001 — one bad pixel must not kill the scene
-            records.append(None)
+            records.append(dict(_FAILED_RECORD))  # attempted, failed
     return records
 
 
@@ -818,7 +845,12 @@ def retrieve_sea_ice_batch(
     ----------
     observed : array-like
         ``(N, bands)`` pixel list or ``(H, W, bands)`` image of albedo
-        spectra/band values.  Non-finite pixels are skipped (no-data).
+        spectra/band values.  In band mode every band must be finite; in
+        spectral mode pixels with partial coverage (NaN outside instrument
+        range, e.g. resampled field spectra) are retrieved through the
+        wavelength mask as long as at least 20 bands are finite.  Pixels
+        below that are no-data; pixels that fail during retrieval carry the
+        ``NO_RETRIEVAL`` quality flag (distinct from no-data input).
     n_jobs : int
         joblib parallelism; ``-1`` uses all CPUs.
     chunksize : int
@@ -882,6 +914,17 @@ def retrieve_sea_ice_batch(
         delayed(_retrieve_chunk)(chunk, emulators, kwargs) for chunk in chunks
     )
     records = [r for chunk in chunk_records for r in chunk]
+
+    # Surface systematic failures: workers run with warnings suppressed, so
+    # without this a scene-wide problem is indistinguishable from cloud mask.
+    n_failed = sum(1 for r in records if r is not None and r.get("__failed__"))
+    if n_failed:
+        import warnings
+        warnings.warn(
+            f"retrieve_sea_ice_batch: {n_failed}/{len(records)} pixels were "
+            f"attempted but failed retrieval (NO_RETRIEVAL quality flag set).",
+            RuntimeWarning, stacklevel=2,
+        )
 
     latlon = None
     if spatial_coords is not None:

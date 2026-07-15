@@ -18,6 +18,7 @@ class QualityFlag:
     NO_CONVERGENCE       = 0x10  # optimizer reported convergence=False
     OPEN_WATER_LIKELY    = 0x20  # classified as open_water (informational)
     YOUNG_ICE_LIKELY     = 0x40  # classified as young_ice (informational)
+    NO_RETRIEVAL         = 0x80  # batch pixel attempted but retrieval failed
 
 
 # Empirical thresholds from the SHEBA validation suite.  POOR_FIT uses the
@@ -40,6 +41,7 @@ _FLAG_NAMES = {
     "no_convergence":       QualityFlag.NO_CONVERGENCE,
     "open_water_likely":    QualityFlag.OPEN_WATER_LIKELY,
     "young_ice_likely":     QualityFlag.YOUNG_ICE_LIKELY,
+    "no_retrieval":         QualityFlag.NO_RETRIEVAL,
 }
 
 
