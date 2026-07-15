@@ -154,3 +154,45 @@ def test_to_platform_cesm():
     assert "vis" in df.columns
     assert "nir" in df.columns
     assert 0 < df.iloc[0]["vis"] < 1
+
+
+# ── 2026-07 audit regressions (B9, B10) ─────────────────────────────
+
+
+def test_to_platform_aligned_after_sort_and_filter():
+    """Band values must follow their own rows through sort/filter (B9).
+
+    Regression: _spectral was a plain list zipped positionally against the
+    derived frame's index, so df.sort_values(...).to_platform(...) silently
+    paired band values with the wrong rows.
+    """
+    from biosnicar.drivers.sweep import parameter_sweep
+
+    df = parameter_sweep(params={"rds": [200, 800, 2000]})
+    base = df.to_platform("sentinel2")
+    flipped = df.sort_values("BBA").to_platform("sentinel2")
+    for _, row in flipped.iterrows():
+        ref = base.loc[base["rds"] == row["rds"]].iloc[0]
+        assert row["B3"] == ref["B3"]
+        assert row["B11"] == ref["B11"]
+    # filtered frames also work and stay aligned
+    sub = df[df["rds"] > 500].to_platform("sentinel2")
+    assert len(sub) == 2
+    for _, row in sub.iterrows():
+        ref = base.loc[base["rds"] == row["rds"]].iloc[0]
+        assert row["B3"] == ref["B3"]
+
+
+def test_sweep_impurity_matches_run_model():
+    """Scalar impurity semantics must match run_model (B10).
+
+    Regression: sweep broadcast a scalar concentration to every layer while
+    run_model puts it in the first layer only, so the two were silently not
+    comparable on multi-layer columns.
+    """
+    from biosnicar.drivers.run_model import run_model
+    from biosnicar.drivers.sweep import parameter_sweep
+
+    bba_model = run_model(black_carbon=50000).BBA
+    df = parameter_sweep(params={"black_carbon": [50000]})
+    assert df["BBA"].iloc[0] == pytest.approx(bba_model, abs=1e-9)

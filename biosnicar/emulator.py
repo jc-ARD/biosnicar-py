@@ -625,6 +625,22 @@ class Emulator:
         fixed = dict(self._metadata.get("fixed_overrides", {}))
         solver = self._metadata.get("solver", "adding-doubling")
 
+        # Emulators built through a transform_fn cannot be verified here: the
+        # function itself is not persisted, so the reference run_model() call
+        # below would receive untransformed parameters — a different physical
+        # configuration.  For most sea-ice types that raises on unknown keys,
+        # but for some (e.g. FYI_pond) it runs and is silently WRONG.
+        tf_name = self._metadata.get("transform_fn")
+        if tf_name:
+            raise NotImplementedError(
+                f"This emulator was built through transform_fn '{tf_name}', "
+                "which is not stored with the emulator. verify() would "
+                "compare against run_model() with untransformed parameters "
+                "(a different physical configuration). Compare manually "
+                "against run_model(**transform_fn(params)) instead — see "
+                "scripts/build_sea_ice_emulators.py for the transforms."
+            )
+
         # --- Run emulator and forward model ---
         emu_albedos = np.empty((n, 480))
         ref_albedos = np.empty((n, 480))

@@ -84,3 +84,17 @@ class TestRetrievalEntryGuards:
                      parameters=["pond_depth"],
                      emulator=emu,
                      fixed_params={"solzen": 60, "direct": 1, "bogus": 2.0})
+
+
+@pytest.mark.skipif(not _BUILT, reason="pre-built sea ice emulators not found")
+def test_verify_raises_for_transform_built_emulator():
+    """B8: verify() must refuse transform_fn-built emulators.
+
+    Regression: it reconstructed references via run_model(**params) with the
+    transform silently skipped — a ValueError for most sea-ice types but a
+    silently WRONG physical configuration for FYI_pond.
+    """
+    from biosnicar.sea_ice.emulator_configs import load_sea_ice_emulators
+    emu = load_sea_ice_emulators(["FYI_pond"])["FYI_pond"]
+    with pytest.raises(NotImplementedError, match="transform_fn"):
+        emu.verify(n_points=1, progress=False)

@@ -72,9 +72,29 @@ class SweepResult(pd.DataFrame):
                 "This is a bug -- please report it."
             )
 
+        # Look spectra up by row index so derived frames (sorted, filtered,
+        # head()) get each row's own spectrum rather than positional zip.
+        if isinstance(self._spectral, pd.Series):
+            aligned = self._spectral.reindex(self.index)
+            if aligned.isna().any():
+                missing = list(self.index[aligned.isna()])[:5]
+                raise KeyError(
+                    f"No stored spectra for rows {missing} — was this frame "
+                    "built from rows outside the original sweep?"
+                )
+            pairs = list(aligned)
+        else:  # legacy plain-list storage: only positional order is valid
+            if len(self._spectral) != len(self):
+                raise RuntimeError(
+                    "Spectral store length does not match this frame — "
+                    "re-run the sweep (legacy list storage cannot follow "
+                    "filtered/reordered frames)."
+                )
+            pairs = self._spectral
+
         prefix = len(platforms) > 1
         rows = []
-        for albedo, flx_slr in self._spectral:
+        for albedo, flx_slr in pairs:
             band_data = {}
             for plat in platforms:
                 r = _to_platform(albedo, plat, flx_slr=flx_slr)
@@ -227,7 +247,10 @@ def parameter_sweep(
         results.append(row)
 
     result = SweepResult(results)
-    result._spectral = spectral
+    # Keyed by row index so to_platform() stays aligned after sort_values(),
+    # head(), or boolean filtering (a plain list zipped against a reordered
+    # frame silently paired band values with the wrong rows).
+    result._spectral = pd.Series(spectral, index=result.index)
     return result
 
 
@@ -279,10 +302,14 @@ def _apply_params(combo_dict, ice, illumination, impurities, input_file):
             setattr(ice, key, broadcast)
             needs_refractive = True
 
-        # Named impurity keys (e.g. black_carbon, glacier_algae)
+        # Named impurity keys (e.g. black_carbon, glacier_algae).
+        # First-layer convention, matching run_model(): a scalar
+        # concentration goes in the surface layer only.  (This previously
+        # broadcast to every layer, so sweep results were not comparable to
+        # run_model() for the same nominal inputs on multi-layer columns.)
         elif key in imp_name_map:
             idx = imp_name_map[key]
-            impurities[idx].conc = [value] * ice.nbr_lyr
+            impurities[idx].conc = [value] + [0] * (ice.nbr_lyr - 1)
 
         # Legacy impurity.0.conc syntax (deprecated)
         else:
@@ -294,7 +321,8 @@ def _apply_params(combo_dict, ice, illumination, impurities, input_file):
                         f"Impurity index {idx} out of range "
                         f"(only {len(impurities)} impurities configured)."
                     )
-                impurities[idx].conc = [value] * ice.nbr_lyr
+                # First-layer convention, matching run_model() (see above)
+                impurities[idx].conc = [value] + [0] * (ice.nbr_lyr - 1)
 
     if needs_refractive:
         ice.calculate_refractive_index(input_file)
