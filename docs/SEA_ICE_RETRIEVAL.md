@@ -236,17 +236,21 @@ comparable to or faster than L-BFGS-B per pixel. Worked demonstration:
 > the reliability-diagram validation lands (roadmap A6). Treat OE error bars as
 > optimistic.
 
-> **Band masks and OE classification.** Non-default methods classify with the
-> per-type classification band masks (§4.2) — e.g. bare-ice candidates are
-> scored VIS-only, which is what protects summer bare-ice accuracy when SWIR is
-> present (100% vs 42%, §5). `method="oe"` instead classifies by Laplace model
-> evidence computed over the **full observation you pass in** — evidences are
-> only comparable across candidates when every model sees the same data, so the
-> per-type masks cannot be applied without breaking that comparability. The
-> practical consequence: for full-SWIR melt-season spectra, either pass a
-> `wavelength_mask` restricting the observation to 400–1000 nm (applies
-> uniformly to fitting and evidence) or use the default method. An OE-mode
-> re-run of the SHEBA SWIR experiment is on the roadmap before any change here.
+> **OE classification is measurably unreliable on melt-season spectra — use
+> the default method to classify.** The default method classifies with the
+> per-type band masks (§4.2); `method="oe"` classifies by Laplace evidence over
+> the full observation (evidences are only comparable when every candidate
+> scores the same data, so the masks cannot be applied). The SHEBA SWIR
+> experiment (2026-07-15, `tests/validation_data/
+> oe_swir_classification_experiment.py`; `sea_ice_validation.md` §12) measured
+> the consequence on the 12 paired summer dates: default **12/12** in both VIS
+> and VIS+SWIR windows; OE **7/12 (58%)** VIS-only and **2/12 (17%)** with
+> SWIR — with every failure classified FYI_snow at posterior probability
+> ≈ 1.00 (maximally overconfident, confirming the calibration caveat above).
+> Standing guidance: use OE for parameter posteriors/DFS on a known or
+> default-classified surface type; do not use `class_probabilities` as
+> melt-season classification until the evidence path is repaired (candidate:
+> hybrid default-masked classification + OE posteriors on the winner).
 
 ---
 

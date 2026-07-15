@@ -676,14 +676,16 @@ def retrieve_sea_ice(
     # `confidence` becomes the winning type's probability (0–1).
     class_probabilities: Dict[str, float] = {}
     if method == "oe":
-        # NOTE (audit B6): evidence-based selection deliberately does NOT
-        # apply the per-type classification band masks used by the default
-        # path above — Laplace evidences are only comparable when every
-        # candidate is scored on the SAME observation.  Consequence: on
-        # full-SWIR melt-season spectra OE loses the VIS-only protection
-        # (SHEBA: 100% vs 42% summer bare ice); restrict via
-        # wavelength_mask (applies uniformly) or use the default method.
-        # Documented in SEA_ICE_RETRIEVAL.md §2.5.
+        # NOTE (audit B6, measured 2026-07-15): evidence-based selection
+        # cannot apply the per-type classification band masks (evidences are
+        # only comparable when every candidate scores the SAME observation).
+        # The SHEBA SWIR experiment (oe_swir_classification_experiment.py)
+        # measured the cost on real melt-season spectra: default method
+        # 12/12 (VIS and VIS+SWIR); OE 7/12 VIS-only, 2/12 with SWIR, with
+        # failures at posterior probability ~1.00 (overconfident FYI_snow).
+        # Until repaired, classify with the default method and use OE for
+        # parameter posteriors — see SEA_ICE_RETRIEVAL.md §2.5 and
+        # sea_ice_validation.md §12.
         ev = {n: f.log_evidence for n, f in all_fits.items()
               if f.log_evidence is not None}
         if ev:

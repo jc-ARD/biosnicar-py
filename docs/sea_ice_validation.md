@@ -517,6 +517,42 @@ outside the spectrum.
 
 ---
 
+## 12. OE evidence-based classification — SHEBA SWIR experiment (2026-07-15)
+
+**Question (audit item B6):** `method="oe"` classifies by Laplace evidence over
+the full observation and cannot apply the per-type classification band masks.
+Does it lose the masks' protection on melt-season spectra?
+
+**Design:** 2×2 on the 12 SHEBA summer white-ice dates with paired ALBI SWIR
+columns — `{default (L-BFGS-B + masks), oe}` × `{VIS 400–1000 nm, VIS+SWIR
+400–2000 nm}` — identical data construction to §6's tests 2–3, `known_month`
+priors on. Script: `tests/validation_data/oe_swir_classification_experiment.py`.
+
+| Method | VIS | VIS+SWIR |
+|---|---|---|
+| default (band masks) | **12/12** | **12/12** |
+| `method="oe"` (evidence) | **7/12 (58%)** | **2/12 (17%)** |
+
+**Result — worse than the pre-registered hypothesis.** OE classification not
+only collapses with SWIR (17%, reproducing the unmasked-chi-squared failure the
+masks were built to prevent) — it is also substantially worse than the default
+in the VIS-only window (58% vs 100%). Every OE failure classifies as
+**FYI_snow with posterior probability ≈ 1.00**: the evidence differences are
+enormous, so the posterior is maximally overconfident in the wrong class. This
+empirically confirms the calibration caveat (§2.5 of SEA_ICE_RETRIEVAL.md):
+the class probabilities inherit the ad-hoc weak-prior volumes through the
+Occam term and the instrument-only S_e, and cannot currently be trusted as
+classification on real melt-season spectra.
+
+**Standing guidance (until repaired):** use `method="oe"` for parameter
+posteriors, DFS, and averaging kernels on a *known or independently classified*
+surface type; use the default method for classification. Candidate repair
+(not yet implemented — an API behavior change affecting downstream consumers):
+hybrid classification — select the winner with the default masked chi-squared,
+then run OE on the winner only for posteriors; and/or a forward-model error
+term in S_e (A7) with calibrated priors (A6) before evidence ranking is
+trusted.
+
 ## References
 
 - Grenfell, T. C., and B. Light (2007). SHEBA Spectral Albedo. UCAR/NCAR EOL. doi:10.5065/D6765CQ1

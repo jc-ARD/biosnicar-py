@@ -20,6 +20,7 @@ Empirical datasets and validation scripts for the BioSNICAR sea ice extension (`
 | `parameter_retrieval_validation.py` | synthetic per-parameter recovery (bias/RMSE/R²/DFS-style) | forward-model, seed 2026 | **current** — synthetic (inverse-crime); see caveat in script |
 | `smith_retrieval_validation.py` | **independent-campaign** retrieval hold-out | Smith/MOSAiC 2020, 350–2500 nm | **current** — the strongest independent test (different year/site/instrument) |
 | `istomina_retrieval_validation.py` | **second independent-campaign** retrieval hold-out | Istomina/IceArc 2012, 350–2500 nm | **current** — corroborates Smith on a 2nd site/year; coarse field-note labels (informational only, see script) |
+| `oe_swir_classification_experiment.py` | OE evidence vs default masked classification, VIS vs VIS+SWIR (audit B6) | SHEBA summer, paired ALBV+ALBI | **current (2026-07-15)** — default 12/12 both windows; OE 7/12 VIS / 2/12 SWIR, overconfident — OE classification not trusted (validation doc §12) |
 | `plot_sheba_fits.py` | observed-vs-retrieved spectra figures | SHEBA | **current** — figures |
 | `plot_inversion_performance.py` | confusion matrix + parameter scatter + young-ice curve | synthetic | **current** — synthetic demo (disclaimed in-figure) |
 | `../../scripts/experiments/fyi_bare_audit.py` | FYI_bare emulator accuracy + degeneracy | held-out forward-model, seed 777 | **current** — emulator audit backbone |
