@@ -398,7 +398,9 @@ def retrieve_sea_ice(
         Solar zenith angle (degrees).  When provided, fixed for all
         emulators rather than retrieved.
     direct : int or None
-        Illumination flag (1=direct, 0=diffuse).  When provided, fixed.
+        Illumination flag (1=direct, 0=diffuse).  Binary, so it is always
+        fixed, never retrieved.  **Defaults to 1 (direct beam) when omitted**
+        — pass ``direct=0`` explicitly for overcast/diffuse conditions.
     fixed_params : dict or None
         Additional parameters to fix across all emulators.  Merged with
         *solzen* and *direct* when those are provided.
@@ -509,6 +511,25 @@ def retrieve_sea_ice(
         shared_fixed["solzen"] = float(solzen)
     if direct is not None:
         shared_fixed["direct"] = int(direct)
+    # `direct` is binary and cannot be retrieved: if the caller does not fix
+    # it, it would land in every trained emulator's retrieve list, fail each
+    # fit with a swallowed ValueError, and leave open_water (the only model
+    # without a `direct` param) as the silent winner.  Default to direct
+    # beam (1) — pass direct=0 explicitly for overcast conditions.
+    shared_fixed.setdefault("direct", 1)
+
+    # Catch typo'd fixed-parameter names early: a key unknown to every
+    # candidate emulator would otherwise be silently dropped and its
+    # intended parameter retrieved instead.
+    _known = {"solzen", "direct"}
+    for emu in emulators.values():
+        _known.update(emu.param_names)
+    _unknown = sorted(set(shared_fixed) - _known)
+    if _unknown:
+        raise ValueError(
+            f"fixed_params {_unknown} are not parameters of any candidate "
+            f"emulator ({sorted(emulators)})."
+        )
 
     # Build season-aware physical priors from known_month
     # These prevent emulators from fitting with physically impossible temperatures,
@@ -529,6 +550,11 @@ def retrieve_sea_ice(
 
     # Fit each emulator
     all_fits: Dict[str, RetrievalResult] = {}
+    # Per-emulator regularization actually used in fitting, kept so the
+    # classification cost applies the SAME prior penalty each candidate was
+    # fitted under (bare-ice types carry a translated brine-volume prior,
+    # not the raw temperature prior).
+    emu_regs: Dict[str, dict] = {}
     for name, emu in emulators.items():
         cfg = SEA_ICE_EMULATOR_CONFIGS.get(name, {})
 
@@ -562,6 +588,8 @@ def retrieve_sea_ice(
                        "brine_volume_fraction":
                            (vb_mu, max((vb_hi - vb_lo) / 2.0, 1e-3))}
 
+        emu_regs[name] = dict(emu_reg)
+
         try:
             fit = retrieve(
                 observed=observed,
@@ -581,8 +609,14 @@ def retrieve_sea_ice(
                 fixed_params=emu_fixed if emu_fixed else None,
             )
             all_fits[name] = fit
+        except ValueError:
+            # ValueError signals a configuration/caller error (binary param
+            # in the retrieve list, unknown parameter name, invalid bounds).
+            # Swallowing it once turned a missing `direct` into a scene of
+            # silent open_water classifications — fail loudly instead.
+            raise
         except Exception as exc:  # noqa: BLE001
-            # If one emulator fails (e.g. numerical instability), skip it
+            # Numerical failure in one emulator (e.g. LinAlgError): skip it
             # rather than aborting the whole retrieval.
             import warnings
             warnings.warn(
@@ -601,9 +635,15 @@ def retrieve_sea_ice(
     for name, fit in all_fits.items():
         mask_name = SEA_ICE_EMULATOR_CONFIGS.get(name, {}).get("band_mask")
         try:
+            # Use the SAME per-emulator regularization the fit was performed
+            # under (emu_regs), not the generic season prior: bare-ice types
+            # are fitted under a translated brine-volume prior and would
+            # otherwise pay zero prior penalty at classification while
+            # T-parameterised types pay in full — an asymmetric ranking.
             cost_per_type[name], rms_per_type[name] = _classification_cost(
                 fit, observed, mask_name, platform, observed_band_names,
-                obs_uncertainty, wavelength_mask, effective_regularization,
+                obs_uncertainty, wavelength_mask,
+                emu_regs.get(name, effective_regularization),
             )
         except Exception as exc:  # noqa: BLE001
             # Excluded rather than ranked on the (differently scaled)

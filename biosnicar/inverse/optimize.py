@@ -214,6 +214,29 @@ def retrieve(
 
     # --- Build forward function from emulator ---
     if emulator is not None and forward_fn is None:
+        # Validate names against the emulator's input space: predict() drops
+        # unknown kwargs silently, so a typo'd parameter would otherwise give
+        # a flat cost and the optimiser would return the bounds midpoint with
+        # no error.  "ssa" is virtual (decomposed into rds/rho); solzen and
+        # direct are universal context keys some models (open_water) lack.
+        emu_names = set(getattr(emulator, "param_names", []) or [])
+        if emu_names:
+            allowed = set(emu_names)
+            if {"rds", "rho"} <= emu_names:
+                allowed.add("ssa")
+            unknown = sorted(set(parameters) - allowed)
+            if unknown:
+                raise ValueError(
+                    f"parameters {unknown} are not in the emulator's input "
+                    f"space {sorted(emu_names)}."
+                )
+            extra = sorted(set(fixed_params or {})
+                           - emu_names - {"solzen", "direct"})
+            if extra:
+                raise ValueError(
+                    f"fixed_params {extra} are not in the emulator's input "
+                    f"space {sorted(emu_names)}."
+                )
         # Copy: bounds is filled in from the emulator below, and mutating the
         # caller's dict would leak one emulator's training bounds into the
         # next fleet member in retrieve_sea_ice().
@@ -754,9 +777,13 @@ def _hessian_uncertainty(cost_fn, x_opt, parameters, active_bounds):
             ) / (4.0 * steps[i] * steps[j])
             hessian[j, i] = hessian[i, j]
 
-    # Invert to get covariance; fall back to inf for singular Hessian
+    # Invert to get covariance; fall back to inf for singular Hessian.
+    # The cost J is a chi-squared (sum of (r/sigma)^2, no factor 1/2), so the
+    # Gaussian posterior is prop. to exp(-J/2) and the covariance is
+    # 2 * [Hessian of J]^-1 — the same convention the MCMC path uses via
+    # log_prob = -0.5 * cost.  Without the 2, sigmas are sqrt(2) too small.
     try:
-        cov = np.linalg.inv(hessian)
+        cov = 2.0 * np.linalg.inv(hessian)
         sigmas = np.sqrt(np.abs(np.diag(cov)))
     except np.linalg.LinAlgError:
         sigmas = np.full(n, float("inf"))
