@@ -579,7 +579,7 @@ The primary difference between glacier ice and sea ice inversion is that **sea i
 | Retrieve SSA, not (rds, rho) | Retrieve `brine_volume_fraction`, not (T, S) |
 | Post-hoc: rds = f(SSA, rho_ref) | Post-hoc: T = f(Vb, S_ref) |
 | rho uncertainty ~33% individually | S uncertainty large individually |
-| SSA uncertainty ~5.5% | Vb uncertainty small |
+| SSA uncertainty ~5.5% | Vb removes the (T, S) degeneracy but is itself **weakly identified** when bubble scattering dominates — synthetic recovery R² is negative for FYI/MYI bare ice with 16–24% at-bounds (E1, `parameter_retrieval_results.md`); the well-constrained bare-ice parameter is `sea_ice_bubble_radius` (R² 0.66–0.82) |
 
 The `FYI_bare` and `MYI_bare` emulators are trained with `brine_volume_fraction` as a parameter.  Their default bounds in `DEFAULT_BOUNDS` are:
 

@@ -22,13 +22,16 @@ from biosnicar.emulator import Emulator
 from biosnicar.drivers.run_emulator import run_emulator
 
 # Load a pre-built sea ice emulator
-emu = Emulator.load("data/emulators/sea_ice_FYI_bare_6param.npz")
+from biosnicar.sea_ice.emulator_configs import load_sea_ice_emulators
 
-# Predict 480-band spectral albedo (~microseconds)
+emu = load_sea_ice_emulators(["FYI_bare"])["FYI_bare"]
+
+# Predict 480-band spectral albedo (~microseconds).  Bare-ice emulators are
+# parameterised by brine_volume_fraction (which removes the T–S degeneracy),
+# not temperature/salinity directly.
 albedo = emu.predict(
-    sea_ice_temperature=-10.0,
+    brine_volume_fraction=0.06,
     sea_ice_bubble_radius=200.0,
-    sea_ice_salinity=8.0,
     black_carbon=0.0,
     rho_DL=850.0,
     solzen=60,
@@ -38,9 +41,8 @@ albedo = emu.predict(
 # Or get a full Outputs object with BBA, BBAVIS, BBANIR, and to_platform()
 out = run_emulator(
     emu,
-    sea_ice_temperature=-10.0, sea_ice_bubble_radius=200.0,
-    sea_ice_salinity=8.0, black_carbon=0.0,
-    rho_DL=850.0, solzen=60, direct=1,
+    brine_volume_fraction=0.06, sea_ice_bubble_radius=200.0,
+    black_carbon=0.0, rho_DL=850.0, solzen=60, direct=1,
 )
 print(out.BBA)
 out.to_platform("sentinel2")   # works — flx_slr is stored in the emulator
@@ -148,12 +150,12 @@ The dominant broadband-albedo control is bubble scattering. Brine volume (determ
 
 ### FYI_snow — Snow-covered first-year ice
 
-Snow grain radius and depth dominate. Thin snow (< 3 cm) transmits enough light that the underlying ice is visible in the NIR; thick snow is fully opaque. The layer stack is granular-snow layer + DL (5 cm) + IL (145 cm).
+Snow optical thickness and grain radius dominate. Thin snow transmits enough light that the underlying ice is visible in the NIR; thick snow is fully opaque. The layer stack is granular-snow layer + DL (5 cm) + IL (145 cm). The sampled parameter is **`tau_snow`** (the depth×grain-radius optical-thickness combination the spectrum actually constrains — physical `snow_depth = tau_snow × grain_radius × 1e-6` m is derived post-hoc); this reparameterisation removed the SHEBA spring bound-hitting (see `sea_ice_validation.md` §8).
 
 | Parameter | Range | Units | Role |
 |-----------|-------|-------|------|
-| `snow_depth` | 0.02 to 0.30 | m | Optical depth of snow layer |
-| `snow_grain_radius` | 100 to 2000 | μm | Controls NIR scattering |
+| `tau_snow` | 50 to 3000 | — | Snow optical thickness (depth × grain radius proxy) |
+| `snow_grain_radius` | 50 to 2000 | μm | Controls NIR scattering |
 | `sea_ice_temperature` | -30 to -5 | °C | Applied to underlying ice |
 | `black_carbon` | 0 to 5000 | ppb | Surface-layer darkening |
 | `solzen` | 20 to 80 | degrees | — |
@@ -178,9 +180,8 @@ MYI has lower salinity (0–6 ppt vs 1–20 ppt for FYI) and larger bubbles (200
 
 | Parameter | Range | Units | Role |
 |-----------|-------|-------|------|
-| `sea_ice_temperature` | -25 to -2 | °C | Brine volume |
+| `brine_volume_fraction` | 0.0065 to 0.045 | — | The optically active quantity (T and S enter only through it; post-hoc T at S_ref = 2 psu) |
 | `sea_ice_bubble_radius` | 200 to 2000 | μm | Scattering |
-| `sea_ice_salinity` | 0 to 6 | ppt | Low in MYI |
 | `black_carbon` | 0 to 5000 | ppb | Surface darkening |
 | `solzen` | 20 to 80 | degrees | — |
 | `direct` | 0, 1 | binary | — |
@@ -365,10 +366,9 @@ Returns: `Emulator`
 Predict 480-band spectral albedo. Pure numpy, ~microseconds.
 
 ```python
-albedo = emu.predict(
-    sea_ice_temperature=-10.0,
+albedo = emu.predict(          # FYI_bare parameter set
+    brine_volume_fraction=0.06,
     sea_ice_bubble_radius=200.0,
-    sea_ice_salinity=8.0,
     black_carbon=0.0,
     rho_DL=850.0,
     solzen=60,
@@ -537,10 +537,9 @@ Use `retrieve()` directly when:
 result = retrieve(
     observed=spectrum,
     parameters=["sea_ice_bubble_radius"],
-    emulator=Emulator.load("data/emulators/sea_ice_FYI_bare_6param.npz"),
+    emulator=load_sea_ice_emulators(["FYI_bare"])["FYI_bare"],
     fixed_params={
-        "sea_ice_temperature": -10.0,
-        "sea_ice_salinity": 8.0,
+        "brine_volume_fraction": 0.06,
         "black_carbon": 0.0,
         "rho_DL": 850.0,
         "solzen": 60,
@@ -549,13 +548,15 @@ result = retrieve(
 )
 ```
 
-**FYI_snow — retrieve snow depth and grain radius**:
+**FYI_snow — retrieve snow optical thickness and grain radius** (physical
+`snow_depth` in metres is derived post-hoc as `tau_snow × grain_radius × 1e-6`;
+`retrieve_sea_ice()` does this for you):
 
 ```python
 result = retrieve(
     observed=spectrum,
-    parameters=["snow_depth", "snow_grain_radius"],
-    emulator=Emulator.load("data/emulators/sea_ice_FYI_snow_tau_6param.npz"),
+    parameters=["tau_snow", "snow_grain_radius"],
+    emulator=load_sea_ice_emulators(["FYI_snow"])["FYI_snow"],
     fixed_params={
         "sea_ice_temperature": -15.0,
         "black_carbon": 0.0,
@@ -695,13 +696,13 @@ At emulator speed (~microseconds), even MCMC with 32 walkers × 5000 steps takes
 
 2. **Brine physics is high-dimensional** — Brine optics (temperature, salinity → complex refractive index → absorption) create ~27 PCA dimensions vs ~6 for snow. This means more training samples and a larger MLP are required for the same accuracy. The production emulators (30,000 samples) achieve BBA MAE ≈ 0.002–0.004; test emulators (250–500 samples) may show BBA MAE > 0.05.
 
-3. **No SSA analog for sea ice** — The terrestrial emulator supports retrieving SSA (specific surface area), which elegantly resolves the rds/rho degeneracy for glacier ice. Sea ice does not have an analogous combined parameter. Temperature and salinity are both free parameters because they contribute independently to brine volume, and fixing one without the other breaks the physics.
+3. **The sea-ice SSA analog is `brine_volume_fraction`, but it is weakly identified** — the bare-ice emulators retrieve Vb directly (T and S enter the optics only through it, exactly as rds/rho enter only through SSA), which removes the T–S degeneracy. Unlike SSA, however, Vb is itself poorly constrained by the spectrum when bubble scattering dominates: synthetic recovery R² is negative for the bare types (E1, `parameter_retrieval_results.md`). Treat retrieved Vb as prior-informed, and `sea_ice_bubble_radius` (R² 0.66–0.82) as the measured bare-ice quantity.
 
 4. **`direct` must be fixed** — The binary illumination flag cannot be continuously optimised. Pass it via `fixed_params`. Sky conditions are typically known from the satellite acquisition geometry or meteorology.
 
 5. **No atmospheric correction** — All emulators output surface reflectance. Satellite observations must be surface reflectance (atmospherically corrected) before using `retrieve_sea_ice()` or `retrieve()`.
 
-6. **Parameter correlations (T and S)** — Temperature and salinity both control brine volume (`Vb = S / (17.6 + 0.93 T)`). When both are free parameters, they are partially degenerate: the optimiser can trade off T against S with limited spectral cost. Fix one if the other is well-constrained from auxiliary data.
+6. **T and S are not retrieved independently** — temperature and salinity control the optics only through brine volume (Cox & Weeks 1983 — see `METHODS.md` for the cubic relations; the old linear shorthand is retired), so the bare-ice emulators are parameterised by `brine_volume_fraction` directly and post-hoc temperature is derived at a per-type reference salinity (`vb_s_ref`: 6 psu FYI, 2 psu MYI). Only `young_ice` still carries (T, S) as separate inputs, where thinness makes the slab transmission separately sensitive to them.
 
 7. **FYI_bare vs MYI_bare classification difficulty** — These two surface types overlap spectrally. Classification confidence is typically lower (0.20–0.60) than for other pairs. If the distinction matters, use additional geophysical context (e.g. ice age from satellite time series, location relative to MYI extent).
 
@@ -801,8 +802,8 @@ import numpy as np, json
 data = np.load("data/emulators/sea_ice_FYI_bare_6param.npz", allow_pickle=False)
 meta = json.loads(str(data["metadata"]))
 
-print(meta["param_names"])    # ['sea_ice_temperature', 'sea_ice_bubble_radius', ...]
-print(meta["bounds"])         # {'sea_ice_temperature': [-30.0, -2.0], ...}
+print(meta["param_names"])    # ['brine_volume_fraction', 'sea_ice_bubble_radius', ...]
+print(meta["bounds"])         # {'brine_volume_fraction': [0.019, 0.141], ...}
 print(meta["transform_fn"])   # '_transform_fyi_bare'
 print(meta["n_pca_components"])
 print(meta["training_r2"])

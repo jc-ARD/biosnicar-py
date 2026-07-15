@@ -230,7 +230,7 @@ uv run python tests/validation_data/Grenfell_light_2007/validate_grenfell_light_
 
 3. **Melt ponds**: classification accuracy increases strongly with depth — 0% for <5 cm, 85% for 5–10 cm, 100% for >50 cm. Depth recovery accuracy (±25%) is only reliable for ponds >30 cm; shallow ponds resemble bare ice spectrally.
 
-4. **Parameter recovery** (block A): surface-type classification is robust, but individual physical parameters (snow depth, grain radius) often hit training bounds due to genuine spectral degeneracies. This is analogous to the rds/rho degeneracy in glacier ice; the most reliable retrieved quantity per surface type is the one with the clearest spectral signature (brine_volume_fraction for bare ice, pond_depth for ponds, snow_grain_radius for snow-covered ice).
+4. **Parameter recovery** (block A): surface-type classification is robust, but individual physical parameters (snow depth, grain radius) often hit training bounds due to genuine spectral degeneracies. This is analogous to the rds/rho degeneracy in glacier ice; the most reliable retrieved quantity per surface type is the one with the clearest spectral signature (sea_ice_bubble_radius for bare ice — E1 R² 0.66–0.82; pond_depth for ponds; snow_grain_radius for snow-covered ice). Note brine_volume_fraction, despite removing the (T, S) degeneracy, is itself weakly identified when bubble scattering dominates (E1 R² negative for bare types — see §9).
 
 Melt pond classification accuracy by depth: 0% for <5 cm, 35% for 5–10 cm, 80% for 10–20 cm, 90% for 20–30 cm, 85% for 30–50 cm, 100% for >50 cm.
 
