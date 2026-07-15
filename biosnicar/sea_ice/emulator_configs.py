@@ -339,7 +339,7 @@ def load_sea_ice_emulators(names=None):
     Parameters
     ----------
     names : list of str or None
-        Subset of emulator names to load (default: all five).
+        Subset of emulator names to load (default: all seven surface types).
 
     Returns
     -------

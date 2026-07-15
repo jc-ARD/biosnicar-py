@@ -447,7 +447,8 @@ result = retrieve_sea_ice(
                                  #   5–9 (summer): T ~ (−4°C ± 3°C), Vb ~ (0.07 ± 0.04)
                                  #   11–3 (winter): T ~ (−15°C ± 8°C), Vb ~ (0.03 ± 0.015)
                                  #   Without this, summer bare ice misclassifies as FYI_snow
-                                 #   SHEBA accuracy: 0/16 → 9/16 with known_month=8
+                                 #   SHEBA summer: 0/16 without → 16/16 with
+                                 #   known_month=8 + per-type band masks
 )
 ```
 
@@ -726,7 +727,7 @@ All spring dates (April–May) classify correctly as `FYI_snow` with high confid
 
 Without the `known_month` seasonal prior, all summer dates are misclassified as `FYI_snow`. The optimiser exploits physically impossible solutions — for example, fitting August bare ice with T=−25°C, snow_depth=3 cm, grain_radius=1447 µm — which is mathematically correct in 400–1000 nm but physically impossible (SHEBA August ice temperatures were −2 to −5°C).
 
-With `known_month=8` (August), the prior `sea_ice_temperature ~ (−4°C ± 3°C)` eliminates these unphysical FYI_snow solutions. Classification improves to **9/16** correct. The 7 remaining misclassifications are dates with BBA > 0.72 (predominantly white ice, similar albedo to thin snow) where even the corrected FYI_snow cost is close to FYI_summer/FYI_bare.
+With `known_month=8` (August), the prior `sea_ice_temperature ~ (−4°C ± 3°C)` eliminates these unphysical FYI_snow solutions. Historically (2026-05 era) the prior alone recovered **9/16** — the 7 remaining misses were high-BBA dates (BBA > 0.72) where the corrected FYI_snow cost stayed close to FYI_summer/FYI_bare. Adding the per-type classification band masks (bare-ice candidates scored VIS-only) resolved those: the **current suite classifies 16/16** (see the results table below and `docs/sea_ice_validation.md` §6.3, re-verified 2026-07-15).
 
 **Root causes of summer misclassification (in order of impact):**
 

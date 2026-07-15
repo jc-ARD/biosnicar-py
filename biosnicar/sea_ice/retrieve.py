@@ -358,7 +358,7 @@ def retrieve_sea_ice(
 ) -> SeaIceRetrievalResult:
     """Retrieve sea ice physical properties and classify surface type.
 
-    Fits each of the five sea ice surface-type emulators against *observed*
+    Fits each of the seven sea ice surface-type models against *observed*
     and returns the best-fit parameters together with the most likely surface
     type (the emulator that achieved the lowest chi-squared residual).
 
@@ -369,7 +369,7 @@ def retrieve_sea_ice(
         N-element array of satellite band albedos (with *platform* and
         *observed_band_names* set).
     emulators : dict or None
-        ``{surface_type: Emulator}`` to use.  If None, loads the five
+        ``{surface_type: Emulator}`` to use.  If None, loads the seven
         pre-built emulators from ``data/emulators/``.  Pass a subset to
         restrict which surface types are considered.
     surface_types : list of str or None
@@ -676,6 +676,14 @@ def retrieve_sea_ice(
     # `confidence` becomes the winning type's probability (0–1).
     class_probabilities: Dict[str, float] = {}
     if method == "oe":
+        # NOTE (audit B6): evidence-based selection deliberately does NOT
+        # apply the per-type classification band masks used by the default
+        # path above — Laplace evidences are only comparable when every
+        # candidate is scored on the SAME observation.  Consequence: on
+        # full-SWIR melt-season spectra OE loses the VIS-only protection
+        # (SHEBA: 100% vs 42% summer bare ice); restrict via
+        # wavelength_mask (applies uniformly) or use the default method.
+        # Documented in SEA_ICE_RETRIEVAL.md §2.5.
         ev = {n: f.log_evidence for n, f in all_fits.items()
               if f.log_evidence is not None}
         if ev:

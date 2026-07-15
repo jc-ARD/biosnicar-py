@@ -170,7 +170,7 @@ approximation. Runtime is minutes per observation (vs seconds for L-BFGS-B) —
 use on selected pixels, not scenes. See [INVERSION.md](INVERSION.md) for
 sampler details and convergence diagnostics.
 
-### 2.5 Optimal estimation (`method="oe"`) — calibrated, with information content
+### 2.5 Optimal estimation (`method="oe"`) — probabilistic, with information content
 
 Optimal estimation (Rodgers 2000) is the principled Bayesian path: it combines
 the measurement (weighted by its error covariance) with the prior and returns a
@@ -184,7 +184,7 @@ selection: per-surface-type **probabilities** from each type's model evidence.
 res = retrieve_sea_ice(observed=spectrum, solzen=60, direct=1, known_month=7,
                        method="oe", obs_uncertainty=sigma_per_band)
 res.surface_type          # winner
-res.confidence            # winning type's posterior probability (calibrated)
+res.confidence            # winning type's posterior probability (calibration pending — see honest status)
 res.class_probabilities   # {type: probability}, sums to 1
 res.dfs                   # information content of the winning fit
 res.averaging_kernel_diag # {param: 0..1}  ~1 = measured, ~0 = prior-driven
@@ -216,20 +216,37 @@ res.spectrum_only_class_probabilities # its full class distribution
 resolve). This is the lever the ensemble uses to withhold priors it owns, and
 the honesty flag for standalone results that hinge on a seasonal assumption.
 
-Why reach for it: it is the option that gives **calibrated uncertainty** (for an
-ensemble to fuse), **honest provenance** (the averaging kernel flags
-prior-driven answers — e.g. summer-snow brightness set by the seasonal prior,
-not the spectrum), and a per-band-set **information budget** (DFS is high for
-hyperspectral, low for 4-band satellite — so the same code retrieves a rich
+Why reach for it: it is the option that gives **probabilistic uncertainty** (a
+posterior an ensemble can fuse), **honest provenance** (the averaging kernel
+flags prior-driven answers — e.g. summer-snow brightness set by the seasonal
+prior, not the spectrum), and a per-band-set **information budget** (DFS is high
+for hyperspectral, low for 4-band satellite — so the same code retrieves a rich
 state from a spectrum but reports only what a few bands can support). Speed is
 comparable to or faster than L-BFGS-B per pixel. Worked demonstration:
 `examples/17_optimal_estimation.py`.
 
-> **Honest status:** the measurement covariance currently contains instrument
-> noise only. The forward-model-error term — which makes the *uncertainties*
-> (not the point estimates) trustworthy — is pending empirical calibration
-> against field residuals (see [SEA_ICE_DEVELOPMENT_PLAN.md](SEA_ICE_DEVELOPMENT_PLAN.md)).
-> Until then, treat OE error bars as optimistic.
+> **Honest status — the posteriors are not yet calibrated.** (1) The
+> measurement covariance currently contains instrument noise only; the
+> forward-model-error term — which makes the *uncertainties* (not the point
+> estimates) trustworthy — is pending empirical calibration against field
+> residuals (roadmap A7). (2) The class probabilities inherit sensitivity to
+> the default weak-prior widths (σ = full parameter range): the Laplace
+> evidence's Occam term depends on those prior volumes, so `class_probabilities`
+> should be read as a well-ordered ranking, not calibrated frequencies, until
+> the reliability-diagram validation lands (roadmap A6). Treat OE error bars as
+> optimistic.
+
+> **Band masks and OE classification.** Non-default methods classify with the
+> per-type classification band masks (§4.2) — e.g. bare-ice candidates are
+> scored VIS-only, which is what protects summer bare-ice accuracy when SWIR is
+> present (100% vs 42%, §5). `method="oe"` instead classifies by Laplace model
+> evidence computed over the **full observation you pass in** — evidences are
+> only comparable across candidates when every model sees the same data, so the
+> per-type masks cannot be applied without breaking that comparability. The
+> practical consequence: for full-SWIR melt-season spectra, either pass a
+> `wavelength_mask` restricting the observation to 400–1000 nm (applies
+> uniformly to fitting and evidence) or use the default method. An OE-mode
+> re-run of the SHEBA SWIR experiment is on the roadmap before any change here.
 
 ---
 
@@ -373,7 +390,7 @@ takes seconds.
 | Spring (dry) snow classification | SHEBA Grenfell & Light (2007): 6/7 full-spectrum, 7/7 S2/L8 band mode |
 | Summer bare ice classification | SHEBA: 16/16 full-spectrum with `known_month`; 14/16 band mode |
 | Summer **snow** classification | Smith 2021 MOSAiC (independent hold-out): only 2/44 as FYI_snow — melting summer snow is a *true optical degeneracy* with SSL/bare ice (VIS–NIR ~50/50 separable; SWIR encodes shared grain/wetness), not a missing class (§6.4–6.5). Spring numbers do **not** generalise to melt-season snow. |
-| Melt pond depth | Morassutti (1995): 77% classification over 504 records; depth accuracy rises from ~7% (<5 cm) to ~94% (>30 cm) — the only metric with independent in-situ ground truth |
+| Melt pond depth | Morassutti (1995), 504 records — the only metric with independent in-situ ground truth. **Classification** as FYI_pond: 77% overall, rising from ~7% (<5 cm) to ~94% (>30 cm) with depth. **Depth within ±25%**: ~22% overall — reliable only for deep ponds (>50 cm: 93%); shallow-pond depth is not usefully retrieved |
 | Young ice albedo vs thickness | Grenfell & Maykut (1977) Table 3: all checkpoints within ±0.03 (two-stream slab, frazil scattering 3.0 m⁻¹) |
 | Open water albedo | Fresnel/Cox & Munk physics: BBA 0.02 (SZA 20°) → 0.07 (60°) → ~0.3 (80°, calm); wind darkens high-SZA water |
 | Emulator fidelity | FYI_bare held-out spectral R² 0.9985, BBA MAE 0.0023 (2000 forward-model spectra) |

@@ -99,7 +99,7 @@ microseconds, so OE + model selection runs at scene scale.
 ## 3. Current state (honest baseline)
 
 - **Validated (spring/cold regime, Arctic, VIS–NIR):** SHEBA spring snow 6/7, summer bare ice 16/16 (inferred labels); FYI_bare emulator held-out spectral R² 0.998.
-- **Only independent ground-truth metric:** Morassutti pond depth (24% within ±25%).
+- **Only independent ground-truth metric:** Morassutti pond depth (~22% within ±25% over the full 504-record run; reliable only >50 cm).
 - **Independent hold-out (Smith/MOSAiC, full SWIR):** summer melting snow is optically degenerate with SSL/bare ice; fit RMS ~doubles out of distribution. Spring numbers do **not** generalise to the melt season.
 - **Synthetic metrics are inverse-crime numbers** (same forward model for generation and inversion).
 - **Untested:** non-Arctic surfaces; open water and young ice vs real spectra (synthetic-only); scene-scale performance; atmospheric/TOA coupling; BRDF/angular effects; confidence calibration; drone and hyperspectral-satellite modalities.

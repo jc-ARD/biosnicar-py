@@ -715,7 +715,7 @@ result = retrieve_sea_ice(
 | Freeze-up | 10–2 | October gets (−12°C, σ=6°C); Nov–Feb keep the winter prior | — | Adds `ice_thickness_cm ~ (5 cm, σ=8 cm)` prior for young ice |
 | Transitional | 4 | None | None | No prior applied |
 
-Without `known_month`, the SHEBA summer classification accuracy is 0/16; with it, 9/16.  The 7 remaining misclassifications are high-BBA dates (BBA > 0.72) where snow and bare ice are genuinely spectrally ambiguous in the 400–1000 nm window.
+Without `known_month`, the SHEBA summer classification accuracy is 0/16. The seasonal prior alone recovered 9/16 (2026-05 era); combined with the per-type classification band masks (VIS-only for bare-ice candidates) the **current suite achieves 16/16** — see `docs/sea_ice_validation.md` §6.3 (re-verified 2026-07-15).
 
 The `brine_volume_fraction` prior is **derived per emulator** from the seasonal
 temperature prior via Cox & Weeks at that emulator's reference salinity
