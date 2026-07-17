@@ -158,6 +158,48 @@ Same experiment, third variant `oe+Se`:
 5. **Hybrid classification** remains the strongest option where SWIR is
    present (default masked selection + OE posteriors on the winner).
 
+## 8b. Band-mode measurement — the production (IceNav) path (2026-07-17)
+
+The A7 fix above repairs *spectral* OE. But the live consumer (IceNav's
+mile-ahead inversion, feeding auka and SARSAR) runs OE in **band mode** —
+Sentinel-2 surface reflectance, 9 VIS-NIR bands (B1..B8A), no SWIR — where
+`model_error` does not apply (band-mode S_e is the atmospheric-correction
+budget, B-MS1). That path had never been measured. Experiment:
+`tests/validation_data/oe_bandmode_classification_experiment.py` — the 23
+SHEBA ALBV dates convolved to bands, mirroring IceNav's exact call (platform,
+`INVERSION_BANDS`, `default_obs_uncertainty`), default vs OE.
+
+| band set | method | spring snow | summer bare ice |
+|---|---|---|---|
+| **S2-9 (IceNav)** | default | 7/7 | 13/16 (81%) |
+| **S2-9 (IceNav)** | **oe** | 7/7 | **15/16 (94%)** |
+| S2-4 | default | 7/7 | 15/16 (94%) |
+| S2-4 | oe | 6/7 | 14/16 (88%) |
+
+**Band-mode OE is not affected by the B6 pathology.** On IceNav's 9-band
+config OE actually *beats* the default classifier in the summer regime
+(94% vs 81%), and its single miss (28 Aug, the perennially ambiguous date)
+is at an **honest 0.73 confidence** with FYI_summer still holding 27% — not
+the p≈1.00 wall of spectral mode. Median confidence 0.82; only 7/23 runs
+above 0.98.
+
+**Why band mode escapes it:** the evidence over-counting scales with the
+number of *correlated* measurements. Spectral mode feeds ~60 VIS bands with
+~2 effective DOF (§4) → ~30× over-count → 100+-nat evidence gaps → false
+certainty. Band mode feeds 9 already-SRF-integrated bands (each aggregates
+many wavelengths, so band-to-band correlation is far lower and the count is
+tiny) → the over-count is modest → evidence gaps stay in the few-nat range →
+honest probabilities. The B6 disaster was a many-correlated-bands artefact;
+few satellite bands don't trigger it.
+
+**Consequence:** the live product's classification mechanism is sound — no
+urgent hybrid-classification or default-behaviour change is needed for
+IceNav on this axis. The spectral A7 fix remains valuable for hyperspectral
+field/drone users. **Caveat:** this convolves clean SHEBA spectra to bands;
+real S2 L2A carries atmospheric-correction error on top (a separate, still
+untested axis — B-MS1), so "sound" here means the *classification mechanism*,
+not end-to-end satellite performance.
+
 ## 9. Honest limitations of this arc
 
 * n = 12 dates, one site (SHEBA), one season — the acceptance numbers are

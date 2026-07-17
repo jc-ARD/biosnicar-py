@@ -236,21 +236,27 @@ comparable to or faster than L-BFGS-B per pixel. Worked demonstration:
 > the reliability-diagram validation lands (roadmap A6). Treat OE error bars as
 > optimistic.
 
-> **OE classification is measurably unreliable on melt-season spectra — use
-> the default method to classify.** The default method classifies with the
-> per-type band masks (§4.2); `method="oe"` classifies by Laplace evidence over
-> the full observation (evidences are only comparable when every candidate
-> scores the same data, so the masks cannot be applied). The SHEBA SWIR
-> experiment (2026-07-15, `tests/validation_data/
-> oe_swir_classification_experiment.py`; `sea_ice_validation.md` §12) measured
-> the consequence on the 12 paired summer dates: default **12/12** in both VIS
-> and VIS+SWIR windows; OE **7/12 (58%)** VIS-only and **2/12 (17%)** with
-> SWIR — with every failure classified FYI_snow at posterior probability
-> ≈ 1.00 (maximally overconfident, confirming the calibration caveat above).
-> Standing guidance: use OE for parameter posteriors/DFS on a known or
-> default-classified surface type; do not use `class_probabilities` as
-> melt-season classification until the evidence path is repaired (candidate:
-> hybrid default-masked classification + OE posteriors on the winner).
+> **OE classification reliability depends on how many bands you feed it.**
+> `method="oe"` classifies by Laplace evidence over the full observation
+> (evidences are only comparable when every candidate scores the same data, so
+> the default method's per-type band masks cannot be applied). Whether that
+> matters depends on band count and correlation:
+>
+> * **Full spectra (~60+ bands): unreliable.** The SHEBA SWIR experiment
+>   (2026-07-15, `oe_swir_classification_experiment.py`; `sea_ice_validation.md`
+>   §12) — default 12/12 in both windows; OE 7/12 VIS-only, 2/12 with SWIR,
+>   failures at p≈1.00. The instrument-only S_e over-counts correlated
+>   spectral evidence ~30×. Mitigations: `model_error=True` (repairs VIS-only
+>   to 92%), or a 400–1000 nm `wavelength_mask`, or use the default method.
+> * **Satellite bands (≤ ~9): sound.** The band-mode experiment (2026-07-17,
+>   `oe_bandmode_classification_experiment.py`) — on Sentinel-2's 9 VIS-NIR
+>   bands OE classifies summer bare ice 15/16 (beating the default 13/16),
+>   spring 7/7, at honest confidences (median 0.82; worst miss 0.73). Few
+>   SRF-integrated bands don't trigger the over-counting. `model_error` is not
+>   used (and is refused) in band mode.
+>
+> In all modes OE is the right tool for **parameter posteriors / DFS /
+> averaging kernels** on a known or default-classified surface type.
 
 ---
 
