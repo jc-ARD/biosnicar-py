@@ -353,6 +353,8 @@ def retrieve_sea_ice(
     use_priors=True,
     flag_prior_influence=False,
     model_error=None,
+    class_priors=None,
+    prior_sources=None,
     mcmc_walkers=32,
     mcmc_steps=2000,
     mcmc_burn=500,
@@ -447,6 +449,19 @@ def retrieve_sea_ice(
         over 60 VIS bands, not 60). Default None = instrument-noise-only
         (the historical behaviour, known to yield overconfident evidence —
         see docs/sea_ice_validation.md §12).
+    class_priors : dict or None
+        Caller-supplied per-surface-type **class log-priors** (relative,
+        0 = neutral, negative = disfavoured), composed with the spectral
+        evidence / classification cost via the C1 metadata-prior adapter
+        (:mod:`biosnicar.sea_ice.metadata_priors`). This is how location,
+        ice-age or skin-temperature context enters the classification —
+        e.g. ``{"MYI_bare": 1.5, "FYI_bare": -1.5}`` in an MYI zone. Ignored
+        under ``use_priors=False``.
+    prior_sources : sequence of str or None
+        Which built-in metadata-prior providers to run (default: all;
+        currently just ``"season"``, driven by *known_month*). Pass a subset
+        (or ``()``) so an ensemble can withhold providers whose signal the
+        fusion layer already owns, avoiding double-counting.
     flag_prior_influence : bool
         When True and the metadata priors are actually active, run one extra
         spectrum-only pass and populate the result's provenance fields
@@ -509,13 +524,29 @@ def retrieve_sea_ice(
     # spectrum-only shadow pass (flag_prior_influence) sees the full fleet.
     emulators_full = dict(emulators)
 
-    # Young ice cannot exist in the melt season — exclude it from the
-    # candidate fleet when the month is known (unless it is the only
-    # candidate, in which case the caller asked for it explicitly).  This is a
-    # metadata prior, so it is skipped under spectrum-only (use_priors=False).
-    if (use_priors and known_month is not None and 5 <= int(known_month) <= 9
-            and "young_ice" in emulators and len(emulators) > 1):
-        emulators = {k: v for k, v in emulators.items() if k != "young_ice"}
+    # C1 metadata->prior adapter: compose class log-priors, parameter priors
+    # and hard exclusions from the active providers (season, driven by
+    # known_month) plus the caller's class_priors channel. All metadata priors
+    # are skipped under spectrum-only (use_priors=False).
+    from biosnicar.sea_ice.metadata_priors import build_prior_set
+    if use_priors:
+        prior_set = build_prior_set(
+            context={"month": known_month},
+            sources=prior_sources,
+            extra_class_priors=class_priors,
+        )
+    else:
+        prior_set = build_prior_set(sources=())   # empty
+    class_log_prior = prior_set.class_log_prior
+
+    # Apply hard physical exclusions to the candidate fleet, but never empty
+    # it — if exclusions would remove every candidate, keep the fleet (the
+    # caller restricted it deliberately) and let the soft priors rank instead.
+    if prior_set.excluded and len(emulators) > 1:
+        kept = {k: v for k, v in emulators.items()
+                if k not in prior_set.excluded}
+        if kept:
+            emulators = kept
 
     # Build the fixed_params dict that applies to all emulators
     shared_fixed = dict(fixed_params) if fixed_params else {}
@@ -543,20 +574,10 @@ def retrieve_sea_ice(
             f"emulator ({sorted(emulators)})."
         )
 
-    # Build season-aware physical priors from known_month
-    # These prevent emulators from fitting with physically impossible temperatures,
-    # which is the primary cause of summer bare ice misclassification.
-    season_priors: Dict[str, tuple] = {}
-    if use_priors and known_month is not None:
-        m = int(known_month)
-        if 5 <= m <= 9:      # melt season — May through September
-            season_priors["sea_ice_temperature"]   = (-4.0, 3.0)   # near-melting
-        elif m in (11, 12, 1, 2, 3):  # deep winter — Nov through March
-            season_priors["sea_ice_temperature"]   = (-15.0, 8.0)  # well below freezing
-        # Apr is transitional — no prior applied
-        if m in (10, 11, 12, 1, 2):  # freeze-up — young ice plausible
-            season_priors["ice_thickness_cm"] = (5.0, 8.0)  # thin, not grease
-            season_priors.setdefault("sea_ice_temperature", (-12.0, 6.0))
+    # Season-aware physical parameter priors (from the season provider) prevent
+    # emulators from fitting physically impossible temperatures — the primary
+    # cause of summer bare-ice misclassification.
+    season_priors: Dict[str, tuple] = dict(prior_set.param_prior)
     # Caller-supplied regularization overrides season priors on a key-by-key basis
     effective_regularization = {**season_priors, **(regularization or {})}
 
@@ -670,16 +691,24 @@ def retrieve_sea_ice(
     if not cost_per_type:  # all failed — fall back to fitting costs
         cost_per_type = {n: f.cost for n, f in all_fits.items()}
         rms_per_type = {n: float("inf") for n in all_fits}
-    ranked = sorted(cost_per_type.items(), key=lambda kv: kv[1])
-    winner_name, best_cost = ranked[0]
+    # C1: fold class log-priors into the ranking. The classification cost is a
+    # chi-squared (lower = better), and posterior ∝ exp(-cost/2)·P(class), so
+    # -2·ln posterior = cost - 2·class_log_prior. Rank on that; report the raw
+    # fit cost (which the quality flags relate to) unchanged.
+    rank_cost = {n: c - 2.0 * class_log_prior.get(n, 0.0)
+                 for n, c in cost_per_type.items()}
+    ranked = sorted(rank_cost.items(), key=lambda kv: kv[1])
+    winner_name = ranked[0][0]
+    best_cost = cost_per_type[winner_name]
     winner_fit = all_fits[winner_name]
 
     # Confidence: how much better is the winner than the next candidate?
+    # (on the prior-adjusted ranking cost, so it reflects the decision made)
     if len(ranked) > 1:
-        second_cost = ranked[1][1]
+        best_rank, second_rank = ranked[0][1], ranked[1][1]
         confidence = float(
-            (second_cost - best_cost) / second_cost
-            if second_cost > 0 else 0.0
+            (second_rank - best_rank) / second_rank
+            if second_rank > 0 else 0.0
         )
     else:
         confidence = 1.0  # only one emulator ran
@@ -699,11 +728,13 @@ def retrieve_sea_ice(
         # Until repaired, classify with the default method and use OE for
         # parameter posteriors — see SEA_ICE_RETRIEVAL.md §2.5 and
         # sea_ice_validation.md §12.
-        ev = {n: f.log_evidence for n, f in all_fits.items()
-              if f.log_evidence is not None}
+        # C1: combine evidence with class log-priors (uniform when none set):
+        # posterior(class) ∝ P(y | class) · P(class) -> log-add the prior.
+        ev = {n: (f.log_evidence + class_log_prior.get(n, 0.0))
+              for n, f in all_fits.items() if f.log_evidence is not None}
         if ev:
             mx = max(ev.values())
-            w = {n: float(np.exp(e - mx)) for n, e in ev.items()}  # uniform class prior
+            w = {n: float(np.exp(e - mx)) for n, e in ev.items()}
             tot = sum(w.values())
             class_probabilities = {n: w[n] / tot for n in w}
             winner_name = max(class_probabilities, key=class_probabilities.get)
@@ -763,7 +794,7 @@ def retrieve_sea_ice(
     # active, re-run spectrum-only and flag whether the prior changed the
     # classification.  Skipped (prior_resolved stays None) when no metadata
     # prior was active — there is then nothing for the prior to resolve.
-    if flag_prior_influence and use_priors and season_priors:
+    if flag_prior_influence and use_priors and not prior_set.is_empty():
         shadow = retrieve_sea_ice(
             observed=observed,
             emulators=emulators_full,
@@ -782,6 +813,8 @@ def retrieve_sea_ice(
             use_priors=False,
             flag_prior_influence=False,
             model_error=model_error,
+            class_priors=class_priors,
+            prior_sources=prior_sources,
             mcmc_walkers=mcmc_walkers,
             mcmc_steps=mcmc_steps,
             mcmc_burn=mcmc_burn,

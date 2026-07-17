@@ -319,6 +319,42 @@ failure: fitting August spectra with −25 °C snow). Summer months additionally
 exclude `young_ice` from the candidate fleet; freeze-up months add a thin-ice
 thickness prior. Details: [INVERSION.md § known_month](INVERSION.md#known_month--seasonal-physical-priors).
 
+### Metadata → class priors (`class_priors`, `prior_sources`)
+
+`known_month` is one **provider** in the metadata-prior adapter
+(`biosnicar.sea_ice.metadata_priors`, roadmap C1). The adapter turns context
+into three things that steer classification: **parameter priors** (the seasonal
+temperature/thickness Gaussians), **hard exclusions** (young ice in the melt
+season; liquid ponds and active-melt SSL in deep winter), and **soft per-class
+log-priors** — e.g. fresh dry snow is disfavoured on actively melting ice
+(Jul–Sep). The soft term is combined with the spectral evidence:
+`posterior(class) ∝ P(spectrum | class) · P(class | context)` for OE, and as a
+`−2·log-prior` term on the classification chi-squared for the default method.
+
+Two knobs expose it:
+
+```python
+# Location / ice-age / skin-temperature context the caller owns enters as
+# per-class log-priors (relative, 0 = neutral). E.g. in an MYI zone:
+retrieve_sea_ice(observed=obs, solzen=60, known_month=6,
+                 class_priors={"MYI_bare": 1.5, "FYI_bare": -1.5})
+
+# Ensembles withhold providers whose signal the fusion layer already owns,
+# to avoid double-counting (prior_sources selects the built-in providers):
+retrieve_sea_ice(observed=obs, known_month=6, prior_sources=())   # none
+```
+
+**Leverage is regime-dependent** — and this is why C1 became worth building only
+after the [OE model-error work](OE_MODEL_ERROR_EXPERIMENT.md): a prior can only
+outvote the spectrum by its odds ratio. In raw full-spectrum OE the evidence
+gaps are ~100 nats (over-counted, §2.5), so an honest few-nat prior is futile;
+in band mode and in `model_error=True` spectral mode the gaps are a few nats, so
+a 3:1–10:1 prior has real, graduated leverage without steamrolling a confident
+spectrum. Effect measured on SHEBA: the soft anti-snow-in-melt prior lifted
+summer bare-ice band-mode classification (S2 4-band 15→16/16, L8 13→15/16)
+with spring unchanged (7/7). Soft magnitudes are conservative expert-judgment
+defaults (~1 nat), overridable, and flagged for A6 calibration.
+
 ---
 
 ## 4. Technical architecture
