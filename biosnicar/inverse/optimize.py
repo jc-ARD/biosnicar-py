@@ -166,6 +166,15 @@ def retrieve(
         when ``"ssa"`` is in *parameters*.  Falls back to
         ``fixed_params["rho"]``, then the midpoint of the emulator's rho
         training range, then 500.0 kg m-3.
+    model_error : None, True, or ModelErrorCovariance, optional
+        A7 forward-model error term added to the OE measurement covariance
+        (``method="oe"``, spectral mode only). ``True`` loads the shipped
+        field-calibrated covariance; or pass a
+        :class:`~biosnicar.inverse.model_error.ModelErrorCovariance`. Corrects
+        the ~30x spectral-evidence over-counting of a diagonal S_e (field
+        residuals have ~2 effective DOF over 60 VIS bands). Refused in band
+        mode, where measurement error is dominated by atmospheric correction
+        (a separate budget). Default None = instrument-noise-only.
 
     Returns
     -------

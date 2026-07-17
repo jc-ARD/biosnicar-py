@@ -43,7 +43,13 @@ SURFACE_TYPES = (
     "FYI_pond", "young_ice", "open_water",
 )
 
-# Default soft class-prior magnitude in nats (~e:1 ≈ 2.7:1). Conservative.
+# Default soft class-prior magnitude in nats (~e:1 ≈ 2.7:1 odds).
+# Deliberately small: it must nudge, not override, the spectrum. The value is
+# order-of-magnitude expert judgement, not calibrated — it is set to the scale
+# of the band-mode / model_error evidence gaps (a few nats; see
+# docs/OE_MODEL_ERROR_EXPERIMENT.md §8b) so it has leverage there yet stays
+# powerless against a confident spectrum. Formal calibration is roadmap A6;
+# callers can override per class via retrieve_sea_ice(class_priors=...).
 SOFT_NAT = 1.0
 
 
@@ -90,24 +96,36 @@ def season_provider(context) -> Optional[Contribution]:
     pp: Dict[str, Tuple[float, float]] = {}
     excl = set()
 
-    # Parameter priors (unchanged from the original known_month logic) --------
-    if 5 <= m <= 9:                              # melt season
+    # Parameter priors (values unchanged from the original known_month logic;
+    # they gate the FIT, keeping temperature physically plausible per season —
+    # the classic failure is an August spectrum fitted at T=-25 C. Gaussian
+    # (mu, sigma), wide enough to admit the real spread, narrow enough to
+    # exclude the impossible tail). SHEBA-validated as a set: widening the
+    # summer mu toward -2 C collapsed summer accuracy 16/16 -> 9/16.
+    if 5 <= m <= 9:                              # melt season: near-melting ice
         pp["sea_ice_temperature"] = (-4.0, 3.0)
-    elif m in (11, 12, 1, 2, 3):                 # deep winter
+    elif m in (11, 12, 1, 2, 3):                 # deep winter: well below freezing
         pp["sea_ice_temperature"] = (-15.0, 8.0)
     if m in (10, 11, 12, 1, 2):                  # freeze-up: young ice plausible
-        pp["ice_thickness_cm"] = (5.0, 8.0)
+        pp["ice_thickness_cm"] = (5.0, 8.0)      # thin, not grease
         pp.setdefault("sea_ice_temperature", (-12.0, 6.0))
 
-    # Hard physical exclusions ------------------------------------------------
+    # Hard physical exclusions (0/-inf priors — no magnitude to justify, just
+    # physics): a surface type that cannot exist in the season is removed from
+    # the candidate fleet upstream.
     if 5 <= m <= 9:
-        excl.add("young_ice")                    # cannot persist in melt season
+        excl.add("young_ice")                    # melts out / can't persist
     if m in (12, 1, 2):
         excl.update(("FYI_pond", "FYI_summer"))  # no liquid ponds / no melt SSL
 
-    # Soft class log-priors ---------------------------------------------------
-    if m in (7, 8, 9):                           # peak/late melt
-        clp["FYI_snow"] = -SOFT_NAT              # dry snow cover unlikely
+    # Soft class log-priors: peak/late melt (Jul-Sep) disfavours a dry
+    # snow-covered surface, because the ice is actively ablating. Confined to
+    # Jul-Sep on purpose — NOT May/Jun: spring snow cover is entirely normal
+    # then, so a snow penalty there would wrongly demote genuine spring snow
+    # (SHEBA spring is Apr-May and must stay FYI_snow). Kept soft, not a hard
+    # exclusion, because late-summer snowfall does occur.
+    if m in (7, 8, 9):
+        clp["FYI_snow"] = -SOFT_NAT
 
     return Contribution(class_log_prior=clp, param_prior=pp,
                         excluded=frozenset(excl))

@@ -30,9 +30,15 @@ sys.path.insert(0, str(ROOT / "tests" / "validation_data"))
 from biosnicar.inverse.model_error import fit_model_error  # noqa: E402
 from build_residual_library import load_residual_library  # noqa: E402
 
+# Calibrate on two campaigns, hold a third out entirely: the held-out reduced
+# chi2 is the only honest check that the covariance generalises rather than
+# memorises. Istomina is the hold-out because it is the largest and the most
+# out-of-distribution (late-melt / refrozen-pond), so it is the hardest test.
 CAL_CAMPAIGNS = ("sheba", "smith")
 HOLDOUT = "istomina"
-SIG_INST = 0.02          # the instrument-only default S_e used by _run_oe
+# Must match the instrument-only default 1-sigma in optimize._run_oe, so the
+# held-out chi2 here measures the same S_e a real OE retrieval would use.
+SIG_INST = 0.02
 
 
 def _correct_model_rows(lib, campaigns):

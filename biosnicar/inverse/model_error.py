@@ -51,8 +51,11 @@ DEFAULT_ARTIFACT = str(
     Path(biosnicar.DATA_DIR) / "model_error" / "field_se_v1.npz"
 )
 
-# Minimum per-band variance floor (1-sigma 0.005) so no band is ever claimed
-# to be better-constrained than any plausible field measurement.
+# Minimum per-band model-error floor, 1-sigma 0.005. Well below the observed
+# correct-model residual median (~0.018, A7 step 1) so it never inflates the
+# real error, but non-zero so a sparsely-sampled or EOF-emptied band can never
+# be claimed better-constrained than any plausible field measurement (which
+# would re-introduce the over-counting this whole term exists to prevent).
 _FLOOR_SIGMA = 0.005
 
 
@@ -129,13 +132,25 @@ def fit_model_error(residuals, masks, n_eofs=3, eof_min_rows=30,
     masks : (n, 480) bool array
         Valid-band masks per row.
     n_eofs : int
-        Number of EOFs for the correlated term.
+        Number of EOFs for the correlated term. Default 3 because the field
+        residuals concentrate ~94% of their variance in the first 3 modes
+        (A7 step-1 analysis, docs/OE_MODEL_ERROR_EXPERIMENT.md §4); more modes
+        fit calibration noise, fewer under-model the correlation. It is also
+        the effective rank the correlation collapses to (~2-3 DOF over 60 VIS
+        bands), so 3 spans the real structure without overfitting.
     eof_min_rows : int
-        A band enters the EOF domain only if at least this many rows cover it
-        (rows must cover the full domain to enter the EOF fit).
+        A band enters the EOF domain only if at least this many rows cover it,
+        and only rows covering the full domain enter the SVD. Default 30 — a
+        floor for a stable low-rank covariance estimate (n_rows must exceed a
+        small multiple of n_eofs, and 30 is what the calibration set actually
+        supplies for the VIS domain). Widening the domain into the SWIR pushed
+        n_rows below this and empirically worsened held-out chi2, which is why
+        v1 is VIS-only.
     diag_min_rows : int
-        Minimum rows for a per-band diagonal variance; bands below this get
-        the median calibrated variance (better too wide than false precision).
+        Minimum rows for a per-band variance estimate; bands below this get the
+        median calibrated variance instead. Default 8 — a variance from fewer
+        than ~8 samples is too noisy to trust, and the median fallback is
+        deliberately conservative (better too wide than falsely precise).
     """
     residuals = np.asarray(residuals, dtype=float)
     masks = np.asarray(masks, dtype=bool)
