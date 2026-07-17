@@ -100,6 +100,7 @@ def retrieve(
     mcmc_burn=500,
     fixed_params=None,
     ssa_rho=None,
+    model_error=None,
 ):
     """Retrieve ice physical properties from observed albedo.
 
@@ -384,6 +385,7 @@ def retrieve(
             parameters, opt_forward_fn, opt_bounds, opt_x0, observed,
             obs_uncertainty, regularization, wavelength_mask,
             platform, observed_band_names, flx_slr,
+            model_error=model_error,
         )
     else:
         result = _run_scipy_minimize(
@@ -430,7 +432,7 @@ def retrieve(
 
 def _run_oe(parameters, opt_forward_fn, opt_bounds, opt_x0, observed,
             obs_uncertainty, regularization, wavelength_mask,
-            platform, observed_band_names, flx_slr):
+            platform, observed_band_names, flx_slr, model_error=None):
     """Optimal-estimation retrieval, bridging the engine to the log-space and
     band-mode machinery of :func:`retrieve`.
 
@@ -466,13 +468,30 @@ def _run_oe(parameters, opt_forward_fn, opt_bounds, opt_x0, observed,
             return np.asarray(opt_forward_fn(**kw))[sel]
         y = np.asarray(observed, dtype=float)[sel]
 
-    # --- measurement covariance S_e (diagonal) ---
+    # --- measurement covariance S_e ---
     if obs_uncertainty is not None:
         sig_e = np.asarray(obs_uncertainty, dtype=float)
         sig_e = sig_e[sel] if sig_e.size == sel.size else sig_e
     else:
-        sig_e = np.full(y.size, 0.02)   # default 1-sigma; structural term TBD
-    S_e = sig_e ** 2
+        sig_e = np.full(y.size, 0.02)   # instrument-noise default 1-sigma
+    if model_error is not None:
+        # A7: add the empirical forward-model error covariance (low-rank +
+        # diagonal, calibrated from field residuals — see
+        # biosnicar.inverse.model_error). Field residuals are spectrally
+        # correlated (~2 effective DOF over 60 VIS bands), so a diagonal
+        # S_e over-counts spectral evidence ~30x.
+        if platform is not None:
+            raise ValueError(
+                "model_error is calibrated for spectral mode; band-mode S_e "
+                "is dominated by atmospheric-correction error, a separate "
+                "budget (roadmap B-MS1)."
+            )
+        from biosnicar.inverse.model_error import ModelErrorCovariance
+        M = (model_error if hasattr(model_error, "dense")
+             else ModelErrorCovariance.load())
+        S_e = np.diag(sig_e ** 2) + M.dense(sel)
+    else:
+        S_e = sig_e ** 2
 
     # --- prior mean x_a and covariance S_a in optimiser space ---
     reg = regularization or {}

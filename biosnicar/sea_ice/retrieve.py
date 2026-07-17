@@ -352,6 +352,7 @@ def retrieve_sea_ice(
     known_month=None,
     use_priors=True,
     flag_prior_influence=False,
+    model_error=None,
     mcmc_walkers=32,
     mcmc_steps=2000,
     mcmc_burn=500,
@@ -435,6 +436,17 @@ def retrieve_sea_ice(
         classification are **spectrum-only** (an explicit *regularization* dict
         you pass is still honoured; only the metadata-derived priors are
         dropped).  Use this to see what the spectrum alone constrains.
+    model_error : None, True, or ModelErrorCovariance
+        A7 forward-model error term for ``method="oe"``, spectral mode only.
+        ``True`` loads the shipped field-calibrated covariance
+        (``biosnicar.inverse.model_error``, SHEBA+Smith correct-model
+        residuals, Istomina held out); or pass a
+        :class:`~biosnicar.inverse.model_error.ModelErrorCovariance`.
+        Adds the empirical low-rank residual covariance to S_e so spectral
+        evidence is not over-counted (field residuals have ~2 effective DOF
+        over 60 VIS bands, not 60). Default None = instrument-noise-only
+        (the historical behaviour, known to yield overconfident evidence —
+        see docs/sea_ice_validation.md §12).
     flag_prior_influence : bool
         When True and the metadata priors are actually active, run one extra
         spectrum-only pass and populate the result's provenance fields
@@ -603,6 +615,7 @@ def retrieve_sea_ice(
                 regularization=emu_reg or None,
                 wavelength_mask=wavelength_mask,
                 method=method,
+                model_error=model_error,
                 mcmc_walkers=mcmc_walkers,
                 mcmc_steps=mcmc_steps,
                 mcmc_burn=mcmc_burn,
@@ -768,6 +781,7 @@ def retrieve_sea_ice(
             known_month=known_month,
             use_priors=False,
             flag_prior_influence=False,
+            model_error=model_error,
             mcmc_walkers=mcmc_walkers,
             mcmc_steps=mcmc_steps,
             mcmc_burn=mcmc_burn,

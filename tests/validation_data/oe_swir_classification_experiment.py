@@ -76,48 +76,59 @@ def _paired_summer_obs():
     return out
 
 
-def _classify(obs, window_mask, sza, month, method):
+def _classify(obs, window_mask, sza, month, method, model_error=None):
     m = window_mask & ~np.isnan(obs)
     r = retrieve_sea_ice(
         observed=obs, wavelength_mask=m, solzen=sza, direct=1,
-        known_month=month, method=method,
+        known_month=month, method=method, model_error=model_error,
     )
     return r
 
 
+# (label, method kwarg, model_error kwarg).  "oe+Se" adds the A7 field-
+# calibrated forward-model error covariance to the OE measurement covariance
+# (biosnicar.inverse.model_error) — the acceptance test for whether honest
+# S_e repairs the evidence-based classification.
+VARIANTS = (
+    ("L-BFGS-B", "L-BFGS-B", None),
+    ("oe", "oe", None),
+    ("oe+Se", "oe", True),
+)
+
+
 def run():
     cases = _paired_summer_obs()
-    print(f"\nOE-mode SHEBA SWIR experiment (B6) — {len(cases)} summer dates "
-          f"with paired ALBI SWIR\n")
-    print(f"  {'date':<12} {'window':<9} {'method':<8} {'winner':<12} "
+    print(f"\nOE-mode SHEBA SWIR experiment (B6/A7) — {len(cases)} summer "
+          f"dates with paired ALBI SWIR\n")
+    print(f"  {'date':<12} {'window':<9} {'variant':<9} {'winner':<12} "
           f"{'conf':>6}  ok")
-    print("  " + "-" * 58)
+    print("  " + "-" * 60)
 
     results = []
     tally = {}
-    for method in ("L-BFGS-B", "oe"):
+    for label, method, me in VARIANTS:
         for wname, wmask in (("VIS", MASK_VIS), ("VIS+SWIR", MASK_VSW)):
-            key = (method, wname)
+            key = (label, wname)
             tally[key] = [0, 0]
             for date, sza, month, obs in cases:
-                r = _classify(obs, wmask, sza, month, method)
+                r = _classify(obs, wmask, sza, month, method, model_error=me)
                 ok = r.surface_type in EXPECTED
                 tally[key][0] += ok
                 tally[key][1] += 1
                 results.append(dict(
-                    date=date, window=wname, method=method,
+                    date=date, window=wname, method=label,
                     winner=r.surface_type, confidence=float(r.confidence),
                     correct=bool(ok),
                     class_probabilities={k: float(v) for k, v
                                          in r.class_probabilities.items()},
                 ))
-                print(f"  {date:<12} {wname:<9} {method:<8} "
+                print(f"  {date:<12} {wname:<9} {label:<9} "
                       f"{r.surface_type:<12} {r.confidence:6.2f}  "
                       f"{'Y' if ok else 'N'}")
 
     print("\n  Summary (correct / n):")
-    for (method, wname), (c, n) in tally.items():
-        print(f"    {method:<9} {wname:<9} {c}/{n}  ({c/n:.0%})")
+    for (label, wname), (c, n) in tally.items():
+        print(f"    {label:<9} {wname:<9} {c}/{n}  ({c/n:.0%})")
 
     return results, {f"{m}|{w}": f"{c}/{n}" for (m, w), (c, n) in tally.items()}
 
