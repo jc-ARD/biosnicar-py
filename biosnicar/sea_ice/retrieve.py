@@ -600,27 +600,10 @@ def retrieve_sea_ice(
         emu_fixed = {k: v for k, v in shared_fixed.items()
                      if k in emu_params or k in ("solzen", "direct")}
 
-        # Brine volume scales with the reference salinity, so the seasonal
-        # temperature prior is translated into a per-emulator Vb prior via
-        # Cox & Weeks at that emulator's S_ref (a single shared Vb prior is
-        # wrong for MYI: Vb(T=-5) at S=2 is a third of its value at S=6).
-        emu_reg = effective_regularization
-        s_ref = cfg.get("vb_s_ref")
-        if (s_ref is not None
-                and "brine_volume_fraction" in emu_params
-                and "sea_ice_temperature" in season_priors
-                and "brine_volume_fraction" not in (regularization or {})):
-            from biosnicar.sea_ice.brine_volume import compute_brine_volume
-
-            t_mu, t_sig = season_priors["sea_ice_temperature"]
-            clip_t = lambda t: float(np.clip(t, -30.0, -2.1))  # noqa: E731
-            vb_mu = float(compute_brine_volume(s_ref, clip_t(t_mu)))
-            vb_hi = float(compute_brine_volume(s_ref, clip_t(t_mu + t_sig)))
-            vb_lo = float(compute_brine_volume(s_ref, clip_t(t_mu - t_sig)))
-            emu_reg = {**effective_regularization,
-                       "brine_volume_fraction":
-                           (vb_mu, max((vb_hi - vb_lo) / 2.0, 1e-3))}
-
+        emu_reg = _emulator_regularization(
+            emu_params, cfg, effective_regularization, season_priors,
+            regularization,
+        )
         emu_regs[name] = dict(emu_reg)
 
         try:
@@ -837,6 +820,35 @@ _MIN_FINITE_BANDS = 20
 _FAILED_RECORD = {"__failed__": True}
 
 
+def _emulator_regularization(emu_params, cfg, effective_regularization,
+                             season_priors, regularization):
+    """Per-emulator fitting regularization, shared by the loop and vectorized
+    OE paths so they cannot diverge.
+
+    Brine volume scales with the reference salinity, so the seasonal
+    temperature prior is translated into a per-emulator Vb prior via Cox &
+    Weeks at that emulator's S_ref — a single shared Vb prior is wrong for MYI
+    (Vb(T=-5) at S=2 is a third of its value at S=6).
+    """
+    emu_reg = effective_regularization
+    s_ref = cfg.get("vb_s_ref")
+    if (s_ref is not None
+            and "brine_volume_fraction" in emu_params
+            and "sea_ice_temperature" in season_priors
+            and "brine_volume_fraction" not in (regularization or {})):
+        from biosnicar.sea_ice.brine_volume import compute_brine_volume
+
+        t_mu, t_sig = season_priors["sea_ice_temperature"]
+        clip_t = lambda t: float(np.clip(t, -30.0, -2.1))  # noqa: E731
+        vb_mu = float(compute_brine_volume(s_ref, clip_t(t_mu)))
+        vb_hi = float(compute_brine_volume(s_ref, clip_t(t_mu + t_sig)))
+        vb_lo = float(compute_brine_volume(s_ref, clip_t(t_mu - t_sig)))
+        emu_reg = {**effective_regularization,
+                   "brine_volume_fraction":
+                       (vb_mu, max((vb_hi - vb_lo) / 2.0, 1e-3))}
+    return emu_reg
+
+
 def _result_to_record(result: SeaIceRetrievalResult) -> dict:
     """Reduce a retrieval result to the lightweight per-pixel record kept
     in batch output (drops spectra and per-emulator fits)."""
@@ -887,6 +899,99 @@ def _retrieve_chunk(chunk_obs, emulators, kwargs):
     return records
 
 
+def _vectorized_compatible(engine, kwargs):
+    """(use_vectorized, reason) — is the batched OE engine usable for these
+    kwargs?  Returns (False, why) so engine='vectorized' can raise the why."""
+    if engine not in ("auto", "vectorized"):
+        return False, "engine != auto/vectorized"
+    if kwargs.get("method") != "oe":
+        return False, "vectorized engine requires method='oe'"
+    if kwargs.get("flag_prior_influence"):
+        return False, "flag_prior_influence needs the per-pixel shadow pass"
+    if kwargs.get("bounds") is not None or kwargs.get("x0") is not None:
+        return False, "caller bounds/x0 overrides are not vectorised yet"
+    km = kwargs.get("known_month")
+    if km is not None and np.ndim(km) > 0:
+        return False, "per-pixel known_month is not vectorised yet"
+    return True, ""
+
+
+def _run_vectorized_fleet(flat, emulators, max_iter, kwargs):
+    """Build the fleet prior/exclusion context (mirroring retrieve_sea_ice's
+    scalar setup) and run the vectorised OE fleet; return per-pixel records
+    with None for no-data pixels and a failed marker on engine error."""
+    from biosnicar.sea_ice.emulator_configs import SEA_ICE_EMULATOR_CONFIGS
+    from biosnicar.sea_ice.metadata_priors import build_prior_set
+    from biosnicar.sea_ice.retrieve_batch import vectorized_oe_fleet
+
+    platform = kwargs.get("platform")
+    band_mode = platform is not None
+    obs_band_names = kwargs.get("observed_band_names")
+    obs_unc = kwargs.get("obs_uncertainty")
+    wavelength_mask = kwargs.get("wavelength_mask")
+    use_priors = kwargs.get("use_priors", True)
+    known_month = kwargs.get("known_month")
+
+    # Shared fixed params (+ direct default), matching retrieve_sea_ice.
+    shared_fixed = dict(kwargs.get("fixed_params") or {})
+    if kwargs.get("solzen") is not None:
+        shared_fixed["solzen"] = float(kwargs["solzen"])
+    if kwargs.get("direct") is not None:
+        shared_fixed["direct"] = int(kwargs["direct"])
+    shared_fixed.setdefault("direct", 1)
+
+    # Priors: exclusions -> fleet; season params -> emu_regs; class -> evidence.
+    if use_priors:
+        prior_set = build_prior_set(
+            context={"month": known_month},
+            sources=kwargs.get("prior_sources"),
+            extra_class_priors=kwargs.get("class_priors"),
+        )
+    else:
+        prior_set = build_prior_set(sources=())
+    if prior_set.excluded and len(emulators) > 1:
+        kept = {k: v for k, v in emulators.items()
+                if k not in prior_set.excluded}
+        if kept:
+            emulators = kept
+
+    season_priors = dict(prior_set.param_prior)
+    effective_regularization = {**season_priors, **(kwargs.get("regularization") or {})}
+    emu_regs = {
+        name: _emulator_regularization(
+            list(emu.param_names), SEA_ICE_EMULATOR_CONFIGS.get(name, {}),
+            effective_regularization, season_priors, kwargs.get("regularization"),
+        )
+        for name, emu in emulators.items()
+    }
+
+    # No-data mask (same rule as the loop path).
+    finite = np.isfinite(flat)
+    if band_mode:
+        valid = finite.all(axis=1)
+    else:
+        sel = (np.ones(flat.shape[1], dtype=bool) if wavelength_mask is None
+               else np.asarray(wavelength_mask, dtype=bool))
+        valid = (finite & sel).sum(axis=1) >= _MIN_FINITE_BANDS
+
+    records = [None] * len(flat)
+    if not valid.any():
+        return records
+
+    try:
+        recs = vectorized_oe_fleet(
+            flat[valid], emulators, emu_regs, shared_fixed, obs_unc,
+            wavelength_mask, platform, obs_band_names,
+            kwargs.get("model_error"), prior_set.class_log_prior,
+            _SURFACE_TYPE_DESCRIPTIONS, max_iter=max_iter,
+        )
+    except ValueError:
+        raise                          # config error — fail loudly, all pixels
+    for idx, rec in zip(np.flatnonzero(valid), recs):
+        records[idx] = rec
+    return records
+
+
 def retrieve_sea_ice_batch(
     observed,
     n_jobs=-1,
@@ -894,6 +999,8 @@ def retrieve_sea_ice_batch(
     spatial_coords=None,
     crs=None,
     transform=None,
+    engine="auto",
+    max_iter=20,
     **kwargs,
 ):
     """Run :func:`retrieve_sea_ice` over a scene of pixels in parallel.
@@ -919,9 +1026,19 @@ def retrieve_sea_ice_batch(
         EPSG string (e.g. ``"EPSG:32633"``) for GeoTIFF export.
     transform : affine.Affine or None
         Raster affine transform for GeoTIFF export (image input only).
+    engine : {"auto", "vectorized", "loop"}
+        Retrieval engine.  ``"vectorized"`` solves all pixels of each fleet
+        emulator at once with the batched Gauss-Newton OE engine (10-100x
+        faster than per-pixel; requires ``method="oe"``).  ``"loop"`` is the
+        per-pixel joblib path (any method).  ``"auto"`` (default) uses
+        vectorized when compatible, else loop.  ``"vectorized"`` raises if
+        the kwargs are incompatible (non-OE method, caller bounds/x0,
+        per-pixel known_month, flag_prior_influence).
+    max_iter : int
+        Gauss-Newton iteration cap for the vectorized engine.
     **kwargs
         Passed through to :func:`retrieve_sea_ice` (``platform``,
-        ``solzen``, ``known_month``, ...).
+        ``solzen``, ``known_month``, ``model_error``, ``class_priors``, ...).
 
     Returns
     -------
@@ -929,9 +1046,11 @@ def retrieve_sea_ice_batch(
 
     Notes
     -----
-    Parallelised per-pixel L-BFGS-B is practical up to ~100k pixels.  For
-    regional mosaics, the retrieval engine will be replaced by a vectorised
-    inverse network behind the same :class:`SeaIceSceneResult` interface.
+    The vectorized engine (roadmap G3) reproduces the per-pixel OE result to
+    numerical tolerance (``tests/test_retrieve_batch.py``) while replacing N
+    Python optimiser loops with batched linear algebra, making scene-scale
+    retrieval practical.  The loop path remains for non-OE methods and as the
+    correctness reference.
     """
     try:
         from joblib import Parallel, delayed
@@ -965,6 +1084,19 @@ def retrieve_sea_ice_batch(
     elif kwargs.get("surface_types") is not None:
         keep = kwargs.pop("surface_types")
         emulators = {k: v for k, v in emulators.items() if k in keep}
+
+    # ── vectorised OE engine dispatch (roadmap G3) ──
+    use_vec, why = _vectorized_compatible(engine, kwargs)
+    if use_vec:
+        records = _run_vectorized_fleet(flat, emulators, max_iter, kwargs)
+        n_failed = sum(1 for r in records if r is not None and r.get("__failed__"))
+        latlon = (np.asarray(spatial_coords, dtype=float).reshape(-1, 2)
+                  if spatial_coords is not None else None)
+        return SeaIceSceneResult.from_records(
+            records, shape=shape, latlon=latlon, crs=crs, transform=transform,
+        )
+    if engine == "vectorized":
+        raise ValueError(f"engine='vectorized' unavailable: {why}")
 
     chunks = [flat[i:i + chunksize] for i in range(0, len(flat), chunksize)]
     chunk_records = Parallel(n_jobs=n_jobs)(

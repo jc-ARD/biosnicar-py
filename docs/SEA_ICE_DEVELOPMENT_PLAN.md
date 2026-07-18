@@ -155,7 +155,7 @@ Ordered within each stream by priority; **[gate]** marks a dependency for other 
 ### G. Standalone application & engineering
 - **G1** Productised API + CLI + notebook examples; clear single-spectrum, batch, and scene entry points for both modalities.
 - **G2** Scale benchmark at real scene/mosaic size (currently only 10-px tested); memory/timing.
-- **G3** Vectorised inverse network behind `SeaIceSceneResult` for regional mosaics (engine swap, exports unchanged).
+- **G3** ✅ **DONE (2026-07-18)** — Vectorised OE retrieval behind `SeaIceSceneResult` (`retrieve_sea_ice_batch(method="oe", engine="vectorized")`). A batched Gauss-Newton engine (`biosnicar/inverse/optimal_estimation_batch.py`) solves all N pixels of each fleet emulator at once (the emulator MLP and SRF band convolution are matmuls that handle `(N,…)`); reproduces the per-pixel loop result to numerical tolerance (machine-precision engine gate + integration parity tests). ~14× at N=200, growing with N. `model_error`/`class_priors`/season priors supported; per-pixel known_month, caller bounds/x0, flag_prior_influence and non-OE methods keep the loop path. Remaining scale work is G2 (memory/timing benchmark at real mosaic size) and vectorising open_water (currently a per-row analytical fallback).
 - **G4** Robustness: missing bands, noisy/atmospherically-imperfect input, out-of-range geometry, graceful failure with flags.
 - **G5** Reproducibility: versioned emulator/LUT artifacts, deterministic rebuilds, result manifests; data-cube/STAC compatibility.
 - **G6** Domain-expert review gate on melt-surface and young-ice physics before operational claims.

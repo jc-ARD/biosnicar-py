@@ -137,7 +137,7 @@ scene = retrieve_sea_ice_batch(
     solzen=62, direct=1, known_month=6,
     spatial_coords=latlon,                # (H, W, 2) → enables H3 export
     crs="EPSG:32633", transform=affine,   # → enables GeoTIFF export
-    n_jobs=-1, chunksize=500,
+    method="oe", engine="vectorized",     # batched OE — scene-scale fast path
 )
 print(scene.summary())              # per-type counts + flagged pixels
 ds = scene.to_xarray()              # surface_type, confidence, cost,
@@ -151,9 +151,18 @@ df = scene.to_dataframe()
 Masked/cloudy pixels (any non-finite value) are skipped and carry
 `surface_type_code = 255`. The integer code table is
 `biosnicar.sea_ice.SURFACE_TYPE_CODES` (0=FYI_bare … 6=young_ice).
-Per-pixel L-BFGS-B is practical to ~100k pixels; the `SeaIceSceneResult`
-interface is engine-agnostic, so a vectorised inverse network can replace the
-optimiser later without changing any export.
+
+**Engines.** `engine="vectorized"` (with `method="oe"`) solves all pixels of
+each fleet emulator at once with a batched Gauss-Newton engine
+(`biosnicar.inverse.optimal_estimation_batch`), reproducing the per-pixel OE
+result to numerical tolerance but replacing N Python optimiser loops with
+batched linear algebra — 10–100× faster, scaling with pixel count (the
+emulator MLP and the SRF band convolution are both matmuls that handle
+`(N, …)` natively). `engine="auto"` (default) uses it whenever `method="oe"`
+and the kwargs are compatible, else falls back to `engine="loop"` (per-pixel
+joblib, any method, and the correctness reference). `model_error`, `class_priors`
+and season priors all apply in the vectorized path; per-pixel `known_month`,
+caller `bounds`/`x0`, `flag_prior_influence` and non-OE methods keep the loop.
 
 ### 2.4 Publication-grade uncertainty (MCMC)
 
