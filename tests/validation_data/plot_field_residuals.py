@@ -6,9 +6,15 @@ how the forward-model error is distributed over wavelength, regime (campaign),
 and surface type — the intuition behind the A7 covariance and the V2 /
 gap-tolerant findings (SWIR error is large and regime-dependent).
 
-Uses the correct-model rows (is_expected): residuals of the fit whose emulator
-matches the campaign's expected surface type — i.e. forward-model error, not
-misclassification.
+Uses the WINNER fit per spectrum (is_winner): the residual of the surface type
+the retrieval actually chose. This is the best-achievable forward-model error
+per real spectrum and avoids the type-mismatch confound of is_expected — under
+the coarse field labels a single spectrum is an "expected" candidate for
+several types at once (e.g. MYI_bare, of which 0% actually classify as MYI), so
+is_expected residuals mix forward-model error with wrong-model error. Caveat:
+"winner" is the model's own choice, so without coincident structural ground
+truth this cannot rule out a systematic labelling/typing bias — the reason the
+program review's top field priority is measured structure, not more spectra.
 
     python tests/validation_data/plot_field_residuals.py [--out DIR]
 """
@@ -75,7 +81,7 @@ def fig_band_rms(lib, wl_um, out):
     ax.text(1.75, 0.001, "SWIR", color="#8A5A3A", ha="center", fontsize=9)
     wl = lib["wavelength_nm"]
     for c in _ORDER:
-        sel = (lib["campaign"] == c) & (lib["is_expected"] == 1)
+        sel = (lib["campaign"] == c) & (lib["is_winner"] == 1)
         rms = _band_rms(lib["residual"], lib["mask"], sel)
         ax.plot(wl_um, rms, color=CAMP[c][0], lw=2.2, label=CAMP[c][1])
     ax.set_xlim(0.35, 2.45)
@@ -100,7 +106,7 @@ def fig_region_violin(lib, out):
     x = 0
     for rlabel, band in regions:
         for c in _ORDER:
-            sel = (lib["campaign"] == c) & (lib["is_expected"] == 1)
+            sel = (lib["campaign"] == c) & (lib["is_winner"] == 1)
             vals = _row_region_rms(lib["residual"][sel], lib["mask"][sel], band)
             if vals.size:
                 data.append(vals); positions.append(x); colors.append(CAMP[c][0])
@@ -128,7 +134,7 @@ def fig_residual_shape(lib, wl_um, out):
     ax.axhline(0, color="#5A6B78", lw=1)
     wl = lib["wavelength_nm"]
     for c in _ORDER:
-        sel = (lib["campaign"] == c) & (lib["is_expected"] == 1)
+        sel = (lib["campaign"] == c) & (lib["is_winner"] == 1)
         R, M = lib["residual"][sel], lib["mask"][sel]
         cov = M.sum(0)
         mean = np.where(M, R, np.nan)
@@ -154,7 +160,7 @@ def fig_correlation_and_eofs(lib, out):
     wl = lib["wavelength_nm"]
     vis = (wl >= 400) & (wl <= 1000)
     # empirical VIS correlation over all correct-model rows fully covering VIS
-    sel = lib["is_expected"] == 1
+    sel = lib["is_winner"] == 1
     R = lib["residual"][sel][:, vis]
     M = lib["mask"][sel][:, vis]
     full = M.all(axis=1)
@@ -195,13 +201,18 @@ def fig_correlation_and_eofs(lib, out):
 
 
 def fig_by_surface_type(lib, wl_um, out):
+    # Group by the WINNING type (is_winner): the residual of the type the model
+    # actually chose for each spectrum. Using the label-expected type instead
+    # would count e.g. MYI_bare fitted to non-MYI spectra (0% of which classify
+    # as MYI) — type-mismatch error, not forward-model error.
     wl = lib["wavelength_nm"]
-    types = sorted(np.unique(lib["fit_type"][lib["is_expected"] == 1]))
+    win = lib["is_winner"] == 1
+    types = sorted(np.unique(lib["winner_type"][win]))
     cmap = plt.get_cmap("viridis")
     fig, ax = plt.subplots(figsize=(9, 5.2))
     ax.axvspan(1.10, 2.40, color="#F6EEE8", zorder=0)
     for j, t in enumerate(types):
-        sel = (lib["fit_type"] == t) & (lib["is_expected"] == 1)
+        sel = (lib["winner_type"] == t) & win
         if sel.sum() < _MINCOV:
             continue
         rms = _band_rms(lib["residual"], lib["mask"], sel)
