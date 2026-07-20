@@ -104,28 +104,45 @@ def _rows_for_spectrum(campaign, sid, date, label, expected, obs, mask,
 # ── campaign collectors (settings mirror the validation scripts) ─────────────
 
 def collect_sheba():
-    """SHEBA ALBV: spring (expect FYI_snow) + summer (expect bare/summer).
+    """SHEBA: spring snow (VIS) + summer bare ice (VIS, extended to VIS+SWIR
+    where a paired ALBI file exists).
 
-    Mirrors sheba_classification_validation.py tests 1-2: VIS-NIR window,
-    direct=1, known_month from date, noon SZA at 76N.
+    Mirrors sheba_classification_validation.py: VIS from ALBV; for summer
+    dates with a paired ALBI file the white-ice SWIR column (1100-2000 nm) is
+    spliced on, giving full-range rows — the on-disk SWIR data the A7 SWIR
+    covariance term needs. direct=1, known_month from date, noon SZA at 76N.
     """
     from Grenfell_light_2007.validate_grenfell_light_2007 import (
-        catalogue, parse_albv,
+        catalogue, parse_albv, parse_albi,
     )
+    GRENFELL = HERE / "Grenfell_light_2007"
+    SWIR = (WL_NM >= 1100) & (WL_NM <= 2000)
     spring, summer = catalogue()
     rows = []
-    for entries, expected, label in (
-        (spring, ("FYI_snow",), "spring_snow"),
-        (summer, ("FYI_bare", "FYI_summer"), "summer_bare_ice"),
+    for entries, expected, label, splice_swir in (
+        (spring, ("FYI_snow",), "spring_snow", False),
+        (summer, ("FYI_bare", "FYI_summer"), "summer_bare_ice", True),
     ):
         for e in entries:
             wl, alb, _ = parse_albv(e["path"])
             if wl is None:
                 continue
-            f = interp1d(wl, alb, kind="linear", bounds_error=False,
-                         fill_value=np.nan)
-            obs = f(WL_NM)
+            obs = interp1d(wl, alb, kind="linear", bounds_error=False,
+                           fill_value=np.nan)(WL_NM)
             mask = VIS & np.isfinite(obs)
+            # Splice the ALBI white-ice SWIR column onto summer dates.
+            if splice_swir:
+                tag = e["date"].replace("1998-", "").replace("-", "")
+                albi = GRENFELL / f"ICEDATA_OPTICS_SPECALB_ALBI{tag}.CSV"
+                if albi.exists():
+                    wl_i, wi_alb, _, _ = parse_albi(albi)
+                    if wl_i is not None:
+                        obs_i = interp1d(wl_i, wi_alb, kind="linear",
+                                         bounds_error=False,
+                                         fill_value=np.nan)(WL_NM)
+                        ir = SWIR & np.isfinite(obs_i)
+                        obs[ir] = obs_i[ir]
+                        mask = mask | ir
             if mask.sum() < 5:
                 continue
             rows += _rows_for_spectrum(

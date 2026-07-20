@@ -143,10 +143,21 @@ Same experiment, third variant `oe+Se`:
 
 ## 8. What's next
 
-1. **SWIR extension of the covariance** — needs more full-range residual
-   rows: mine further MOSAiC legs / Antarctic archives (dev plan §5), or a
-   gap-tolerant EOF fit (EM/PPCA) that uses partially-covering rows without
-   the full-coverage requirement that made wider domains worse in v1.
+1. **SWIR extension of the covariance** — *investigated 2026-07-20, needs the
+   gap-tolerant fit, not just data.* The on-disk SHEBA ALBI white-ice SWIR
+   column (1100–2000 nm) was spliced into the summer SHEBA rows of the
+   residual library (`build_residual_library.py`), raising full-SWIR-coverage
+   calibration rows from Smith-only to 18. A `min_rows=30` fit then *does*
+   extend the EOF domain to ~1935 nm with healthy low-rank structure (EOF σ
+   [0.80, 0.26, 0.15], VIS DOF 2.2) — but held-out χ² **regresses to 8.7**
+   (vs 5.1 VIS-only), and a lower threshold collapses the fit to near-diagonal
+   (DOF 27, χ² "4.5" but no correlation captured). So the SWIR error is not
+   well-modelled by one VIS+SWIR EOF basis with ~18–30 rows. The shipped
+   covariance is now explicitly VIS-capped (`domain_max_nm=1000`, SWIR bands
+   keep a diagonal floor); the fix is the **gap-tolerant EM/PPCA fit** (uses
+   partially-covering rows; possibly a separate SWIR EOF block), now with the
+   data in place to attempt it. Re-collecting the library also nudged the
+   VIS-only held-out χ² to 4.2 (from 5.1).
 2. **A6 calibration** — reliability diagrams for the oe+Se probabilities on
    a held-out corpus; only then may "calibrated" language return.
 3. **C1 metadata class priors** — now worth attaching: evidence gaps are in

@@ -67,6 +67,15 @@ def main():
     ap.add_argument("--out",
                     default=str(ROOT / "data/model_error/field_se_v1.npz"))
     ap.add_argument("--n-eofs", type=int, default=3)
+    ap.add_argument("--eof-min-rows", type=int, default=30)
+    # Cap the correlated (EOF) domain to the VIS. The SHEBA ALBI SWIR data is
+    # now in the residual library, and a min_rows=30 fit *can* extend the EOF
+    # domain to ~1935 nm with healthy low-rank structure — but the held-out
+    # chi2 regresses (8.7 vs 5.1) and a lower threshold collapses the fit to
+    # near-diagonal. So the SWIR error is not yet well-modelled by a single
+    # VIS+SWIR EOF basis; ship VIS-only and leave the SWIR term to a
+    # gap-tolerant fit. SWIR bands still carry their per-band diagonal variance.
+    ap.add_argument("--domain-max-nm", type=float, default=1000.0)
     args = ap.parse_args()
 
     lib = load_residual_library(args.library)
@@ -75,7 +84,8 @@ def main():
     print(f"calibration rows (correct-model, {'+'.join(CAL_CAMPAIGNS)}): "
           f"{len(res_cal)}")
     model = fit_model_error(
-        res_cal, mask_cal, n_eofs=args.n_eofs,
+        res_cal, mask_cal, n_eofs=args.n_eofs, eof_min_rows=args.eof_min_rows,
+        domain_max_nm=args.domain_max_nm,
         meta=dict(calibration_campaigns=list(CAL_CAMPAIGNS),
                   holdout_campaign=HOLDOUT,
                   population="is_expected & is_winner",

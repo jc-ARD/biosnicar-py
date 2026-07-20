@@ -122,7 +122,7 @@ def _meta_to_json(meta):
 
 
 def fit_model_error(residuals, masks, n_eofs=3, eof_min_rows=30,
-                    diag_min_rows=8, meta=None):
+                    diag_min_rows=8, domain_max_nm=None, meta=None):
     """Fit the low-rank + diagonal model from residual rows.
 
     Parameters
@@ -169,6 +169,15 @@ def fit_model_error(residuals, masks, n_eofs=3, eof_min_rows=30,
 
     # EOF domain: densely covered bands; EOF rows: full coverage of the domain
     domain = counts >= eof_min_rows
+    if domain_max_nm is not None:
+        # Explicitly cap the correlated-term domain (e.g. to the VIS). The SWIR
+        # error has different correlation structure and, with only a handful of
+        # full-range calibration rows, a single VIS+SWIR EOF fit either
+        # regresses the held-out chi2 or collapses to near-diagonal — so the
+        # SWIR extension awaits a gap-tolerant (EM-PCA) fit, not just a wider
+        # domain. Bands above the cap keep their per-band diagonal variance.
+        wl_nm = 205.0 + 10.0 * np.arange(nb)
+        domain &= wl_nm <= domain_max_nm
     rows_full = masks[:, domain].all(axis=1)
     eof_basis = np.zeros((n_eofs, nb))
     eof_var = np.zeros(n_eofs)
