@@ -1,0 +1,27 @@
+date,site,dist_km,albedo_time,albedo_file,microct_event,microct_loc,microct_comment
+20200619,LDL,0.03,1156,spectralalbedo_mosaic_20200619_LDL_processedv0.csv,PS122/4_44-121,optics-LDL,sample ok recco ok aim
+20200627,ROV,1.66,1154,spectralalbedo_mosaic_20200627_ROV4_processedv0.csv,PS122/4_44-193,optics-transect-ROV,sample ok recco ok aim ROV transect
+20200704,ROV,0.35,1138,spectralalbedo_mosaic_20200704_ROV4_processedv0.csv,PS122/4_45-107,optics-transect-ROV,sample ok recco ok aim optics chocco
+20200705,STERN,0.34,1220,spectralalbedo_mosaic_20200705_STERN_processedv0.csv,PS122/4_45-132,optics-stern,sample ok recco ok aim
+20200706,LDL,1.91,1153,spectralalbedo_mosaic_20200706_LDL_processedv0.csv,PS122/4_46-30,optics-LDL,sample ok recco ok aim bear fur
+20200710,STERN,5.15,1035,spectralalbedo_mosaic_20200710_1035_STERN_processedv0.csv,PS122/4_46-108,optics-stern,sample ok recco ok aim
+20200710,STERN,1.63,1035,spectralalbedo_mosaic_20200710_1035_STERN_processedv0.csv,PS122/4_46-106,optics-stern,sample ok recco ok aim
+20200710,STERN,1.64,1640,spectralalbedo_mosaic_20200710_1640_STERN_processedv0.csv,PS122/4_46-108,optics-stern,sample ok recco ok aim
+20200710,STERN,2.01,1640,spectralalbedo_mosaic_20200710_1640_STERN_processedv0.csv,PS122/4_46-106,optics-stern,sample ok recco ok aim
+20200710,STERN,3.69,1313,spectralalbedo_mosaic_20200710_1313_STERN_processedv0.csv,PS122/4_46-108,optics-stern,sample ok recco ok aim
+20200710,STERN,0.09,1313,spectralalbedo_mosaic_20200710_1313_STERN_processedv0.csv,PS122/4_46-106,optics-stern,sample ok recco ok aim
+20200710,STERN,0.08,1915,spectralalbedo_mosaic_20200710_1915_STERN_processedv0.csv,PS122/4_46-108,optics-stern,sample ok recco ok aim
+20200710,STERN,3.52,1915,spectralalbedo_mosaic_20200710_1915_STERN_processedv0.csv,PS122/4_46-106,optics-stern,sample ok recco ok aim
+20200710,STERN,2.16,2218,spectralalbedo_mosaic_20200710_2218_STERN_processedv0.csv,PS122/4_46-108,optics-stern,sample ok recco ok aim
+20200710,STERN,5.7,2218,spectralalbedo_mosaic_20200710_2218_STERN_processedv0.csv,PS122/4_46-106,optics-stern,sample ok recco ok aim
+20200711,STERN,5.56,1031,spectralalbedo_mosaic_20200711_1031_STERN_processedv0.csv,PS122/4_46-111,optics-stern,sample ok recco ok aim
+20200711,STERN,2.4,1031,spectralalbedo_mosaic_20200711_1031_STERN_processedv0.csv,PS122/4_46-112,optics-stern,sample ok recco ok aim
+20200711,STERN,6.85,0122,spectralalbedo_mosaic_20200711_0122_STERN_processedv0.csv,PS122/4_46-111,optics-stern,sample ok recco ok aim
+20200711,STERN,3.7,0122,spectralalbedo_mosaic_20200711_0122_STERN_processedv0.csv,PS122/4_46-112,optics-stern,sample ok recco ok aim
+20200711,STERN,1.72,0427,spectralalbedo_mosaic_20200711_0427_STERN_processedv0.csv,PS122/4_46-111,optics-stern,sample ok recco ok aim
+20200711,STERN,1.45,0427,spectralalbedo_mosaic_20200711_0427_STERN_processedv0.csv,PS122/4_46-112,optics-stern,sample ok recco ok aim
+20200711,STERN,3.09,0720,spectralalbedo_mosaic_20200711_0720_STERN_processedv0.csv,PS122/4_46-111,optics-stern,sample ok recco ok aim
+20200711,STERN,0.07,0720,spectralalbedo_mosaic_20200711_0720_STERN_processedv0.csv,PS122/4_46-112,optics-stern,sample ok recco ok aim
+20200715,SYI,0.1,1010,spectralalbedo_mosaic_20200715_SYI_processedv0.csv,PS122/4_47-77,optics-transect-SYI,sample ok recco ok aim
+20200716,STERN,0.28,1432,spectralalbedo_mosaic_20200716_1432_STERN_processedv0.csv,PS122/4_47-76,optics-stern,sample ok recco ok aim
+20200721,LDL,0.07,1255,spectralalbedo_mosaic_20200721_LDL_processedv0.csv,PS122/4_48-43,optics-LDL,

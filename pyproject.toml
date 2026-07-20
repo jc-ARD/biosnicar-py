@@ -54,7 +54,7 @@ geo     = [
     "h3>=3.7",
     "geopandas>=0.14",
 ]
-dev     = ["pytest", "scikit-learn>=1.0", "emcee>=3", "streamlit", "plotly"]
+dev     = ["pytest", "scikit-learn>=1.0", "emcee>=3", "streamlit", "plotly", "openpyxl>=3.1"]
 
 [project.urls]
 "Bug Tracker"   = "https://github.com/jmcook1186/biosnicar-py/issues"
