@@ -76,6 +76,13 @@ def main():
     # VIS+SWIR EOF basis; ship VIS-only and leave the SWIR term to a
     # gap-tolerant fit. SWIR bands still carry their per-band diagonal variance.
     ap.add_argument("--domain-max-nm", type=float, default=1000.0)
+    # The gap-tolerant fitter uses partially-covering rows (a pairwise
+    # second-moment) and IS the method for a future SWIR term. It is not the
+    # default: with only SHEBA+Smith calibration regimes the SWIR error does
+    # not generalise to the held-out regime (SWIR residual RMS is ~2x larger
+    # there), so a SWIR term regresses the held-out chi2. Ships VIS-only until
+    # regime-spanning full-range residuals exist. See OE doc §8.
+    ap.add_argument("--gap-tolerant", action="store_true")
     args = ap.parse_args()
 
     lib = load_residual_library(args.library)
@@ -83,16 +90,25 @@ def main():
     res_cal, mask_cal = _correct_model_rows(lib, CAL_CAMPAIGNS)
     print(f"calibration rows (correct-model, {'+'.join(CAL_CAMPAIGNS)}): "
           f"{len(res_cal)}")
-    model = fit_model_error(
-        res_cal, mask_cal, n_eofs=args.n_eofs, eof_min_rows=args.eof_min_rows,
-        domain_max_nm=args.domain_max_nm,
+    if args.gap_tolerant:
+        from biosnicar.inverse.model_error import fit_model_error_gap_tolerant
+        _fit = lambda **kw: fit_model_error_gap_tolerant(  # noqa: E731
+            res_cal, mask_cal, n_eofs=args.n_eofs,
+            domain_max_nm=args.domain_max_nm, **kw)
+    else:
+        _fit = lambda **kw: fit_model_error(  # noqa: E731
+            res_cal, mask_cal, n_eofs=args.n_eofs,
+            eof_min_rows=args.eof_min_rows, domain_max_nm=args.domain_max_nm,
+            **kw)
+    model = _fit(
         meta=dict(calibration_campaigns=list(CAL_CAMPAIGNS),
                   holdout_campaign=HOLDOUT,
                   population="is_expected & is_winner",
                   library=str(Path(args.library).name)),
     )
     print(f"EOF domain: {model.meta['eof_domain_bands']} bands, "
-          f"{model.meta['n_eof_rows']} full-coverage rows")
+          f"fit={model.meta.get('fit')} "
+          f"({model.meta.get('n_eof_rows', model.meta.get('n_rows'))} rows)")
     print(f"EOF sigmas: {np.sqrt(model.eof_var).round(4)}")
     vis = (np.arange(480) * 10 + 205 >= 400) & (np.arange(480) * 10 + 205 <= 1000)
     print(f"effective DOF over 60 VIS bands: {model.effective_dof(vis):.1f} "

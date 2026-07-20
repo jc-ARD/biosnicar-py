@@ -197,6 +197,77 @@ def fit_model_error(residuals, masks, n_eofs=3, eof_min_rows=30,
     m = dict(meta or {})
     m.update(n_rows=int(n), n_eof_rows=int(rows_full.sum()),
              n_eofs=int(n_eofs), eof_domain_bands=int(domain.sum()),
+             fit="full-coverage-svd", version=MODEL_ERROR_VERSION)
+    return ModelErrorCovariance(eof_basis=eof_basis, eof_var=eof_var,
+                                diag_var=diag_var, domain=domain, meta=m)
+
+
+def fit_model_error_gap_tolerant(residuals, masks, n_eofs=3, min_band_rows=20,
+                                 min_pair_rows=10, diag_min_rows=8,
+                                 domain_max_nm=None, meta=None):
+    """Gap-tolerant low-rank + diagonal fit using partially-covering rows.
+
+    The full-coverage SVD in :func:`fit_model_error` requires every EOF row to
+    span the whole domain, so a domain reaching into the SWIR is fitted from
+    only the handful of full-range campaigns — which regresses or collapses
+    (see docs/OE_MODEL_ERROR_EXPERIMENT.md §8). This variant instead builds the
+    (uncentred) second-moment matrix **pairwise / available-case**: entry
+    ``M[a,b]`` averages ``x_a·x_b`` over exactly the rows that observed *both*
+    bands a and b. So a VIS-only row contributes to the VIS block, a VIS+SWIR
+    row also contributes to the VIS–SWIR cross-block, and every SWIR-covering
+    row informs the SWIR block — no full-domain-coverage requirement.
+
+    The pairwise matrix need not be positive semi-definite (different entries
+    use different row subsets); keeping only the top-k **non-negative**
+    eigenpairs yields a valid low-rank term, and the per-band residual becomes
+    the diagonal. Pairs seen by fewer than *min_pair_rows* rows are set to 0
+    (treated as undetermined → uncorrelated), which is the conservative choice.
+    """
+    residuals = np.asarray(residuals, dtype=float)
+    masks = np.asarray(masks, dtype=bool)
+    n, nb = residuals.shape
+
+    counts = masks.sum(axis=0)
+    domain = counts >= min_band_rows
+    if domain_max_nm is not None:
+        wl_nm = 205.0 + 10.0 * np.arange(nb)
+        domain &= wl_nm <= domain_max_nm
+    idx = np.flatnonzero(domain)
+    d = idx.size
+
+    eof_basis = np.zeros((n_eofs, nb))
+    eof_var = np.zeros(n_eofs)
+
+    # Per-band diagonal (uncentred) from every row that covers the band.
+    diag_var = np.full(nb, np.nan)
+    for b in range(nb):
+        if counts[b] >= diag_min_rows:
+            v = residuals[masks[:, b], b]
+            diag_var[b] = float(np.mean(v ** 2))
+    diag_var[~np.isfinite(diag_var)] = float(np.nanmedian(diag_var))
+
+    if d:
+        Mk = masks[:, idx].astype(float)               # (n, d)
+        Rz = np.where(masks[:, idx], residuals[:, idx], 0.0)
+        pair_n = Mk.T @ Mk                             # rows covering both a,b
+        Msm = (Rz.T @ Rz) / np.maximum(pair_n, 1.0)    # uncentred pairwise moment
+        Msm[pair_n < min_pair_rows] = 0.0              # undetermined -> uncorrelated
+        Msm = 0.5 * (Msm + Msm.T)
+        w, V = np.linalg.eigh(Msm)
+        w = np.clip(w, 0.0, None)
+        top = np.argsort(w)[::-1][:n_eofs]
+        k = int((w[top] > 0).sum())
+        if k:
+            eof_basis[:k, idx] = V[:, top[:k]].T
+            eof_var[:k] = w[top[:k]]
+            captured = (eof_basis[:, idx].T ** 2) @ eof_var
+            diag_var[idx] = np.maximum(np.diag(Msm) - captured, _FLOOR_SIGMA ** 2)
+
+    diag_var = np.maximum(diag_var, _FLOOR_SIGMA ** 2)
+
+    m = dict(meta or {})
+    m.update(n_rows=int(n), n_eofs=int(n_eofs), eof_domain_bands=int(d),
+             min_pair_rows=int(min_pair_rows), fit="gap-tolerant-pairwise",
              version=MODEL_ERROR_VERSION)
     return ModelErrorCovariance(eof_basis=eof_basis, eof_var=eof_var,
                                 diag_var=diag_var, domain=domain, meta=m)

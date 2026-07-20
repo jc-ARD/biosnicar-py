@@ -9,6 +9,7 @@ from biosnicar.inverse.model_error import (
     DEFAULT_ARTIFACT,
     ModelErrorCovariance,
     fit_model_error,
+    fit_model_error_gap_tolerant,
 )
 
 _ARTIFACT = Path(DEFAULT_ARTIFACT).exists()
@@ -66,6 +67,55 @@ class TestFit:
         vis = mask[0]
         assert np.allclose(m.dense(vis), m2.dense(vis), atol=1e-6)
         assert m2.meta["note"] == "test"
+
+
+class TestGapTolerant:
+    """Gap-tolerant fit must use partially-covering rows and stay PSD."""
+
+    def _mixed_rows(self, n=80, seed=1):
+        """Half the rows cover only the first block ('VIS'); half cover both
+        blocks ('VIS+SWIR'). A full-coverage SVD would keep only the VIS+SWIR
+        half; the gap-tolerant fit must use all rows."""
+        rng = np.random.default_rng(seed)
+        wl = np.arange(480)
+        blockA = (wl >= 20) & (wl < 70)     # ~VIS
+        blockB = (wl >= 120) & (wl < 170)   # ~SWIR
+        sA = np.sin(wl / 12.0)
+        sB = np.cos(wl / 9.0)
+        resid = np.full((n, 480), np.nan)
+        masks = np.zeros((n, 480), dtype=bool)
+        for i in range(n):
+            a = rng.normal(0, 0.03)
+            full = i % 2 == 0               # even rows cover both blocks
+            cover = blockA | blockB if full else blockA
+            masks[i] = cover
+            val = a * sA + (a * sB if full else 0.0)
+            resid[i, cover] = (val[cover]
+                               + rng.normal(0, 0.004, cover.sum()))
+        return resid, masks, blockA, blockB
+
+    def test_uses_partial_rows_and_is_psd(self):
+        resid, masks, blockA, blockB = self._mixed_rows()
+        m = fit_model_error_gap_tolerant(resid, masks, n_eofs=3,
+                                         min_band_rows=10, min_pair_rows=8)
+        # both blocks enter the domain despite half the rows missing block B
+        assert m.domain[blockA].all() and m.domain[blockB].all()
+        # correlation captured (low effective DOF over the covered bands)
+        cov_bands = blockA | blockB
+        assert m.effective_dof(cov_bands) < 12
+        # valid PSD covariance
+        S = m.dense(cov_bands)
+        assert np.allclose(S, S.T)
+        assert np.linalg.eigvalsh(S).min() > -1e-10
+        assert m.meta["fit"] == "gap-tolerant-pairwise"
+
+    def test_undetermined_pairs_are_zeroed(self):
+        # min_pair_rows very high -> no cross terms trusted -> near-diagonal
+        resid, masks, *_ = self._mixed_rows()
+        m = fit_model_error_gap_tolerant(resid, masks, n_eofs=3,
+                                         min_band_rows=10, min_pair_rows=999)
+        # with no admissible pairs the EOF term vanishes
+        assert np.allclose(m.eof_var, 0.0)
 
 
 @pytest.mark.skipif(not _ARTIFACT, reason="shipped model-error artifact absent")
