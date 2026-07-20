@@ -553,6 +553,57 @@ then run OE on the winner only for posteriors; and/or a forward-model error
 term in S_e (A7) with calibrated priors (A6) before evidence ranking is
 trusted.
 
+## 13. Perturbed-physics validation (V2) — bounding the inverse crime (2026-07-20)
+
+**Question.** Every synthetic accuracy figure is an inverse-crime number (same
+forward model generates and inverts the test spectra). By how much do they
+overstate performance when the forward model disagrees with reality?
+
+**Design** (`tests/validation_data/perturbed_physics_validation.py`, N=30/type,
+spectrum-only classification so the forward-model effect is isolated from
+priors): a graded ladder — **C0** invert the emulator's own output (pure
+crime); **C1** invert the full forward model with the emulator (surrogate gap);
+**C2** add a draw from the A7 field-residual covariance (realistic model error
+at the measured magnitude and correlation). Each inverted with instrument-only
+`S_e` and with `model_error=True`.
+
+**Result — classification (fleet, model_error S_e):**
+
+| Type | C0 crime | C1 surrogate | C2 model error |
+|---|---|---|---|
+| FYI_pond / open_water / young_ice | 100% | 100% | **100%** |
+| FYI_bare | 100% | 97% | 87% |
+| FYI_summer | 100% | 87% | 83% |
+| FYI_snow | 97% | 73% | 73% |
+| MYI_bare | 100% | 50% | **53%** |
+| **mean** | **100%** | **87%** | **85%** |
+
+The crime overstates classification by ~15 points on average, and the
+overstatement is **wildly type-dependent**: pond, open water and young ice are
+honestly robust; the loss is concentrated in the FYI↔MYI discrimination, where
+MYI_bare falls to ~50% — the spectrally-unbreakable split (§4) exposed as a
+model-mismatch cliff, not just a synthetic inconvenience.
+
+**Result — best-parameter R² (correctly classified subset):** geometric
+parameters stay reliable under model error — pond_depth 0.99, snow/SSL grain
+radius 0.98, ice_thickness 0.99. The degenerate ones collapse: MYI_bare bubble
+radius 0.11 → −1.5, FYI_bare bubble radius 0.89 → 0.53, open-water wind 0.99 →
+0.69. This confirms with a mismatch test what §4 showed with a crime: trust the
+scattering-geometry retrievals, distrust the rest.
+
+**Result — A7 validated under fire.** Under real model error (C2), median OE
+cost is **2087 with instrument-only S_e vs 287 with model_error=True** — a 7×
+reduction. The field-calibrated covariance keeps the retrieval from becoming
+overconfident exactly when the physics is wrong, which is the condition it was
+built for.
+
+**Bottom line.** Report the pond-depth, grain-size, thickness and young-ice
+results with confidence; caveat the MYI/FYI-bare classification and all bubble/
+brine parameters as inverse-crime-optimistic (real-model-mismatch classification
+~85%, and MYI bare-ice parameters not identifiable). This also sharpens the
+campaign plan: model error bites hardest exactly at the FYI↔MYI and bare-ice
+bubble/brine front, which is where §6 of the program review concentrates.
+
 ## References
 
 - Grenfell, T. C., and B. Light (2007). SHEBA Spectral Albedo. UCAR/NCAR EOL. doi:10.5065/D6765CQ1

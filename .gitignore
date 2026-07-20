@@ -46,3 +46,4 @@ tests/validation_data/parameter_retrieval_results.*
 tests/validation_data/**/figures/
 tests/validation_data/residual_library.npz
 tests/validation_data/**/*_results.json
+tests/validation_data/perturbed_physics_results.json
