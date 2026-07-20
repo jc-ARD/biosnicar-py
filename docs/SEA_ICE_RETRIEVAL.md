@@ -129,12 +129,21 @@ Requires the geo extras: `pip install biosnicar[geo]`.
 
 ```python
 from biosnicar.sea_ice.retrieve import retrieve_sea_ice_batch
+from biosnicar.sea_ice.illumination_context import illumination_context
+
+# Illumination geometry per pixel from acquisition metadata, not a hardcoded
+# default: solzen from lat/lon/time; direct=1 only where the sun is up AND the
+# sky is clear (cloud fraction below threshold), else diffuse.
+solzen, direct = illumination_context(
+    lat, lon, acquired_utc,               # per-pixel lat/lon, one UTC datetime
+    cloud_fraction=cloud,                 # per-pixel 0–1 (or cloudy=<bool mask>)
+)
 
 scene = retrieve_sea_ice_batch(
     image,                                # (H, W, bands) or (N, bands)
     platform="sentinel2",
     observed_band_names=["B2", "B3", "B4", "B8", "B11"],
-    solzen=62, direct=1, known_month=6,
+    solzen=solzen, direct=direct, known_month=6,   # per-pixel arrays, or scalars
     spatial_coords=latlon,                # (H, W, 2) → enables H3 export
     crs="EPSG:32633", transform=affine,   # → enables GeoTIFF export
     method="oe", engine="vectorized",     # batched OE — scene-scale fast path

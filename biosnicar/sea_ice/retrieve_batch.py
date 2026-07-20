@@ -42,9 +42,16 @@ def _predict_batch(model, points, all_names, fixed_extra):
     represented as columns (e.g. `direct`)."""
     if hasattr(model, "predict_batch"):
         return model.predict_batch(points)
+    N = points.shape[0]
+
+    def _extra(i):
+        # per-pixel array fixed params (e.g. a per-pixel `direct`) index by row
+        return {k: (v[i] if (isinstance(v, np.ndarray) and v.shape[:1] == (N,))
+                    else v) for k, v in fixed_extra.items()}
+
     return np.stack([
-        model.predict(**{**dict(zip(all_names, row)), **fixed_extra})
-        for row in points
+        model.predict(**{**dict(zip(all_names, row)), **_extra(i)})
+        for i, row in enumerate(points)
     ])
 
 

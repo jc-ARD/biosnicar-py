@@ -933,11 +933,18 @@ def _run_vectorized_fleet(flat, emulators, max_iter, kwargs):
     known_month = kwargs.get("known_month")
 
     # Shared fixed params (+ direct default), matching retrieve_sea_ice.
+    # solzen/direct may be per-pixel arrays (length N) — e.g. from
+    # illumination_context() — or scalars; keep arrays as-is (subset to the
+    # valid pixels below) and coerce scalars.
     shared_fixed = dict(kwargs.get("fixed_params") or {})
     if kwargs.get("solzen") is not None:
-        shared_fixed["solzen"] = float(kwargs["solzen"])
+        sz = kwargs["solzen"]
+        shared_fixed["solzen"] = (np.asarray(sz, dtype=float) if np.ndim(sz)
+                                  else float(sz))
     if kwargs.get("direct") is not None:
-        shared_fixed["direct"] = int(kwargs["direct"])
+        dr = kwargs["direct"]
+        shared_fixed["direct"] = (np.asarray(dr, dtype=int) if np.ndim(dr)
+                                  else int(dr))
     shared_fixed.setdefault("direct", 1)
 
     # Priors: exclusions -> fleet; season params -> emu_regs; class -> evidence.
@@ -978,9 +985,20 @@ def _run_vectorized_fleet(flat, emulators, max_iter, kwargs):
     if not valid.any():
         return records
 
+    # Subset per-pixel array fixed params (e.g. per-pixel solzen/direct) to the
+    # valid pixels so they align with the observation rows passed downstream.
+    sf = {}
+    for k, v in shared_fixed.items():
+        if isinstance(v, np.ndarray) and v.shape[:1] == (len(flat),):
+            sf[k] = v[valid]
+        else:
+            sf[k] = v
+    obs_unc_v = (obs_unc[valid] if (isinstance(obs_unc, np.ndarray)
+                 and obs_unc.shape[:1] == (len(flat),)) else obs_unc)
+
     try:
         recs = vectorized_oe_fleet(
-            flat[valid], emulators, emu_regs, shared_fixed, obs_unc,
+            flat[valid], emulators, emu_regs, sf, obs_unc_v,
             wavelength_mask, platform, obs_band_names,
             kwargs.get("model_error"), prior_set.class_log_prior,
             _SURFACE_TYPE_DESCRIPTIONS, max_iter=max_iter,
@@ -1039,6 +1057,11 @@ def retrieve_sea_ice_batch(
     **kwargs
         Passed through to :func:`retrieve_sea_ice` (``platform``,
         ``solzen``, ``known_month``, ``model_error``, ``class_priors``, ...).
+        With the vectorised engine, ``solzen`` and ``direct`` may be per-pixel
+        arrays (length N, in flattened row order) as well as scalars — e.g.
+        from :func:`biosnicar.sea_ice.illumination_context.illumination_context`
+        to set illumination geometry from each pixel's location, time and cloud
+        state. Per-pixel arrays require ``engine="vectorized"`` (``method="oe"``).
 
     Returns
     -------
@@ -1097,6 +1120,15 @@ def retrieve_sea_ice_batch(
         )
     if engine == "vectorized":
         raise ValueError(f"engine='vectorized' unavailable: {why}")
+
+    # Per-pixel geometry arrays are only supported by the vectorised engine;
+    # the per-pixel loop path takes scalar solzen/direct.
+    if any(np.ndim(kwargs.get(k)) for k in ("solzen", "direct")
+           if kwargs.get(k) is not None):
+        raise ValueError(
+            "per-pixel solzen/direct arrays require the vectorised engine "
+            f"(method='oe', engine in {{'auto','vectorized'}}); {why}"
+        )
 
     chunks = [flat[i:i + chunksize] for i in range(0, len(flat), chunksize)]
     chunk_records = Parallel(n_jobs=n_jobs)(

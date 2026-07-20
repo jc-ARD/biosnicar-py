@@ -50,6 +50,10 @@ from biosnicar.sea_ice.ice_chart_mapping import (
     WMOIceClass,
     SIGRID3IceClass,
 )
+from biosnicar.sea_ice.illumination_context import (
+    solar_zenith_angle,
+    illumination_context,
+)
 
 __all__ = [
     "blend_pond_fraction",
@@ -70,4 +74,6 @@ __all__ = [
     "classification_summary",
     "WMOIceClass",
     "SIGRID3IceClass",
+    "solar_zenith_angle",
+    "illumination_context",
 ]
