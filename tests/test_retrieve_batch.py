@@ -80,6 +80,45 @@ def test_vectorized_matches_loop_band_mode(fleet, scene_obs):
         [r.surface_type for r in loop]
 
 
+def _assert_scene_identical(a, b):
+    """Every field must match the single-process result exactly (pixels are
+    independent, so chunk-then-concatenate changes nothing numerically)."""
+    assert list(a["surface_type"].values) == list(b["surface_type"].values)
+    for v in ("confidence", "cost", "dfs"):
+        if v in a and v in b:
+            np.testing.assert_allclose(a[v].values, b[v].values,
+                                       rtol=0, atol=1e-9, equal_nan=True)
+    for pv in [k for k in a.data_vars if k.startswith(("param_", "unc_", "prob_"))]:
+        np.testing.assert_allclose(a[pv].values, b[pv].values,
+                                   rtol=0, atol=1e-9, equal_nan=True)
+
+
+def test_vectorized_parallel_matches_single(fleet, scene_obs):
+    """vectorized_parallel=True is bit-identical to the single-process
+    vectorised path — it only fans the same solve out over pixel chunks."""
+    from biosnicar.sea_ice.retrieve import retrieve_sea_ice_batch
+    kw = dict(solzen=60, known_month=7, method="oe", model_error=True)
+    single = retrieve_sea_ice_batch(scene_obs, emulators=fleet, engine="vectorized",
+                                    vectorized_parallel=False, **kw).to_xarray()
+    par = retrieve_sea_ice_batch(scene_obs, emulators=fleet, engine="vectorized",
+                                 vectorized_parallel=True, n_jobs=2, **kw).to_xarray()
+    _assert_scene_identical(par, single)
+
+
+def test_vectorized_parallel_per_pixel_geometry(fleet, scene_obs):
+    """Per-pixel solzen/direct arrays are sliced to each chunk's pixel range and
+    stay aligned — parallel result identical to single-process."""
+    from biosnicar.sea_ice.retrieve import retrieve_sea_ice_batch
+    n = len(scene_obs)
+    kw = dict(solzen=np.linspace(50, 70, n), direct=(np.arange(n) % 2).astype(int),
+              known_month=7, method="oe")
+    single = retrieve_sea_ice_batch(scene_obs, emulators=fleet, engine="vectorized",
+                                    vectorized_parallel=False, **kw).to_xarray()
+    par = retrieve_sea_ice_batch(scene_obs, emulators=fleet, engine="vectorized",
+                                 vectorized_parallel=True, n_jobs=3, **kw).to_xarray()
+    _assert_scene_identical(par, single)
+
+
 def test_class_priors_match_loop(fleet, scene_obs):
     from biosnicar.sea_ice.retrieve import retrieve_sea_ice_batch
     kw = dict(solzen=60, known_month=7, method="oe",
