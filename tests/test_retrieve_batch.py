@@ -119,6 +119,15 @@ def test_vectorized_parallel_per_pixel_geometry(fleet, scene_obs):
     _assert_scene_identical(par, single)
 
 
+def test_fleet_reloadable_guard():
+    """Standard-named fleets reload by name in workers; anything else (or empty)
+    falls back to pickling the passed objects."""
+    from biosnicar.sea_ice.retrieve import _fleet_reloadable
+    assert _fleet_reloadable({"FYI_bare": object(), "FYI_pond": object()})
+    assert not _fleet_reloadable({"a_custom_emulator": object()})
+    assert not _fleet_reloadable({})
+
+
 def test_class_priors_match_loop(fleet, scene_obs):
     from biosnicar.sea_ice.retrieve import retrieve_sea_ice_batch
     kw = dict(solzen=60, known_month=7, method="oe",

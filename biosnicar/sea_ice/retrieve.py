@@ -1010,6 +1010,43 @@ def _run_vectorized_fleet(flat, emulators, max_iter, kwargs):
     return records
 
 
+# Per-worker (per-process) emulator-fleet cache. When the parallel vectorised
+# path fans out over loky processes, each worker loads the standard on-disk
+# fleet by name *once* and reuses it across every chunk it handles — and, since
+# joblib reuses its worker pool across calls, across successive scene retrievals
+# too. This avoids pickling the loaded torch fleet from the parent to each
+# worker on every chunk (the dominant overhead that made the speedup sub-linear).
+_WORKER_FLEET_CACHE: Dict[tuple, dict] = {}
+
+
+def _cached_fleet_by_name(names):
+    """Load (and cache, per process) the standard fleet for ``names``."""
+    key = tuple(names)
+    fleet = _WORKER_FLEET_CACHE.get(key)
+    if fleet is None:
+        from biosnicar.sea_ice.emulator_configs import load_sea_ice_emulators
+        fleet = load_sea_ice_emulators(list(key))
+        _WORKER_FLEET_CACHE[key] = fleet
+    return fleet
+
+
+def _fleet_reloadable(emulators):
+    """True when every emulator is a standard type that a worker can rebuild by
+    name (``load_sea_ice_emulators``), so we can ship names instead of pickling
+    the loaded objects. A custom / non-standard fleet is *not* reloadable — the
+    caller's exact objects must be used, so we fall back to pickling them."""
+    from biosnicar.sea_ice.emulator_configs import SEA_ICE_EMULATOR_CONFIGS
+    return bool(emulators) and all(name in SEA_ICE_EMULATOR_CONFIGS
+                                   for name in emulators)
+
+
+def _vectorized_chunk_worker(flat_chunk, fleet_ref, reload_by_name, max_iter, chunk_kwargs):
+    """joblib worker: resolve the fleet (reload-by-name from the per-process
+    cache, or use the pickled objects) then run the vectorised solve on a chunk."""
+    fleet = _cached_fleet_by_name(fleet_ref) if reload_by_name else fleet_ref
+    return _run_vectorized_fleet(flat_chunk, fleet, max_iter, chunk_kwargs)
+
+
 def _run_vectorized_fleet_parallel(flat, emulators, max_iter, kwargs, n_jobs):
     """Chunked-parallel wrapper around :func:`_run_vectorized_fleet` (roadmap G3+).
 
@@ -1028,6 +1065,12 @@ def _run_vectorized_fleet_parallel(flat, emulators, max_iter, kwargs, n_jobs):
     stack. Per-pixel array inputs (``solzen`` / ``direct`` / ``obs_uncertainty``
     and any per-pixel ``fixed_params``, all length N) are sliced to each chunk's
     pixel range so they stay aligned with the chunk's observation rows.
+
+    For the standard on-disk fleet each worker loads the emulators *by name* once
+    (see :data:`_WORKER_FLEET_CACHE`) rather than receiving them pickled from the
+    parent on every chunk — this removes the marshalling overhead that otherwise
+    caps the speedup. A custom / non-standard fleet (not reconstructible by name)
+    is passed through pickled, unchanged.
     """
     from joblib import Parallel, cpu_count, delayed
 
@@ -1055,9 +1098,14 @@ def _run_vectorized_fleet_parallel(flat, emulators, max_iter, kwargs, n_jobs):
             }
         return ck
 
+    # Ship names (workers reload + cache the fleet) when it's the standard
+    # on-disk set; otherwise pass the loaded objects through pickled.
+    reload_by_name = _fleet_reloadable(emulators)
+    fleet_ref = tuple(sorted(emulators)) if reload_by_name else emulators
+
     chunk_records = Parallel(n_jobs=n_jobs)(
-        delayed(_run_vectorized_fleet)(
-            flat[i0:i1], emulators, max_iter, _chunk_kwargs(i0, i1)
+        delayed(_vectorized_chunk_worker)(
+            flat[i0:i1], fleet_ref, reload_by_name, max_iter, _chunk_kwargs(i0, i1)
         )
         for (i0, i1) in ranges
     )
