@@ -1010,6 +1010,60 @@ def _run_vectorized_fleet(flat, emulators, max_iter, kwargs):
     return records
 
 
+def _run_vectorized_fleet_parallel(flat, emulators, max_iter, kwargs, n_jobs):
+    """Chunked-parallel wrapper around :func:`_run_vectorized_fleet` (roadmap G3+).
+
+    The vectorised engine is single-process; in band mode its per-pixel matrices
+    are tiny (a handful of bands/params), so the batched linear algebra sees no
+    BLAS thread scaling and is bound to a single core. Because every pixel's OE
+    is independent and the per-emulator setup (x_a / S_a / S_e, priors, regs) is
+    pixel-independent, we split the scene into a few *large* contiguous chunks
+    (≈ one per worker — big enough that each chunk's batched solve stays
+    efficient), run :func:`_run_vectorized_fleet` on each in a separate process
+    via joblib, and concatenate the per-pixel records in order.
+
+    The result is **bit-identical** to the single-process path (no cross-pixel
+    coupling to break); it just uses all ``n_jobs`` cores. joblib's default loky
+    backend spawns fresh interpreters, so this is fork-safe with the torch/GDAL
+    stack. Per-pixel array inputs (``solzen`` / ``direct`` / ``obs_uncertainty``
+    and any per-pixel ``fixed_params``, all length N) are sliced to each chunk's
+    pixel range so they stay aligned with the chunk's observation rows.
+    """
+    from joblib import Parallel, cpu_count, delayed
+
+    n = len(flat)
+    workers = cpu_count() if n_jobs in (-1, None) else max(1, int(n_jobs))
+    n_chunks = min(workers, n)
+    if n_chunks <= 1:
+        return _run_vectorized_fleet(flat, emulators, max_iter, kwargs)
+
+    bounds = np.linspace(0, n, n_chunks + 1).astype(int)
+    ranges = [(int(bounds[i]), int(bounds[i + 1]))
+              for i in range(n_chunks) if bounds[i + 1] > bounds[i]]
+
+    def _chunk_kwargs(i0, i1):
+        ck = dict(kwargs)
+        for key in ("solzen", "direct", "obs_uncertainty"):
+            v = ck.get(key)
+            if isinstance(v, np.ndarray) and v.shape[:1] == (n,):
+                ck[key] = v[i0:i1]
+        fp = ck.get("fixed_params")
+        if isinstance(fp, dict):
+            ck["fixed_params"] = {
+                k: (v[i0:i1] if isinstance(v, np.ndarray) and v.shape[:1] == (n,) else v)
+                for k, v in fp.items()
+            }
+        return ck
+
+    chunk_records = Parallel(n_jobs=n_jobs)(
+        delayed(_run_vectorized_fleet)(
+            flat[i0:i1], emulators, max_iter, _chunk_kwargs(i0, i1)
+        )
+        for (i0, i1) in ranges
+    )
+    return [rec for chunk in chunk_records for rec in chunk]
+
+
 def retrieve_sea_ice_batch(
     observed,
     n_jobs=-1,
@@ -1019,6 +1073,7 @@ def retrieve_sea_ice_batch(
     transform=None,
     engine="auto",
     max_iter=20,
+    vectorized_parallel=False,
     **kwargs,
 ):
     """Run :func:`retrieve_sea_ice` over a scene of pixels in parallel.
@@ -1054,6 +1109,15 @@ def retrieve_sea_ice_batch(
         per-pixel known_month, flag_prior_influence).
     max_iter : int
         Gauss-Newton iteration cap for the vectorized engine.
+    vectorized_parallel : bool
+        Opt-in (default ``False`` → single process, unchanged behaviour). When
+        ``True`` *and* the vectorized engine is used, fan the solve out over
+        ``n_jobs`` processes by splitting the scene into large contiguous pixel
+        chunks and concatenating the per-pixel records. Bit-identical to the
+        single-process result (pixels are independent); it just uses more cores.
+        Useful on many-core hosts where band-mode matrices are too small for
+        BLAS threading to help the single-process path. No effect on the loop
+        engine (already per-pixel parallel) or on single-spectrum callers.
     **kwargs
         Passed through to :func:`retrieve_sea_ice` (``platform``,
         ``solzen``, ``known_month``, ``model_error``, ``class_priors``, ...).
@@ -1111,7 +1175,17 @@ def retrieve_sea_ice_batch(
     # ── vectorised OE engine dispatch (roadmap G3) ──
     use_vec, why = _vectorized_compatible(engine, kwargs)
     if use_vec:
-        records = _run_vectorized_fleet(flat, emulators, max_iter, kwargs)
+        if vectorized_parallel and len(flat) > 1:
+            # Opt-in: fan the (single-process) vectorised solve out over pixel
+            # chunks. Each pixel's OE is independent and the per-emulator setup
+            # is pixel-independent, so chunk-then-concatenate is bit-identical to
+            # the single-process path — it just uses more cores. See
+            # _run_vectorized_fleet_parallel.
+            records = _run_vectorized_fleet_parallel(
+                flat, emulators, max_iter, kwargs, n_jobs
+            )
+        else:
+            records = _run_vectorized_fleet(flat, emulators, max_iter, kwargs)
         n_failed = sum(1 for r in records if r is not None and r.get("__failed__"))
         latlon = (np.asarray(spatial_coords, dtype=float).reshape(-1, 2)
                   if spatial_coords is not None else None)
