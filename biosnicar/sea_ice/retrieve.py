@@ -40,6 +40,7 @@ Usage::
     )
 """
 
+import os
 from dataclasses import dataclass, field
 from typing import Dict, Optional
 
@@ -1042,7 +1043,19 @@ def _fleet_reloadable(emulators):
 
 def _vectorized_chunk_worker(flat_chunk, fleet_ref, reload_by_name, max_iter, chunk_kwargs):
     """joblib worker: resolve the fleet (reload-by-name from the per-process
-    cache, or use the pickled objects) then run the vectorised solve on a chunk."""
+    cache, or use the pickled objects) then run the vectorised solve on a chunk.
+
+    Pin torch to a single intra-op thread: N worker processes on an N-core host
+    would otherwise each spin an all-core torch pool (N*N threads over N cores),
+    and the emulator forward passes are the batch's main compute. The band-mode
+    matrices are tiny, so single-threaded per worker costs nothing per worker
+    while letting the *process*-level fan-out use the cores. (BLAS/OpenMP is
+    pinned via the environment set in _run_vectorized_fleet_parallel.)"""
+    try:
+        import torch
+        torch.set_num_threads(1)
+    except Exception:  # noqa: BLE001 — torch optional / already configured
+        pass
     fleet = _cached_fleet_by_name(fleet_ref) if reload_by_name else fleet_ref
     return _run_vectorized_fleet(flat_chunk, fleet, max_iter, chunk_kwargs)
 
@@ -1103,12 +1116,31 @@ def _run_vectorized_fleet_parallel(flat, emulators, max_iter, kwargs, n_jobs):
     reload_by_name = _fleet_reloadable(emulators)
     fleet_ref = tuple(sorted(emulators)) if reload_by_name else emulators
 
-    chunk_records = Parallel(n_jobs=n_jobs)(
-        delayed(_vectorized_chunk_worker)(
-            flat[i0:i1], fleet_ref, reload_by_name, max_iter, _chunk_kwargs(i0, i1)
+    # Pin BLAS/OpenMP to one thread per worker. loky spawns fresh interpreters
+    # that inherit this env, so their numpy/OpenBLAS import single-threaded —
+    # otherwise N worker processes on an N-core host each open an all-core BLAS
+    # pool (N*N threads over N cores → oversubscription, slow and high-variance).
+    # The band-mode solve gets no speed from BLAS threads anyway, so this is
+    # free. Set around the dispatch and restored, so the library doesn't mutate
+    # the caller's environment. (torch is pinned inside _vectorized_chunk_worker.)
+    _thread_vars = ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS",
+                    "NUMEXPR_NUM_THREADS", "VECLIB_MAXIMUM_THREADS")
+    _saved = {k: os.environ.get(k) for k in _thread_vars}
+    for k in _thread_vars:
+        os.environ[k] = "1"
+    try:
+        chunk_records = Parallel(n_jobs=n_jobs)(
+            delayed(_vectorized_chunk_worker)(
+                flat[i0:i1], fleet_ref, reload_by_name, max_iter, _chunk_kwargs(i0, i1)
+            )
+            for (i0, i1) in ranges
         )
-        for (i0, i1) in ranges
-    )
+    finally:
+        for k, v in _saved.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
     return [rec for chunk in chunk_records for rec in chunk]
 
 
