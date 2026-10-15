@@ -363,7 +363,7 @@ retrieve_sea_ice(observed=obs, known_month=6, prior_sources=())   # none
 ```
 
 **Leverage is regime-dependent** — and this is why C1 became worth building only
-after the [OE model-error work](OE_MODEL_ERROR_EXPERIMENT.md): a prior can only
+after the [OE model-error work](archive/OE_MODEL_ERROR_EXPERIMENT.md): a prior can only
 outvote the spectrum by its odds ratio. In raw full-spectrum OE the evidence
 gaps are ~100 nats (over-counted, §2.5), so an honest few-nat prior is futile;
 in band mode and in `model_error=True` spectral mode the gaps are a few nats, so

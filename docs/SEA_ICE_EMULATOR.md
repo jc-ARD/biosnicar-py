@@ -111,7 +111,7 @@ result.to_outputs().to_platform("sentinel2")
 > proxy) instead of the degenerate (snow_depth, grain_radius) pair; physical `snow_depth` (m) is
 > derived into `result.parameters`.  `young_ice` retrieves `ice_thickness_cm` (log-conditioned);
 > `ice_thickness` (m) is derived likewise.  Young ice uses the thin-slab two-stream forward model
-> (layer_type=6, see [young-ice-build-spec.md](young-ice-build-spec.md)) and maps to WMO codes
+> (layer_type=6, see [young-ice-build-spec.md](archive/young-ice-build-spec.md)) and maps to WMO codes
 > SA/SB/SI/SJ resolved by thickness.  `young_ice` is excluded from the candidate fleet when
 > `known_month` is in May–September.
 

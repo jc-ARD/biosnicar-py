@@ -824,7 +824,7 @@ def calc_correction_fresnel_layer(
     # (~2.5–4.0 µm).  Outside this window the complex-arcsin criterion misfires
     # at near-grazing SZA because any nonzero k causes arcsin(n+ik).real to dip
     # just below π/2, spuriously triggering the override on normal-ice bands.
-    # See docs/TIR_CRITERION_BUG.md.
+    # See docs/archive/TIR_CRITERION_BUG.md.
     wvl = 0.205 + np.arange(nbr_wvl) * 0.01
     in_reststrahlen = (wvl >= 2.5) & (wvl <= 4.0)
     tir = in_reststrahlen & (beam_angle >= critical_angle[:nbr_wvl].real)

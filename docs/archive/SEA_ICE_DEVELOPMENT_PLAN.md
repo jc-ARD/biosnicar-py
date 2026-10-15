@@ -17,8 +17,8 @@ under a **dual mandate**:
 
 It is grounded in the validated state and the limitations surfaced by the
 2026-06 audit and the Smith/MOSAiC independent hold-out (see
-[sea_ice_validation.md](sea_ice_validation.md) §6.4–6.5,
-[SEA_ICE_RETRIEVAL.md](SEA_ICE_RETRIEVAL.md)).
+[sea_ice_validation.md](../sea_ice_validation.md) §6.4–6.5,
+[SEA_ICE_RETRIEVAL.md](../SEA_ICE_RETRIEVAL.md)).
 
 ---
 

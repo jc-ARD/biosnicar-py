@@ -134,7 +134,7 @@ def fit_model_error(residuals, masks, n_eofs=3, eof_min_rows=30,
     n_eofs : int
         Number of EOFs for the correlated term. Default 3 because the field
         residuals concentrate ~94% of their variance in the first 3 modes
-        (A7 step-1 analysis, docs/OE_MODEL_ERROR_EXPERIMENT.md §4); more modes
+        (A7 step-1 analysis, docs/archive/OE_MODEL_ERROR_EXPERIMENT.md §4); more modes
         fit calibration noise, fewer under-model the correlation. It is also
         the effective rank the correlation collapses to (~2-3 DOF over 60 VIS
         bands), so 3 spans the real structure without overfitting.
@@ -210,7 +210,7 @@ def fit_model_error_gap_tolerant(residuals, masks, n_eofs=3, min_band_rows=20,
     The full-coverage SVD in :func:`fit_model_error` requires every EOF row to
     span the whole domain, so a domain reaching into the SWIR is fitted from
     only the handful of full-range campaigns — which regresses or collapses
-    (see docs/OE_MODEL_ERROR_EXPERIMENT.md §8). This variant instead builds the
+    (see docs/archive/OE_MODEL_ERROR_EXPERIMENT.md §8). This variant instead builds the
     (uncentred) second-moment matrix **pairwise / available-case**: entry
     ``M[a,b]`` averages ``x_a·x_b`` over exactly the rows that observed *both*
     bands a and b. So a VIS-only row contributes to the VIS block, a VIS+SWIR

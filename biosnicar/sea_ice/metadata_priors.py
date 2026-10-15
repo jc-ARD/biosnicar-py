@@ -31,7 +31,7 @@ Honesty about magnitudes:
 * Soft class log-prior magnitudes are conservative expert-judgment defaults
   (~1 nat ≈ 3:1), documented and overridable — they are priors, not
   measurements. Band-mode evidence gaps sit in the few-nat range
-  (docs/OE_MODEL_ERROR_EXPERIMENT.md §8b), so a ~1-nat prior has real but
+  (docs/archive/OE_MODEL_ERROR_EXPERIMENT.md §8b), so a ~1-nat prior has real but
   bounded leverage; formal calibration of these values is roadmap A6/C6.
 """
 
@@ -47,7 +47,7 @@ SURFACE_TYPES = (
 # Deliberately small: it must nudge, not override, the spectrum. The value is
 # order-of-magnitude expert judgement, not calibrated — it is set to the scale
 # of the band-mode / model_error evidence gaps (a few nats; see
-# docs/OE_MODEL_ERROR_EXPERIMENT.md §8b) so it has leverage there yet stays
+# docs/archive/OE_MODEL_ERROR_EXPERIMENT.md §8b) so it has leverage there yet stays
 # powerless against a confident spectrum. Formal calibration is roadmap A6;
 # callers can override per class via retrieve_sea_ice(class_priors=...).
 SOFT_NAT = 1.0
