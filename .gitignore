@@ -47,3 +47,6 @@ tests/validation_data/**/figures/
 tests/validation_data/residual_library.npz
 tests/validation_data/**/*_results.json
 tests/validation_data/perturbed_physics_results.json
+
+# Greenland ASD experiment outputs — regenerable via scripts/experiments/greenland_*.py
+scripts/experiments/greenland_asd_results/
