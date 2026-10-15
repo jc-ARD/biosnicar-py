@@ -12,11 +12,11 @@ import os
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from miepython import mie
 from scipy.signal import savgol_filter
 
 from biosnicar.classes.bio_optical_config import BioOpticalConfig
 from biosnicar.optical_properties.van_diedenhoven import calc_ssa_and_g
+from biosnicar.utils.optional_deps import import_miepython
 
 
 def run_biooptical_model(input_file):
@@ -336,6 +336,7 @@ def calculate_ssps(bio_optical_config, k_rescaled, wvl_rescaled, n_rescaled):
 
     if bio_optical_config.Mie:
 
+        mie = import_miepython().mie
         X = 2 * np.pi * r / wvl  # unitless
         qext, qsca, qback, g = mie(n_algae - 1j * k_algae, X)
         qabs = qext - qsca

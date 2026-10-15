@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on `Keep a Changelog <https://keepachangelog.com/en/1.0.0/>`_,
 and this project adheres to `Semantic Versioning <https://semver.org/spec/v2.0.0.html>`_.
 
+Unreleased
+-----------
+
+Changed
+~~~~~~~
+- **``miepython`` is no longer a core dependency** (`#116
+  <https://github.com/jmcook1186/biosnicar-py/issues/116>`_).
+
+  It is only needed to *generate* single scattering property files (the
+  bio-optical model and ``ssps_spheres_generator``); the forward model reads the
+  precomputed files in ``data/``.  ``mie_coated_water_spheres.py`` imported it
+  but never used it, which dragged it — and therefore numba and llvmlite — onto
+  the core import path.  That dead import is removed and the two genuine call
+  sites now import lazily via ``biosnicar.utils.optional_deps.import_miepython``,
+  raising an ImportError with install instructions if it is missing.
+
+  ``miepython`` moved to a new ``mie`` extra (``pip install biosnicar[mie]``).
+  This unblocks installation on platforms with no numba/llvmlite wheels, notably
+  Intel (x86_64) macOS, where llvmlite ≥ 0.46 and numba ≥ 0.63 are arm64-only.
+
 v0.2-sea-ice (2026-06-03)
 --------------------------
 

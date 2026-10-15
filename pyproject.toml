@@ -31,7 +31,6 @@ classifiers = [
 dependencies = [
     "numpy",
     "matplotlib",
-    "miepython",
     "pandas",
     "pyyaml",
     "scipy",
@@ -40,6 +39,12 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# Mie solver, needed only to *generate* single scattering property files
+# (bio-optical model, ssps_spheres_generator). The forward model reads the
+# precomputed files in data/ and does not need it. Kept out of the core
+# dependencies because it pulls in numba/llvmlite, which have no wheels on
+# some platforms (e.g. Intel macOS).
+mie     = ["miepython"]
 inverse = ["scikit-learn>=1.0"]
 mcmc    = ["emcee>=3"]
 app     = ["streamlit", "plotly"]
@@ -54,7 +59,7 @@ geo     = [
     "h3>=3.7",
     "geopandas>=0.14",
 ]
-dev     = ["pytest", "scikit-learn>=1.0", "emcee>=3", "streamlit", "plotly", "openpyxl>=3.1"]
+dev     = ["pytest", "scikit-learn>=1.0", "emcee>=3", "streamlit", "plotly", "openpyxl>=3.1", "miepython"]
 
 [project.urls]
 "Bug Tracker"   = "https://github.com/jmcook1186/biosnicar-py/issues"

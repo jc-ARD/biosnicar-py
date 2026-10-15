@@ -36,6 +36,29 @@ pip install -r requirements.txt
 pip install -e .
 ```
 
+Optional extras: `inverse` (retrievals), `mcmc`, `geo` (spatial batch retrieval),
+`app` (web GUI), and `mie` (regenerating single scattering property files —
+see below).
+
+### Generating your own optical properties
+
+The forward model reads the precomputed single scattering property files in
+`data/`, so a plain install is all you need to run it. Regenerating those files
+with the bio-optical model or `ssps_spheres_generator` additionally needs
+[miepython](https://github.com/scottprahl/miepython):
+
+```bash
+pip install biosnicar[mie]
+```
+
+`miepython` depends on numba/llvmlite, which do not publish wheels for every
+platform — notably Intel (x86_64) macOS from llvmlite 0.46 / numba 0.63 onward.
+On those machines pin to the last versions that do ship wheels:
+
+```bash
+pip install "numba<0.63" "llvmlite<0.46" miepython
+```
+
 ## Quick start
 
 ```python
