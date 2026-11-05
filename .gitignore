@@ -50,3 +50,6 @@ tests/validation_data/perturbed_physics_results.json
 
 # Greenland ASD experiment outputs — regenerable via scripts/experiments/greenland_*.py
 scripts/experiments/greenland_asd_results/
+
+# stray working-copy patches (not part of the project)
+*.patch

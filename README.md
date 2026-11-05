@@ -16,6 +16,13 @@ BioSNICAR computes 480-band spectral albedo (0.2–5.0 µm) from the physical pr
 
 - **Forward model** — multi-layer ice/snow with arbitrary impurity profiles, liquid water, grain shape corrections
 - **Sea ice** — first-year/multiyear Arctic sea ice (Maxwell-Garnett brine effective medium), melt ponds, semi-transparent young ice, and open water (`biosnicar.sea_ice`)
+> **Sea ice is a research extension on its own branch.** It is not on `master`,
+> and its validation does not generalise as far as the headline numbers suggest:
+> validated for the spring/cold Arctic in VIS-NIR, but melting summer snow is
+> optically degenerate with bare ice and the fit roughly doubles in RMS out of
+> distribution. Read [ROADMAP.md](ROADMAP.md) before quoting any sea-ice
+> retrieval result.
+
 - **Sea ice retrieval** — classify seven surface types and retrieve their physical properties from spectra or satellite bands, with quality flags, WMO/SIGRID-3 codes, and batch scene processing ([docs/SEA_ICE_RETRIEVAL.md](docs/SEA_ICE_RETRIEVAL.md))
 - **Parameter sweeps** — Cartesian product over any input parameter, returns a pandas DataFrame
 - **Platform bands** — map spectral albedo onto 8 satellite/GCM platforms (Sentinel-2/3, Landsat 8, MODIS, CESM, MAR, HadCM3) with spectral indices
@@ -342,6 +349,10 @@ The default configuration is in `biosnicar/inputs.yaml`. A guide to choosing phy
 | Full user guide | [biosnicar.vercel.app](https://biosnicar.vercel.app) |
 | **Sea ice extension** | [docs/sea_ice.md](docs/sea_ice.md) |
 | **Sea ice retrieval (end-to-end)** | [docs/SEA_ICE_RETRIEVAL.md](docs/SEA_ICE_RETRIEVAL.md) |
+| **Sea ice roadmap and honest baseline** | [ROADMAP.md](ROADMAP.md) |
+| Sea ice validation reports | [docs/sea_ice_validation.md](docs/sea_ice_validation.md), `docs/archive/sea_ice_validation_*` |
+| Sea ice emulator | [docs/SEA_ICE_EMULATOR.md](docs/SEA_ICE_EMULATOR.md) |
+| Superseded design notes and experiment records | [docs/archive/](docs/archive/) |
 | Band convolution | [docs/BANDS.md](docs/BANDS.md) |
 | Emulator | [docs/EMULATOR.md](docs/EMULATOR.md) |
 | Inversion | [docs/INVERSION.md](docs/INVERSION.md) |
