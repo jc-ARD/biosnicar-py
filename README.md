@@ -16,8 +16,8 @@ BioSNICAR computes 480-band spectral albedo (0.2–5.0 µm) from the physical pr
 
 - **Forward model** — multi-layer ice/snow with arbitrary impurity profiles, liquid water, grain shape corrections
 - **Sea ice** — first-year/multiyear Arctic sea ice (Maxwell-Garnett brine effective medium), melt ponds, semi-transparent young ice, and open water (`biosnicar.sea_ice`)
-> **Sea ice is a research extension on its own branch.** It is not on `master`,
-> and its validation does not generalise as far as the headline numbers suggest:
+> **Sea ice is a research extension.** It is on `master` as of November 2026,
+> but its validation does not generalise as far as the headline numbers suggest:
 > validated for the spring/cold Arctic in VIS-NIR, but melting summer snow is
 > optically degenerate with bare ice and the fit roughly doubles in RMS out of
 > distribution. Read [ROADMAP.md](ROADMAP.md) before quoting any sea-ice

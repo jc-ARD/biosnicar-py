@@ -13,9 +13,11 @@ the model-error arc is
 validation reports are [docs/sea_ice_validation.md](docs/sea_ice_validation.md)
 and the `sea_ice_validation_*` documents in `docs/archive/`.
 
-> **Branch note.** The sea-ice extension lives on the branch descending from
-> `feature/sea-ice-mvp`; `master` does not contain it. Check out the sea-ice
-> branch before expecting any of `biosnicar.sea_ice` to exist.
+> **Branch note.** The sea-ice line was merged into `master` in November 2026
+> (fast-forward from the branch descending from `feature/sea-ice-mvp`), so
+> `biosnicar.sea_ice` is available on a default clone. Several side branches —
+> the vectorised-parallel engine experiments, `planet-data`, `fix-tir-criterion`
+> — still carry commits that are not on `master`.
 
 ---
 
