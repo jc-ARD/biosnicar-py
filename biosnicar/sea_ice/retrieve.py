@@ -1010,6 +1010,108 @@ def _run_vectorized_fleet(flat, emulators, max_iter, kwargs):
     return records
 
 
+# Per-worker (per-process) emulator-fleet cache. When the parallel vectorised
+# path fans out over loky processes, each worker loads the standard on-disk
+# fleet by name *once* and reuses it across every chunk it handles — and, since
+# joblib reuses its worker pool across calls, across successive scene retrievals
+# too. This avoids pickling the loaded torch fleet from the parent to each
+# worker on every chunk (the dominant overhead that made the speedup sub-linear).
+_WORKER_FLEET_CACHE: Dict[tuple, dict] = {}
+
+
+def _cached_fleet_by_name(names):
+    """Load (and cache, per process) the standard fleet for ``names``."""
+    key = tuple(names)
+    fleet = _WORKER_FLEET_CACHE.get(key)
+    if fleet is None:
+        from biosnicar.sea_ice.emulator_configs import load_sea_ice_emulators
+        fleet = load_sea_ice_emulators(list(key))
+        _WORKER_FLEET_CACHE[key] = fleet
+    return fleet
+
+
+def _fleet_reloadable(emulators):
+    """True when every emulator is a standard type that a worker can rebuild by
+    name (``load_sea_ice_emulators``), so we can ship names instead of pickling
+    the loaded objects. A custom / non-standard fleet is *not* reloadable — the
+    caller's exact objects must be used, so we fall back to pickling them."""
+    from biosnicar.sea_ice.emulator_configs import SEA_ICE_EMULATOR_CONFIGS
+    return bool(emulators) and all(name in SEA_ICE_EMULATOR_CONFIGS
+                                   for name in emulators)
+
+
+def _vectorized_chunk_worker(flat_chunk, fleet_ref, reload_by_name, max_iter, chunk_kwargs):
+    """joblib worker: resolve the fleet (reload-by-name from the per-process
+    cache, or use the pickled objects) then run the vectorised solve on a chunk."""
+    fleet = _cached_fleet_by_name(fleet_ref) if reload_by_name else fleet_ref
+    return _run_vectorized_fleet(flat_chunk, fleet, max_iter, chunk_kwargs)
+
+
+def _run_vectorized_fleet_parallel(flat, emulators, max_iter, kwargs, n_jobs):
+    """Chunked-parallel wrapper around :func:`_run_vectorized_fleet` (roadmap G3+).
+
+    The vectorised engine is single-process; in band mode its per-pixel matrices
+    are tiny (a handful of bands/params), so the batched linear algebra sees no
+    BLAS thread scaling and is bound to a single core. Because every pixel's OE
+    is independent and the per-emulator setup (x_a / S_a / S_e, priors, regs) is
+    pixel-independent, we split the scene into a few *large* contiguous chunks
+    (≈ one per worker — big enough that each chunk's batched solve stays
+    efficient), run :func:`_run_vectorized_fleet` on each in a separate process
+    via joblib, and concatenate the per-pixel records in order.
+
+    The result is **bit-identical** to the single-process path (no cross-pixel
+    coupling to break); it just uses all ``n_jobs`` cores. joblib's default loky
+    backend spawns fresh interpreters, so this is fork-safe with the torch/GDAL
+    stack. Per-pixel array inputs (``solzen`` / ``direct`` / ``obs_uncertainty``
+    and any per-pixel ``fixed_params``, all length N) are sliced to each chunk's
+    pixel range so they stay aligned with the chunk's observation rows.
+
+    For the standard on-disk fleet each worker loads the emulators *by name* once
+    (see :data:`_WORKER_FLEET_CACHE`) rather than receiving them pickled from the
+    parent on every chunk — this removes the marshalling overhead that otherwise
+    caps the speedup. A custom / non-standard fleet (not reconstructible by name)
+    is passed through pickled, unchanged.
+    """
+    from joblib import Parallel, cpu_count, delayed
+
+    n = len(flat)
+    workers = cpu_count() if n_jobs in (-1, None) else max(1, int(n_jobs))
+    n_chunks = min(workers, n)
+    if n_chunks <= 1:
+        return _run_vectorized_fleet(flat, emulators, max_iter, kwargs)
+
+    bounds = np.linspace(0, n, n_chunks + 1).astype(int)
+    ranges = [(int(bounds[i]), int(bounds[i + 1]))
+              for i in range(n_chunks) if bounds[i + 1] > bounds[i]]
+
+    def _chunk_kwargs(i0, i1):
+        ck = dict(kwargs)
+        for key in ("solzen", "direct", "obs_uncertainty"):
+            v = ck.get(key)
+            if isinstance(v, np.ndarray) and v.shape[:1] == (n,):
+                ck[key] = v[i0:i1]
+        fp = ck.get("fixed_params")
+        if isinstance(fp, dict):
+            ck["fixed_params"] = {
+                k: (v[i0:i1] if isinstance(v, np.ndarray) and v.shape[:1] == (n,) else v)
+                for k, v in fp.items()
+            }
+        return ck
+
+    # Ship names (workers reload + cache the fleet) when it's the standard
+    # on-disk set; otherwise pass the loaded objects through pickled.
+    reload_by_name = _fleet_reloadable(emulators)
+    fleet_ref = tuple(sorted(emulators)) if reload_by_name else emulators
+
+    chunk_records = Parallel(n_jobs=n_jobs)(
+        delayed(_vectorized_chunk_worker)(
+            flat[i0:i1], fleet_ref, reload_by_name, max_iter, _chunk_kwargs(i0, i1)
+        )
+        for (i0, i1) in ranges
+    )
+    return [rec for chunk in chunk_records for rec in chunk]
+
+
 def retrieve_sea_ice_batch(
     observed,
     n_jobs=-1,
@@ -1019,6 +1121,7 @@ def retrieve_sea_ice_batch(
     transform=None,
     engine="auto",
     max_iter=20,
+    vectorized_parallel=False,
     **kwargs,
 ):
     """Run :func:`retrieve_sea_ice` over a scene of pixels in parallel.
@@ -1054,6 +1157,15 @@ def retrieve_sea_ice_batch(
         per-pixel known_month, flag_prior_influence).
     max_iter : int
         Gauss-Newton iteration cap for the vectorized engine.
+    vectorized_parallel : bool
+        Opt-in (default ``False`` → single process, unchanged behaviour). When
+        ``True`` *and* the vectorized engine is used, fan the solve out over
+        ``n_jobs`` processes by splitting the scene into large contiguous pixel
+        chunks and concatenating the per-pixel records. Bit-identical to the
+        single-process result (pixels are independent); it just uses more cores.
+        Useful on many-core hosts where band-mode matrices are too small for
+        BLAS threading to help the single-process path. No effect on the loop
+        engine (already per-pixel parallel) or on single-spectrum callers.
     **kwargs
         Passed through to :func:`retrieve_sea_ice` (``platform``,
         ``solzen``, ``known_month``, ``model_error``, ``class_priors``, ...).
@@ -1111,7 +1223,17 @@ def retrieve_sea_ice_batch(
     # ── vectorised OE engine dispatch (roadmap G3) ──
     use_vec, why = _vectorized_compatible(engine, kwargs)
     if use_vec:
-        records = _run_vectorized_fleet(flat, emulators, max_iter, kwargs)
+        if vectorized_parallel and len(flat) > 1:
+            # Opt-in: fan the (single-process) vectorised solve out over pixel
+            # chunks. Each pixel's OE is independent and the per-emulator setup
+            # is pixel-independent, so chunk-then-concatenate is bit-identical to
+            # the single-process path — it just uses more cores. See
+            # _run_vectorized_fleet_parallel.
+            records = _run_vectorized_fleet_parallel(
+                flat, emulators, max_iter, kwargs, n_jobs
+            )
+        else:
+            records = _run_vectorized_fleet(flat, emulators, max_iter, kwargs)
         n_failed = sum(1 for r in records if r is not None and r.get("__failed__"))
         latlon = (np.asarray(spatial_coords, dtype=float).reshape(-1, 2)
                   if spatial_coords is not None else None)
