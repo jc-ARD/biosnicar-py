@@ -116,11 +116,14 @@ The effective refractive index n_eff + ik_eff is obtained via √ε_eff. The inc
 
 ### Air bubble scattering
 
-Sea ice also contains air bubbles whose scattering dominates the NIR optical depth. The air volume fraction is inferred from the density balance:
+Sea ice also contains air bubbles whose scattering dominates the NIR optical depth. The air volume fraction is the gas half of the same Cox & Weeks (1983) density balance that gives ν_b, evaluated at the layer's bulk density ρ_si (g/cm³):
 
 ```
-ν_air = (917 − ρ_si + (ρ_brine − 917) × ν_b) / 917
+ν_air = 1 − ρ_si/ρ_i + ρ_si × S × F2(T)/F1(T)
 ```
+
+Because ν_b and ν_air come from one balance at one density, they are mutually consistent by construction. Earlier versions computed ν_b bubble-free and then took ν_air from a separate balance,
+`ν_air = (917 − ρ_si + (ρ_brine − 917) × ν_b) / 917`, which used a Frankenstein & Garner-derived brine density — two phase models describing the same air, only one of which ν_b had assumed.
 
 Scattering coefficients are looked up from the existing `bubbly_air.npz` LUT (pre-computed Mie theory for air bubbles in pure ice). *MVP approximation*: the effective-medium correction to bubble scattering (host RI changes slightly with brine content) is < 5% and is neglected.
 
@@ -173,7 +176,9 @@ non-zero only in the blue/green. Typical BBA: 0.02 at SZA 20°, 0.06–0.07 at
 | Approximation | Effect | When it matters |
 |---|---|---|
 | Liquidus S_b(T) derived from F&G (1967) brine volume by salt balance (not a direct Assur fit) | Within a few psu of accepted values for −2 to −15 °C; saturates against the ~233 psu eutectic below ≈−18 °C, where inverting a volume fit is least reliable | Very cold ice (< −18 °C) |
-| CW83 gas-free brine volume + separate density-balance air fraction | ~5% brine-volume overestimate vs the bulk-density-consistent CW83 form | Cold, dense ice |
+| ~~CW83 gas-free brine volume + separate density-balance air fraction~~ | **Fixed 2026-11-05.** ν_b and ν_air now both come from CW83 at the layer bulk density. The overestimate was 1–9% across the shipped presets | — |
+| ~~Absorption ignored air content~~ | **Fixed 2026-11-05.** Absorption was that of the ice+brine phase applied across the whole layer, so it did not fall as the layer became more porous (~82 m⁻¹ from 920 down to 500 kg/m³). Now scaled by (1 − ν_air) | — |
+| Bubble scattering linear in ν_air | Independent-scatterer assumption from a single-bubble LUT. Bubbles are 100–1000 µm against 0.2–5 µm light, so inter-bubble clearance stays many wavelengths and the approximation holds well into high porosity | Untested above ~15% air |
 | CW83 cold-branch polynomial clamped at −30 °C | No brine-volume change below −30 °C (polynomial validity limit) | Extreme winter T < −30 °C |
 
 ### Sea ice (layer_type=4)
@@ -217,6 +222,14 @@ Real Arctic melt pond floors are dark because of three co-occurring processes:
 3. **Melt-season concentration of atmospheric BC**: Light et al. (1998, JGR 103, 21817) measured light-absorbing particle concentrations of 100–2000 ng/g in Arctic sea ice surface layers, with the highest values in biologically-active melt layers. Marks & King (2013, *The Cryosphere* 7, 1213–1228) found median values of 100–500 ppb in surface sea ice, with upper-percentile values exceeding 1000 ppb in aged or biologically-active surface layers.
 
 ### Calibration against Morassutti (1995)
+
+> **Stale as of 2026-11-05.** Every number in this subsection was produced
+> before the air-fraction, absorption and LUT-density fixes, which move pond
+> BBA by roughly +10% on the shipped presets. The *reasoning* — that the floor
+> needs an explicit absorber, and that BC is a proxy for a mixture — still
+> holds, but the fitted values (BC = 1000 ppb, rho = 895) are an optimum of the
+> old forward model and the sweeps below should be re-run before either is
+> quoted again. See the open-items table in `ROADMAP.md`.
 
 Systematic calibration was performed against Morassutti (1995) melt pond spectral albedo (NSIDC G01169, doi:10.7265/N55Q4T1C), 504 records in 6 spectral bands (400–1000 nm).
 

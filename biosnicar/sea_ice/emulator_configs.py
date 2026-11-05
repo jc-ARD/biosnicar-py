@@ -49,6 +49,11 @@ BAND_MASKS = {
 FYI_BARE_S_REF = 6.0   # psu — typical FYI drained-layer salinity
 MYI_BARE_S_REF = 2.0   # psu — typical desalinated MYI
 
+# DL bulk density used by _transform_myi_bare.  The inversion must be done at
+# the same density the forward model will use for that layer, or the sampled
+# brine_volume_fraction is not the brine volume the model actually sees.
+_MYI_DL_RHO = 850.0
+
 
 def _snap(rds):
     """Snap grain radius to nearest granular-ice LUT grid entry.
@@ -75,9 +80,21 @@ def _transform_fyi_bare(p):
     degenerate (T, S) pair.  Temperature is recovered by inverting the
     Cox & Weeks equation at the fixed reference salinity FYI_BARE_S_REF=6 psu.
     The IL salinity is set to half the reference (drainage gradient).
+
+    The inversion is done **at the sampled DL density**, because the forward
+    model now takes bulk density into account when computing brine volume.
+    Inverting the bubble-free relation instead would make the forward model
+    compute some other Vb than the one sampled — at rho_DL=820 kg/m3 roughly
+    11% lower — so ``brine_volume_fraction`` would name the brine volume of
+    hypothetical bubble-free ice rather than of this layer, and would become
+    degenerate with ``rho_DL``.  The whole point of the reparameterisation is
+    that it is not.
     """
     from biosnicar.sea_ice.brine_volume import invert_brine_volume
-    T   = invert_brine_volume(p["brine_volume_fraction"], FYI_BARE_S_REF)
+    T   = invert_brine_volume(
+        p["brine_volume_fraction"], FYI_BARE_S_REF,
+        bulk_density_kg_m3=p["rho_DL"],
+    )
     bbl = p["sea_ice_bubble_radius"]
     return dict(
         layer_type=[4, 4],
@@ -142,10 +159,15 @@ def _transform_myi_bare(p):
     """Bare MYI: lower salinity, larger bubbles, slightly lower IL density.
 
     Primary parameter is ``brine_volume_fraction`` (Vb) rather than (T, S).
-    Temperature is recovered via Cox & Weeks inversion at MYI_BARE_S_REF=2 psu.
+    Temperature is recovered via Cox & Weeks inversion at MYI_BARE_S_REF=2 psu,
+    at the DL density of 850 kg/m3 the forward model uses for this layer (see
+    ``_transform_fyi_bare`` for why the density has to match).
     """
     from biosnicar.sea_ice.brine_volume import invert_brine_volume
-    T   = invert_brine_volume(p["brine_volume_fraction"], MYI_BARE_S_REF)
+    T   = invert_brine_volume(
+        p["brine_volume_fraction"], MYI_BARE_S_REF,
+        bulk_density_kg_m3=_MYI_DL_RHO,
+    )
     bbl = p["sea_ice_bubble_radius"]
     return dict(
         layer_type=[4, 4],
@@ -205,11 +227,16 @@ SEA_ICE_EMULATOR_CONFIGS = {
         "description": "Winter/spring bare first-year ice (no snow, no SSL)",
         "band_mask": "vis_only",
         # (T, S) replaced by brine_volume_fraction to eliminate degeneracy.
-        # Vb bounds correspond to T in [-22, -2.1]°C at S_ref=FYI_BARE_S_REF=6 psu.
-        # Post-hoc T recovery: T = invert_brine_volume(Vb, FYI_BARE_S_REF)
+        # Vb bounds correspond to T in [-22, -2.1]°C at S_ref=FYI_BARE_S_REF=6 psu,
+        # intersected over rho_DL in [820, 900] so every sampled (Vb, rho_DL)
+        # pair is invertible.  The upper bound was 0.141 while brine volume was
+        # computed bubble-free; that value is not reachable in ice that holds
+        # air, so it described nothing the forward model could produce.
+        # Post-hoc T recovery:
+        #   T = invert_brine_volume(Vb, FYI_BARE_S_REF, bulk_density_kg_m3=rho_DL)
         "vb_s_ref": FYI_BARE_S_REF,   # for seasonal brine-volume priors
         "params": {
-            "brine_volume_fraction":  (0.019, 0.141),
+            "brine_volume_fraction":  (0.019, 0.123),
             "sea_ice_bubble_radius":  (50.0,  1000.0),
             "black_carbon":           (0.0,   5000.0),
             "rho_DL":                 (820.0, 900.0),
@@ -270,7 +297,9 @@ SEA_ICE_EMULATOR_CONFIGS = {
         # Vb bounds correspond to T in [-22, -2.1]°C at S_ref=MYI_BARE_S_REF=2 psu.
         "vb_s_ref": MYI_BARE_S_REF,   # for seasonal brine-volume priors
         "params": {
-            "brine_volume_fraction":  (0.0065, 0.045),  # T in [-21, -2.2]°C at S=2 psu
+            # T in [-21, -2.2]°C at S=2 psu, at the DL density of 850 kg/m³.
+            # Upper bound was 0.045 under the bubble-free relation.
+            "brine_volume_fraction":  (0.0065, 0.042),
             "sea_ice_bubble_radius":  (200.0, 2000.0),
             "black_carbon":           (0.0,   5000.0),
             "solzen":                 (20,    80),

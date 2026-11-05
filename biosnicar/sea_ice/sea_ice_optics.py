@@ -2,16 +2,18 @@
 
 Physics pipeline
 ----------------
-1. Brine volume fraction ν_b via Cox & Weeks (1983).
+1. Brine volume fraction ν_b via Cox & Weeks (1983), from the layer's
+   temperature, salinity *and bulk density*.
 2. Brine complex RI via `brine_optics.compute_brine_rfidx`.
 3. Pure-ice complex RI from the Picard 2016 variant in rfidx_ice.npz.
 4. Effective ice+brine RI via Maxwell-Garnett mixing.
 5. Absorption coefficient from imaginary part of effective RI.
-6. Scattering from air bubbles: volume fraction inferred from bulk density
-   and brine fraction; scattering coefficients from the bubbly_air LUT
-   (pre-computed for air bubbles in pure ice — valid MVP approximation;
-   the effective-medium correction to bubble scattering is < 3% for
-   ν_b < 0.15 and is deferred to a future version).
+6. Scattering from air bubbles: gas volume fraction ν_air via the Cox & Weeks
+   gas equation — the other half of the step-1 density balance, so ν_b and
+   ν_air are mutually consistent by construction.  Scattering coefficients
+   from the bubbly_air LUT (pre-computed for air bubbles in pure ice — valid
+   MVP approximation; the effective-medium correction to bubble scattering is
+   < 3% for ν_b < 0.15 and is deferred to a future version).
 7. Combined (τ, ω, g) per metre of sea ice thickness.
 
 Approximations documented here
@@ -24,6 +26,13 @@ Approximations documented here
   extrapolated to brine salinities up to ~200 psu.  See brine_optics.py.
 - Gas (air) inside brine pockets is neglected; sea ice gas pockets are much
   smaller than air bubbles and contribute negligible scattering.
+- Bubble scattering is taken linear in ν_air (single-bubble LUT × volume
+  fraction), i.e. bubbles scatter independently.  At the LUT's 700 kg/m³ floor
+  the layer is ~21.5% air; inter-bubble clearance there is still many
+  wavelengths, so the independent-scatterer picture holds, but it is untested
+  above ~15% air.  Beyond ~30–35% air (ρ ≈ 600–640 kg/m³) the gas percolates
+  and the bubbles-in-a-continuous-matrix topology itself fails — such ice
+  belongs in ``layer_type=0`` (grains in air), not here.
 
 References
 ----------
@@ -39,7 +48,7 @@ import numpy as np
 
 import biosnicar
 from biosnicar.optical_properties.op_lookup import get_lut
-from biosnicar.sea_ice.brine_volume import brine_density, compute_brine_volume
+from biosnicar.sea_ice.brine_volume import compute_brine_volume, compute_gas_volume
 from biosnicar.sea_ice.brine_optics import compute_brine_rfidx
 from biosnicar.sea_ice.effective_medium import effective_ri_ice_brine
 
@@ -50,10 +59,8 @@ _BUBBLY_AIR_PATH = _DATA_DIR / "OP_data" / "480band" / "luts" / "bubbly_air.npz"
 # BioSNICAR wavelength grid (μm)
 WAVELENGTHS = np.arange(0.205, 4.999, 0.01)
 
-# Pure-ice density (g/cm³ = 917 kg/m³)
-_RHO_ICE = 917.0
-
-# Minimum air volume fraction (avoids negative values from rounding)
+# Minimum air volume fraction (avoids negative values from rounding).
+# compute_gas_volume already clips at 0; this is belt-and-braces.
 _MIN_AIR_FRAC = 0.0
 
 _rfidx_cache = None
@@ -107,7 +114,11 @@ def compute_sea_ice_optics(
         thickness_m: Layer thickness in metres (> 0).
         salinity_psu: Bulk salinity in psu (0–15 typical).
         temperature_C: Temperature in °C (−44 to −2).
-        density_kg_m3: Bulk sea-ice density in kg/m³ (typically 870–920).
+        density_kg_m3: Bulk sea-ice density in kg/m³.  Cold interior ice sits
+            at 870–920; weathered, drained and gas-rich ice can fall to
+            700–850 (Timco & Frederking 1996 report 720–940 for sea ice as a
+            whole).  The shipped LUT spans 700–920 and *clamps* outside that,
+            so values below 700 are silently treated as 700.
         bubble_radius_um: Effective radius of air bubbles in μm (typically
             100–1000 μm; controls scattering via the bubbly_air LUT).
         ri_variant: Pure-ice refractive index variant.  One of 'Pic16'
@@ -125,7 +136,20 @@ def compute_sea_ice_optics(
     rho_si = density_kg_m3   # kg/m³
 
     # --- 1. Brine volume fraction ---
-    nu_b = compute_brine_volume(salinity_psu, temperature_C)
+    # Pass the layer's bulk density: Cox & Weeks give brine and gas volume as
+    # two halves of one density balance, so computing brine volume without the
+    # density (i.e. assuming bubble-free ice) and then deriving the air
+    # fraction from that same density is self-inconsistent.  It overestimated
+    # nu_b by the gas fraction — 1–9% across the shipped presets.
+    nu_b = compute_brine_volume(
+        salinity_psu, temperature_C, bulk_density_kg_m3=rho_si
+    )
+
+    # Gas half of the same Cox & Weeks density balance.  Computed here rather
+    # than after the absorption step, because both the brine concentration and
+    # the absorption path length depend on it.
+    nu_air = max(float(compute_gas_volume(salinity_psu, temperature_C, rho_si)),
+                 _MIN_AIR_FRAC)
 
     # --- 2. Brine complex RI at the liquidus salinity for this temperature ---
     # The brine inside sea ice pockets is at the phase-equilibrium (liquidus)
@@ -136,21 +160,39 @@ def compute_sea_ice_optics(
     ri_ice = _load_ice_ri(ri_variant)
 
     # --- 4. Effective ice+brine RI via Maxwell-Garnett ---
-    ri_eff = effective_ri_ice_brine(ri_ice, ri_brine, nu_b)
+    # Maxwell-Garnett mixes a *two-phase* condensed medium, so it needs the
+    # brine fraction OF THAT MEDIUM, not of the whole layer.  nu_b is a
+    # fraction of total volume, so divide out the air to get the brine
+    # concentration within the ice+brine phase.
+    nu_b_condensed = nu_b / (1.0 - nu_air) if nu_air < 1.0 else nu_b
+    nu_b_condensed = min(nu_b_condensed, 1.0)
+    ri_eff = effective_ri_ice_brine(ri_ice, ri_brine, nu_b_condensed)
     n_eff_im = np.maximum(np.imag(ri_eff), 0.0)
 
-    # --- 5. Absorption coefficient of the effective medium (m^-1) ---
-    # α = 4π k / λ   [k = imaginary RI, λ in metres]
+    # --- 5. Absorption coefficient of the layer (m^-1) ---
+    # α = 4π k / λ is the absorption of the *condensed* phase.  Only
+    # (1 - nu_air) of the layer is that phase, and air does not absorb, so the
+    # layer's absorption per metre is reduced in proportion.
+    #
+    # Air is deliberately NOT mixed into the effective medium: Maxwell-Garnett
+    # assumes inclusions small compared to the wavelength, and the bubbles are
+    # 100–1000 µm against 0.2–5 µm light.  That is why they are treated as
+    # discrete Mie scatterers (step 7).  For large non-absorbing inclusions the
+    # correct treatment of absorption is path-length volume weighting, which is
+    # also what layer_type 1/2/3 do via their mass absorption coefficients.
     lam_m = WAVELENGTHS * 1e-6     # μm → m
-    abs_coeff = 4.0 * np.pi * n_eff_im / lam_m   # m^-1
+    abs_coeff = 4.0 * np.pi * n_eff_im / lam_m * (1.0 - nu_air)   # m^-1
 
-    # --- 6. Air bubble volume fraction ---
-    # Density balance: ρ_si = ρ_ice × ν_ice + ρ_brine × ν_b + 0 × ν_air
-    # ν_ice + ν_b + ν_air = 1
-    # → ν_air = (ρ_ice - ρ_si + (ρ_brine - ρ_ice) × ν_b) / ρ_ice
-    rho_b_kg = brine_density(temperature_C) * 1000.0   # g/cm³ → kg/m³
-    nu_air = (_RHO_ICE - rho_si + (rho_b_kg - _RHO_ICE) * nu_b) / _RHO_ICE
-    nu_air = max(float(nu_air), _MIN_AIR_FRAC)
+    # --- 6. Air bubble volume fraction (computed in step 1) ---
+    # nu_air is the gas half of the same Cox & Weeks density balance that
+    # produced nu_b:  Va = 1 - ρ_si/ρ_i + ρ_si·S·F2/F1.
+    #
+    # This replaces an independent density balance
+    #   ν_air = (ρ_ice - ρ_si + (ρ_brine - ρ_ice)·ν_b) / ρ_ice
+    # which used brine_density() — a Frankenstein & Garner-derived liquidus —
+    # while nu_b came from Cox & Weeks.  The two agreed to within ~0.6
+    # percentage points, but they were different phase models describing the
+    # same air, and only one of them was the one nu_b assumed.
 
     # --- 7. Scattering from air bubbles via bubbly_air LUT ---
     bubbly_lut = get_lut(str(_BUBBLY_AIR_PATH))

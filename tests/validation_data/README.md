@@ -24,7 +24,8 @@ Empirical datasets and validation scripts for the BioSNICAR sea ice extension (`
 | `build_residual_library.py` | **field-residual library** (A7 step 1): post-fit `obs − pred` per spectrum, winner + expected-type rows | all 3 spectral campaigns (188 spectra → 521 rows) | **current (2026-07-17)** — artifact `residual_library.npz` git-ignored/regenerable; first look: VIS per-band σ median 0.018, ~2 effective DOF over 60 VIS bands (94% of variance in 3 EOFs) — the empirical basis for the A7 S_e term |
 | `plot_sheba_fits.py` | observed-vs-retrieved spectra figures | SHEBA | **current** — figures |
 | `plot_inversion_performance.py` | confusion matrix + parameter scatter + young-ice curve | synthetic | **current** — synthetic demo (disclaimed in-figure) |
-| `../../scripts/experiments/fyi_bare_audit.py` | FYI_bare emulator accuracy + degeneracy | held-out forward-model, seed 777 | **current** — emulator audit backbone |
+| `../../scripts/experiments/fyi_bare_audit.py` | FYI_bare emulator accuracy + degeneracy | held-out forward-model, seed 777 | **current (re-run 2026-11-05 after the physics rebuild)** — emulator audit backbone. Pooled spectral R² 0.9977, BBA MAE 0.0024. Its `exp1`–`exp4` architecture rows are cached from June and predate the rebuild |
+| `../../scripts/audit_sea_ice_emulators.py` | all six sea-ice emulators, held-out spectral R² + PCA ceiling | held-out forward-model, seed 20261105 | **current (2026-11-05)** — fleet-wide sweep; replicates the build's log-space LHS sampling, which is what makes the numbers meaningful |
 | `run_global_validation.py` | **forward-model preset** accuracy (FYI_WINTER_SNOW/BARE), *not* the inversion | Grenfell + Smith | **current but distinct track** — validates the forward presets, not `retrieve_sea_ice()`; Smith melt-season "failures" are an expected season mismatch |
 
 Curated reports: `docs/sea_ice_validation.md` (inversion, current), plus the

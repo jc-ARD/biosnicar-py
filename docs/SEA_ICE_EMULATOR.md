@@ -133,7 +133,7 @@ The dominant broadband-albedo control is bubble scattering. Brine volume (determ
 
 | Parameter | Range | Units | Role |
 |-----------|-------|-------|------|
-| `brine_volume_fraction` | 0.019 to 0.141 | dimensionless | Combined T+S effect; see below |
+| `brine_volume_fraction` | 0.019 to 0.123 | dimensionless | Combined T+S effect; see below. Upper bound was 0.141 while ν_b was computed bubble-free — not reachable in ice that holds air |
 | `sea_ice_bubble_radius` | 50 to 1000 | μm | Controls NIR scattering efficiency |
 | `black_carbon` | 0 to 5000 | ppb | VIS darkening (cryoconite proxy) |
 | `rho_DL` | 820 to 900 | kg/m³ | DL density (affects air fraction + scattering) |
@@ -180,7 +180,7 @@ MYI has lower salinity (0–6 ppt vs 1–20 ppt for FYI) and larger bubbles (200
 
 | Parameter | Range | Units | Role |
 |-----------|-------|-------|------|
-| `brine_volume_fraction` | 0.0065 to 0.045 | — | The optically active quantity (T and S enter only through it; post-hoc T at S_ref = 2 psu) |
+| `brine_volume_fraction` | 0.0065 to 0.042 | — | The optically active quantity (T and S enter only through it; post-hoc T at S_ref = 2 psu). Upper bound was 0.045 under the bubble-free relation |
 | `sea_ice_bubble_radius` | 200 to 2000 | μm | Scattering |
 | `black_carbon` | 0 to 5000 | ppb | Surface darkening |
 | `solzen` | 20 to 80 | degrees | — |
@@ -215,46 +215,108 @@ FYI_bare, MYI_bare:  (256, 256, 128, 64)  — deeper for high-dimensional spectr
 FYI_snow, FYI_summer, FYI_pond:  (128, 128, 64)  — standard
 ```
 
-Bare sea ice albedo (layer_type=4) is controlled by brine optics, which produce a spectrally complex absorption signature spanning many PCA dimensions (~27 components). The larger MLP is needed to map the 6–7 input parameters to this high-dimensional output space accurately.
+Bare sea ice albedo (layer_type=4) is controlled by brine optics, which produce a spectrally complex absorption signature spanning many PCA dimensions (26 components). The larger MLP is needed to map the 6–7 input parameters to this high-dimensional output space accurately.
 
-Snow and pond surfaces are dominated by scattering (grain radius, depth) and produce smoother spectral shapes (~6 PCA dimensions). The smaller default architecture is sufficient.
+Snow and pond surfaces are dominated by scattering (grain radius, depth) and produce smoother spectral shapes (4–6 PCA dimensions). The smaller default architecture is sufficient.
 
 ### Why the reported "training R²" is misleading for bare ice
 
-The production FYI_bare emulator reports training R² ≈ 0.70 (MYI_bare ≈ 0.66) vs > 0.98 for
-snow/pond types.  **This is a metric artifact, not a quality problem.**  The reported score is
-sklearn's multioutput R² in PCA-*coefficient* space: a uniform average over ~26 components, where
-near-zero-variance tail components are barely predictable and drag the mean down.
+The shipped FYI_bare emulator reports training R² 0.697 and MYI_bare 0.623, against 0.98–0.996
+for the snow/summer/pond/young-ice types.  **This is a metric artifact, not a quality problem,
+and it is not even held out.**  The reported score is sklearn's multioutput R² in
+PCA-*coefficient* space, scored on the training samples themselves: a uniform average over the
+retained components, where the near-zero-variance tail components are barely predictable and
+drag the mean down.  The bare-ice emulators retain 26 components against 4–6 for the others,
+which is the whole of the difference — a longer tail to average over, not a worse fit.
 
 Measured properly — against 2,000 held-out forward-model spectra (seed 777, disjoint from
 training) in albedo space — the shipped FYI_bare emulator achieves:
 
-| Metric | Value |
-|---|---|
-| Pooled spectral R² | **0.998** |
-| Spectral MAE | 0.0021 |
-| BBA MAE | 0.0024 |
-| Max spectral error | 0.46 |
+| Metric | Value | Before the 2026-11-05 physics rebuild |
+|---|---|---|
+| Pooled spectral R² | **0.9977** | 0.9978 |
+| Per-spectrum R², median | 0.9983 | 0.9983 |
+| Per-spectrum R², 5th pctile | 0.9881 | 0.9842 |
+| Spectral MAE | 0.0026 | 0.0023 |
+| BBA MAE | 0.0024 | 0.0021 |
+| Max spectral error | 0.49 | 0.52 |
 
-(Values for the shipped 60,000-sample emulator after the physics-audit rebuild — cold-branch
-Cox & Weeks fix, brine salinity/density cap — re-measured on a regenerated 2000-spectrum
-holdout.  The original audit showed the 30k→60k upgrade halves BBA MAE; the 60k choice was
-confirmed on a second, never-before-used holdout, ruling out selection bias.)  A rho_DL/brine-volume Jacobian collinearity analysis
-found the two parameters separable (mean |cos| = 0.37) — no further reparameterisation is needed.
-Audit script: `scripts/experiments/fyi_bare_audit.py`.
+Both columns are the shipped 60,000-sample emulator on a freshly generated 2000-spectrum
+holdout; the right-hand column is the same measurement before the air-fraction and LUT-density
+fixes.  Accuracy is unchanged to within the noise of a single holdout draw — the physics fixes
+moved what the emulator approximates, not how well it approximates it.  The worst-case tail
+improved (5th-percentile per-spectrum R² 0.984 → 0.988): the density axis no longer clamps, so
+the forward model it is fitting is smoother in `rho_DL`.
+
+Audit script: `scripts/experiments/fyi_bare_audit.py` (FYI_bare, 2000 spectra, with the
+`exp1`–`exp4` architecture comparisons); `scripts/audit_sea_ice_emulators.py` audits all six
+emulators at once.  The `exp1`–`exp4` rows cached in
+`data/emulators/experiments/fyi_bare_audit_results.json` predate the rebuild and have **not**
+been re-measured — treat them as architecture guidance, not as current figures.
 
 The day-to-day diagnostic for emulator quality remains **BBA MAE** via `emulator.verify()`;
 production emulators sit at 0.002–0.004 for all surface types.
 
+#### All six emulators, held-out spectral accuracy
+
+Measured 2026-11-05 by `scripts/audit_sea_ice_emulators.py` (250 fresh LHS samples per
+emulator, drawn the way `Emulator.build` draws them, scored as reconstructed spectra against
+the forward model).  The "PCA ceiling" column is the best any network could do given the
+retained components — it separates network error from compression error.
+
+| Emulator | Network R² | RMSE | PCA ceiling R² | Ceiling RMSE |
+|---|---|---|---|---|
+| FYI_bare | 0.9981 | 0.0093 | 0.9997 | 0.0035 |
+| MYI_bare | 0.9977 | 0.0099 | 0.9997 | 0.0036 |
+| FYI_summer | 1.0000 | 0.0015 | 1.0000 | 0.0008 |
+| FYI_snow | 0.9999 | 0.0023 | 1.0000 | 0.0016 |
+| FYI_pond | 0.9999 | 0.0014 | 1.0000 | 0.0011 |
+| young_ice | 0.9990 | 0.0022 | 0.9996 | 0.0014 |
+
+> **Sampling trap.** Draw the audit samples the way the build draws them. `_LOG_SAMPLE_PARAMS`
+> (`black_carbon`, the algae and dust species, `sea_ice_bubble_radius`, `tau_snow`,
+> `ice_thickness_cm`) are sampled in log10(x+1) space, concentrating training at the low end.
+> Sampling those uniformly in linear space instead tests the emulator mostly where it was barely
+> trained and understates FYI_bare at R² ≈ 0.80 / RMSE 0.063 — an artefact of the measurement,
+> not of the emulator.
+
+### rho_DL / brine-volume degeneracy
+
+A Jacobian collinearity analysis (run as part of `fyi_bare_audit.py baseline`) compares the spectral
+direction that `rho_DL` pushes against the direction `brine_volume_fraction` pushes, at 20
+random base points.  |cos| near 1 means the two parameters are interchangeable and the
+inversion sees a ridge rather than a minimum.
+
+| | Mean \|cos\| | Min | Max |
+|---|---|---|---|
+| After the 2026-11-05 rebuild | **0.73** | 0.43 | 0.90 |
+| Before | 0.42 | 0.03 | 0.90 |
+
+**The fixes made these two parameters substantially more degenerate, and that is expected.**
+The LUT density axis used to start at 870 kg/m³ and the interpolator clamps rather than
+extrapolates, so most of the sampled `rho_DL` range (820–900) was flat — `rho_DL` barely moved
+the spectrum, and a Jacobian that is mostly numerical noise is uncorrelated with anything.  Now
+that density genuinely acts (both through ν_air scattering and through the (1 − ν_air)
+absorption scaling), it pushes the spectrum in much the same direction brine volume does.
+
+The practical consequence is for *retrieval*, not for forward accuracy: joint retrievals of
+`rho_DL` and `brine_volume_fraction` from a single spectrum should be read as constraining a
+combination of the two, and the marginal uncertainty on either alone will be wide.  Reporting
+them as independently identified parameters is not supported.  Reparameterising onto the
+along-ridge and across-ridge combinations is logged as an open item in `ROADMAP.md`.
+
 ### PCA component counts
 
-| Surface type | Typical n_pca (production) | Physical reason |
+Retained to 99.9% of output variance. Shipped fleet, measured 2026-11-05:
+
+| Surface type | n_pca (shipped) | Physical reason |
 |---|---|---|
-| FYI_bare | ~27 | Brine absorption bands span full NIR |
-| MYI_bare | ~25 | Similar to FYI_bare, reduced brine |
-| FYI_snow | ~6 | Smooth scattering function |
-| FYI_summer | ~8 | SSL grain radius + mild brine |
-| FYI_pond | ~6 | Water absorption smooth |
+| FYI_bare | 26 | Brine absorption bands span full NIR |
+| MYI_bare | 26 | Similar to FYI_bare, reduced brine |
+| FYI_snow | 6 | Smooth scattering function |
+| FYI_summer | 5 | SSL grain radius + mild brine |
+| FYI_pond | 4 | Water absorption smooth |
+| young_ice | 4 | Two-stream slab, smooth in thickness |
 
 ## Building Custom Emulators
 

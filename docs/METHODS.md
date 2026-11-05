@@ -60,8 +60,31 @@ Given bulk salinity S (psu) and temperature T (°C), the brine volume fraction �
 
 ```
 F1(T) = −4.732 − 22.45T − 0.6397T² − 0.01074T³     (−22.9 ≤ T ≤ −2 °C)
-ν_b   = (S × ρ_i) / (F1 − ρ_i × S × F2)
+ν_b   = S × ρ_si / F1                              (ρ_si = bulk density, g/cm³)
 ```
+
+Cox & Weeks give brine and gas as two halves of one density balance, so the
+layer's bulk density is passed in and the gas (air) fraction follows from the
+same evaluation:
+
+```
+ν_air = 1 − ρ_si/ρ_i + ρ_si × S × F2(T)/F1(T)
+```
+
+With no density supplied the function falls back to the gas-free form
+`ν_b = (S × ρ_i) / (F1 − ρ_i × S × F2)`, which overestimates brine volume by
+the gas fraction (1–9% across the shipped presets). Verified against SMRT
+v1.7.3: the porosity form agrees to 0.033%, the bulk-density form exactly.
+
+Air content enters the optics twice more. The Maxwell-Garnett mix (step 3) is a
+*two-phase* ice+brine medium, so it takes the brine fraction of that condensed
+phase, `ν_b/(1-ν_air)`, not of the whole layer. And the layer's absorption is
+scaled by `(1 - ν_air)`, since only that fraction is condensed phase and air
+does not absorb — matching what layer types 1/2/3 achieve by working in mass
+absorption coefficients. Air is **not** mixed into the effective medium:
+Maxwell-Garnett assumes sub-wavelength inclusions, while the bubbles are
+100–1000 µm against 0.2–5 µm light, which is why they are discrete Mie
+scatterers instead.
 
 **Step 2 — Brine refractive index at the liquidus salinity**.  
 Brine inside sea ice pockets is at the **liquidus** (phase-equilibrium) salinity determined by temperature:
@@ -84,7 +107,7 @@ The brine real refractive index is computed using the full Quan & Fry (1995) wav
                 [ε_brine(1 − ν_b)  + ε_ice(2 + ν_b)]
 ```
 
-Absorption comes from the imaginary part of n_eff = √ε_eff. Scattering comes from air bubbles via the `bubbly_air.npz` LUT. Results are pre-computed to `data/OP_data/480band/luts/sea_ice.npz` over T (7) × S (6) × density (4) × bubble_radius (4) = 672 grid points. Brine RI is also pre-computed to `data/OP_data/brine_rfidx.npz` over the 7-point temperature grid only (T dimension only; S is no longer needed since S_brine is determined by T).
+Absorption comes from the imaginary part of n_eff = √ε_eff. Scattering comes from air bubbles via the `bubbly_air.npz` LUT. Results are pre-computed to `data/OP_data/480band/luts/sea_ice.npz` over T (7) × S (6) × density (8) × bubble_radius (4) = 1344 grid points. The density axis spans 700–920 kg/m³; it must cover every density the model is asked for, because the interpolator *clamps* rather than extrapolates. Brine RI is also pre-computed to `data/OP_data/brine_rfidx.npz` over the 7-point temperature grid only (T dimension only; S is no longer needed since S_brine is determined by T).
 
 Sea ice requires the **adding-doubling solver** (default). The Toon solver does not handle the Fresnel interface correctly.
 

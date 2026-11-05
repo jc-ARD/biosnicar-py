@@ -37,9 +37,9 @@ def _load_sea_ice_lut():
     data = np.load(_SEA_ICE_LUT_PATH)
     T_grid = data["T_grid"]          # shape (7,)  decreasing (−2 to −30)
     S_grid = data["S_grid"]          # shape (6,)  increasing
-    rho_grid = data["rho_grid"]      # shape (4,)  increasing
+    rho_grid = data["rho_grid"]      # shape (8,)  increasing, 700–920 kg/m³
     bbl_grid = data["bubble_radius_grid"]  # shape (4,) increasing
-    tau = data["tau_per_m"]          # (7, 6, 4, 4, 480)
+    tau = data["tau_per_m"]          # (7, 6, 8, 4, 480)
     ssa = data["ssa"]
     asm = data["asm"]
 
