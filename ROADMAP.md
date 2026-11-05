@@ -13,26 +13,31 @@ the model-error arc is
 validation reports are [docs/sea_ice_validation.md](docs/sea_ice_validation.md)
 and the `sea_ice_validation_*` documents in `docs/archive/`.
 
-> **Branch note.** The sea-ice line was merged into `master` in November 2026
-> (fast-forward from the branch descending from `feature/sea-ice-mvp`), so
-> `biosnicar.sea_ice` is available on a default clone.
+> **Branch note.** The sea-ice line and the chunked-parallel vectorised engine
+> were both merged into `master` in November 2026, so `biosnicar.sea_ice` and
+> `vectorized_parallel=` are available on a default clone.
 >
-> **`fix/physics-core-bugs` and `fix-tir-criterion` are stale duplicates — do not
-> re-merge them.** Both are based on the pre-merge `master` and every fix they
-> carry is already on `master`, having arrived through the sea-ice line: the TIR
-> criterion restricted to the Reststrahlen band
+> **Do not merge `perf/vectorized-parallel-thread-pin` (PR #6). It is a known
+> regression and is deliberately reverted in this history.** Pinning one
+> BLAS/OpenMP thread per worker took a staging scene to ~298 s from 76–160 s.
+> The benchmark that justified it ran on macOS Accelerate, which **ignores
+> `OMP_NUM_THREADS`**, so pinning appeared free; on Linux/OpenBLAS the batched
+> chunk solve genuinely threads across cores, so `OMP=1` serialised it. Any
+> future threading change here must be A/B tested on Linux, never on a local
+> Mac. See PR #7 for the full post-mortem.
+>
+> **`fix/physics-core-bugs` is a stale duplicate — do not re-merge it.** It is
+> based on the pre-merge `master` and every fix it carries is already on
+> `master`: the TIR criterion restricted to the Reststrahlen band
 > (`adding_doubling_solver.py`, see [docs/archive/TIR_CRITERION_BUG.md](docs/archive/TIR_CRITERION_BUG.md)),
 > the SZA flux-LUT key fix (`illumination.py`), the 914 → 917 kg/m³ ice density
 > correction (`geometric_optics_ice.py`) and the TIR regression test
-> (`tests/test_snicar.py`). A trial merge of either resolves to a tree identical
-> to `master`, conflicting only on one comment line where the branch still points
-> at the pre-archive `docs/TIR_CRITERION_BUG.md` path. They can be deleted.
+> (`tests/test_snicar.py`). A trial merge resolves to a tree identical to
+> `master`, conflicting only on one comment line where the branch still points
+> at the pre-archive `docs/TIR_CRITERION_BUG.md` path. It can be deleted, as can
+> the now-merged `fix-tir-criterion` and the four vectorisation branches.
 >
-> Still genuinely unmerged: the vectorised-parallel engine experiments
-> (`feat/vectorized-parallel-engine`, `feat/vectorized-parallel-fleet-cache`,
-> `perf/vectorized-parallel-thread-pin`, `revert/thread-pin-6` — the revert
-> suggests the thread-pinning question is open), `planet-data`, and
-> `fix/miepython-optional`.
+> Still genuinely unmerged: `planet-data` and `fix/miepython-optional`.
 
 ---
 

@@ -278,6 +278,30 @@ scene.to_h3_geojson("classified.geojson", resolution=9)
 ds = scene.to_xarray()                   # full per-pixel parameters + uncertainties
 ```
 
+**Scene-scale speed.** `engine="vectorized"` batches the optimal-estimation
+solve across pixels. On a many-core host add `vectorized_parallel=True` to fan
+that solve out over processes — the scene is split into large contiguous pixel
+chunks, one per worker, and each worker loads the emulator fleet once and keeps
+it cached across calls:
+
+```python
+scene = retrieve_sea_ice_batch(
+    image, ..., method="oe",
+    engine="vectorized",
+    vectorized_parallel=True, n_jobs=8,
+)
+```
+
+It is opt-in and off by default, and the result is bit-identical to the
+single-process path — pixels are independent, so this only uses more cores.
+Measured 3.1x on a 1500-pixel scene with 8 workers on a 10-core box; the gain is
+largest across repeated scenes, where the per-worker fleet cache stays warm.
+
+> Do not set `OMP_NUM_THREADS=1` around this call hoping to avoid
+> oversubscription. On Linux/OpenBLAS the batched chunk solve genuinely threads
+> across cores and pinning roughly halves throughput; it only looks free on
+> macOS, whose Accelerate backend ignores the variable. See [ROADMAP.md](ROADMAP.md).
+
 Field/drone spectra on instrument-native wavelength grids resample via
 `biosnicar.sea_ice.spectral_utils.resample_to_model_grid()`.
 See [docs/INVERSION.md](docs/INVERSION.md#sea-ice-inversion) and
