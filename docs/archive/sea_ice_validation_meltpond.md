@@ -117,7 +117,7 @@ The 5–30 cm bins are consistently calibrated (VIS Δ ≈ +0.04, a systematic s
 
 ### Figure 1 — BBA, VIS, NIR vs pond depth
 
-![BBA, VIS, NIR vs depth](../tests/validation_data/morassutti1995/figures/fig1_bba_vis_nir_vs_depth.png)
+![BBA, VIS, NIR vs depth](../../tests/validation_data/morassutti1995/figures/fig1_bba_vis_nir_vs_depth.png)
 
 **What it shows:** Three panels — broadband (left), visible (middle), NIR (right) — plotting model (red squares) and observed (blue circles, ±1σ) albedo as a function of mean pond depth.
 
@@ -131,7 +131,7 @@ The 5–30 cm bins are consistently calibrated (VIS Δ ≈ +0.04, a systematic s
 
 ### Figure 2 — Per-band spectral comparison at three depth bins
 
-![Spectral comparison](../tests/validation_data/morassutti1995/figures/fig2_spectral_comparison.png)
+![Spectral comparison](../../tests/validation_data/morassutti1995/figures/fig2_spectral_comparison.png)
 
 **What it shows:** Bar charts comparing observed (blue) and model (red) albedo in the six 100-nm spectral bands for three representative depth bins: 0–5 cm (shallow), 10–20 cm (intermediate), and 30–50 cm (deep). Dotted line marks the VIS/NIR boundary at 700 nm.
 
@@ -147,7 +147,7 @@ The 5–30 cm bins are consistently calibrated (VIS Δ ≈ +0.04, a systematic s
 
 ### Figure 3 — Impurity sensitivity: clean vs BC 1200 ppb vs glacier algae
 
-![Impurity sensitivity](../tests/validation_data/morassutti1995/figures/fig3_impurity_sensitivity.png)
+![Impurity sensitivity](../../tests/validation_data/morassutti1995/figures/fig3_impurity_sensitivity.png)
 
 **What it shows:** Three panels (VIS, NIR, BBA) each showing observed (filled circles), clean water (grey), BC 1200 ppb calibrated (red), BC 1000 ppb prior (orange dotted), and glacier algae 30k cells/mL (green) as a function of pond depth.
 
