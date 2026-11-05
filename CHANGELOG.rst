@@ -8,6 +8,36 @@ and this project adheres to `Semantic Versioning <https://semver.org/spec/v2.0.0
 Unreleased
 -----------
 
+Added
+~~~~~
+- **Chunked-parallel vectorised OE engine** (``vectorized_parallel=`` on
+  ``retrieve_sea_ice_batch``).
+
+  The vectorised engine is single-process, and in band mode its per-pixel
+  matrices are small enough that BLAS threading gains little, so on a many-core
+  host most cores sit idle.  Passing ``vectorized_parallel=True`` splits the
+  scene into large contiguous pixel chunks — roughly one per worker — solves
+  each in a separate process via joblib/loky, and concatenates the per-pixel
+  records in order.
+
+  Opt-in: the default ``False`` preserves single-process behaviour, so existing
+  callers and all non-batch paths are unchanged.  Every pixel's OE is
+  independent, so the result is **bit-identical** to the single-process path;
+  two tests assert this for scalar and for per-pixel ``solzen``/``direct``
+  geometry.  Measured 3.1× on a 1500-pixel scene with 8 workers on a 10-core
+  box.
+
+  Workers are shipped emulator *names* and load the fleet once into a
+  per-process cache, reused across chunks and across successive calls while the
+  loky pool stays warm, which removes per-chunk marshalling of the fleet.  A
+  custom fleet that ``load_sea_ice_emulators`` cannot reconstruct falls back to
+  pickling the passed objects, so correctness holds for any fleet.
+
+  Note: do **not** pin ``OMP_NUM_THREADS=1`` around this call.  On
+  Linux/OpenBLAS the batched chunk solve genuinely threads across cores and
+  pinning roughly halves throughput; it appears free only on macOS, whose
+  Accelerate backend ignores the variable.
+
 Changed
 ~~~~~~~
 - **``miepython`` is no longer a core dependency** (`#116

@@ -546,12 +546,22 @@ classification on real melt-season spectra.
 
 **Standing guidance (until repaired):** use `method="oe"` for parameter
 posteriors, DFS, and averaging kernels on a *known or independently classified*
-surface type; use the default method for classification. Candidate repair
-(not yet implemented — an API behavior change affecting downstream consumers):
-hybrid classification — select the winner with the default masked chi-squared,
-then run OE on the winner only for posteriors; and/or a forward-model error
-term in S_e (A7) with calibrated priors (A6) before evidence ranking is
-trusted.
+surface type; use the default method for classification.
+
+**Update (2026-07-17 onward).** The forward-model error term named here as a
+candidate repair has since been built and shipped: `model_error=True` applies a
+field-calibrated covariance (A7), and the arc is written up in
+[archive/OE_MODEL_ERROR_EXPERIMENT.md](archive/OE_MODEL_ERROR_EXPERIMENT.md).
+It is **VIS-only** (`domain_max_nm=1000`, per-band diagonal in the SWIR): the
+gap-tolerant fit works, but SWIR forward-model error is strongly
+regime-dependent, so the term is data-limited rather than method-limited. The
+standing guidance above therefore still holds for SWIR melt-season spectra.
+Two parts of the repair remain open: **hybrid classification** (select the
+winner with the default masked chi-squared, then run OE on the winner only for
+posteriors) is still not implemented and would be an API behaviour change
+affecting downstream consumers; and **A6 calibration** — reliability diagrams on
+a held-out corpus — has not been done, so "calibrated" language should not yet
+be used about these class probabilities.
 
 ## 13. Perturbed-physics validation (V2) — bounding the inverse crime (2026-07-20)
 

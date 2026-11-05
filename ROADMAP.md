@@ -52,7 +52,7 @@ the numbers do not generalise as far as they first appear.
 | **Only independent ground-truth metric** | Morassutti pond depth — ~22% within ±25% over 504 records, and reliable only above 50 cm |
 | **Independent hold-out (Smith/MOSAiC, full SWIR)** | Summer melting snow is **optically degenerate** with SSL and bare ice; fit RMS roughly doubles out of distribution. **Spring numbers do not generalise to the melt season** |
 | **Synthetic metrics** | Inverse-crime numbers — the same forward model generates and inverts. Treat as plumbing checks, not performance |
-| **Untested** | Non-Arctic surfaces; open water and young ice against real spectra (synthetic only); scene-scale performance; atmospheric/TOA coupling; BRDF and angular effects; confidence calibration; drone and hyperspectral-satellite modalities |
+| **Untested** | Non-Arctic surfaces; open water and young ice against real spectra (synthetic only); scene-scale retrieval *accuracy* (throughput is solved — see Phase 3); atmospheric/TOA coupling; BRDF and angular effects; confidence calibration; drone and hyperspectral-satellite modalities |
 
 Two significant fixes have shipped: the **liquidus correction** (`D1`, derived
 from Frankenstein & Garner 1967 brine volume) removed a ~30% cold-ice
@@ -132,8 +132,16 @@ benchmarks.
 
 ## Phase 3 — real-sensor fidelity and scale
 
-`B-MS3`–`4`, `B-HS3`, `D4`–`D5`, `G2`–`G3`: BRDF and glint, mixed-pixel
-handling, scene and mosaic-scale benchmarking, hyperspectral-satellite matchups.
+`B-MS3`–`4`, `B-HS3`, `D4`–`D5`, `G2`: BRDF and glint, mixed-pixel handling,
+scene and mosaic-scale benchmarking, hyperspectral-satellite matchups.
+
+**`G3` (scene-scale retrieval speed) is done** and no longer blocks this phase.
+`engine="vectorized"` batches the OE solve across pixels, and
+`vectorized_parallel=True` fans that solve over worker processes, bit-identical
+to single-process (measured 3.1× on 8 workers of a 10-core box, with a warm
+per-worker fleet cache across repeated scenes). What remains under "scale" is
+the *benchmarking* of retrieval quality at scene and mosaic scale, which is an
+accuracy question, not a throughput one.
 
 ## Phase 4 — operational deployment
 

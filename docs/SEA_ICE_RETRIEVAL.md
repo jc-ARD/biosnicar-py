@@ -173,6 +173,36 @@ joblib, any method, and the correctness reference). `model_error`, `class_priors
 and season priors all apply in the vectorized path; per-pixel `known_month`,
 caller `bounds`/`x0`, `flag_prior_influence` and non-OE methods keep the loop.
 
+**Parallel batches.** The vectorized engine is single-process, and in band mode
+its per-pixel matrices are small enough that BLAS threading gains little — on a
+many-core host most cores sit idle. `vectorized_parallel=True` fans the same
+solve out over `n_jobs` worker processes, splitting the scene into large
+contiguous pixel chunks and concatenating the per-pixel records in order:
+
+```python
+scene = retrieve_sea_ice_batch(
+    image, ..., method="oe", engine="vectorized",
+    vectorized_parallel=True, n_jobs=8,
+)
+```
+
+It is opt-in (default `False`, so existing callers are unchanged) and the result
+is **bit-identical** to the single-process path — every pixel's OE is
+independent, so this only uses more cores. Each worker loads the emulator fleet
+once by name into a per-process cache, reused across chunks and across
+successive calls while joblib's loky pool stays warm; a custom fleet that
+`load_sea_ice_emulators` cannot reconstruct falls back to pickling. Measured
+3.1× on a 1500-pixel scene with 8 workers on a 10-core box, with the larger gain
+across repeated scenes.
+
+> **Do not set `OMP_NUM_THREADS=1` around this call** to avoid what looks like
+> oversubscription. On Linux/OpenBLAS the batched chunk solve genuinely threads
+> across cores, and pinning one thread per worker roughly halves throughput — it
+> regressed a staging scene to ~298 s from 76–160 s. It appears free only on
+> macOS, whose Accelerate backend ignores the variable. Any threading change
+> here must be A/B tested on Linux — see the branch note in
+> [../ROADMAP.md](../ROADMAP.md).
+
 ### 2.4 Publication-grade uncertainty (MCMC)
 
 ```python

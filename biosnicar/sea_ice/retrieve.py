@@ -1137,9 +1137,13 @@ def retrieve_sea_ice_batch(
         below that are no-data; pixels that fail during retrieval carry the
         ``NO_RETRIEVAL`` quality flag (distinct from no-data input).
     n_jobs : int
-        joblib parallelism; ``-1`` uses all CPUs.
+        joblib parallelism; ``-1`` uses all CPUs.  Governs both the loop engine
+        (per-pixel jobs) and, when ``vectorized_parallel=True``, the number of
+        chunk workers the vectorized engine fans out over.
     chunksize : int
-        Pixels per parallel job.
+        Pixels per parallel job.  Loop engine only — the vectorized-parallel
+        path sizes its own chunks, roughly one per worker, so that each chunk's
+        batched solve stays large enough to be efficient.
     spatial_coords : array-like or None
         ``(N, 2)`` or ``(H, W, 2)`` per-pixel (lat, lon) — required for
         :meth:`SeaIceSceneResult.to_h3_geojson`.
