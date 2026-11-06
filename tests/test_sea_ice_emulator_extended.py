@@ -372,6 +372,7 @@ class TestSeaIceSpectralRetrieval:
         from biosnicar.inverse.optimize import retrieve
         obs = emu500_fyi_pond.predict(
             pond_depth=0.20, sea_ice_temperature=-5.0,
+            sea_ice_bubble_radius=200.0,
             black_carbon=1200.0, solzen=60, direct=1,
         )
         result = retrieve(
@@ -380,7 +381,7 @@ class TestSeaIceSpectralRetrieval:
             emulator=emu500_fyi_pond,
             fixed_params={
                 "sea_ice_temperature": -5.0, "black_carbon": 1200.0,
-                "solzen": 60, "direct": 1,
+                "sea_ice_bubble_radius": 200.0, "solzen": 60, "direct": 1,
             },
         )
         assert result.converged
@@ -390,6 +391,7 @@ class TestSeaIceSpectralRetrieval:
         from biosnicar.inverse.optimize import retrieve
         obs = emu500_fyi_pond.predict(
             pond_depth=0.20, sea_ice_temperature=-5.0,
+            sea_ice_bubble_radius=200.0,
             black_carbon=1200.0, solzen=60, direct=1,
         )
         result = retrieve(
@@ -398,7 +400,7 @@ class TestSeaIceSpectralRetrieval:
             emulator=emu500_fyi_pond,
             fixed_params={
                 "sea_ice_temperature": -5.0, "black_carbon": 1200.0,
-                "solzen": 60, "direct": 1,
+                "sea_ice_bubble_radius": 200.0, "solzen": 60, "direct": 1,
             },
         )
         assert np.isfinite(result.uncertainty["pond_depth"])
@@ -430,6 +432,7 @@ class TestSeaIceSpectralRetrieval:
         from biosnicar.inverse.optimize import retrieve
         obs = emu500_fyi_pond.predict(
             pond_depth=0.15, sea_ice_temperature=-5.0,
+            sea_ice_bubble_radius=200.0,
             black_carbon=800.0, solzen=60, direct=1,
         )
         result = retrieve(
@@ -438,7 +441,7 @@ class TestSeaIceSpectralRetrieval:
             emulator=emu500_fyi_pond,
             fixed_params={
                 "sea_ice_temperature": -5.0, "black_carbon": 800.0,
-                "solzen": 60, "direct": 1,
+                "sea_ice_bubble_radius": 200.0, "solzen": 60, "direct": 1,
             },
         )
         assert result.predicted_albedo.shape == (480,)
@@ -610,13 +613,14 @@ class TestSeaIceRetrievalMethods:
     def obs_pond(self, emu500_fyi_pond):
         return emu500_fyi_pond.predict(
             pond_depth=0.20, sea_ice_temperature=-5.0,
+            sea_ice_bubble_radius=200.0,
             black_carbon=1000.0, solzen=60, direct=1,
         )
 
     @pytest.fixture(scope="class")
     def fixed_pond(self):
         return {"sea_ice_temperature": -5.0, "black_carbon": 1000.0,
-                "solzen": 60, "direct": 1}
+                "sea_ice_bubble_radius": 200.0, "solzen": 60, "direct": 1}
 
     def test_nelder_mead_converges(self, emu500_fyi_pond, obs_pond, fixed_pond):
         from biosnicar.inverse.optimize import retrieve
@@ -688,7 +692,7 @@ class TestSeaIcePhysicsChecks:
     def test_fyi_pond_deeper_lower_bbanir(self, emu500_fyi_pond):
         """Deeper pond → more water column → lower NIR BBA."""
         kw = dict(sea_ice_temperature=-5.0, black_carbon=1200.0,
-                  solzen=60, direct=1)
+                  sea_ice_bubble_radius=200.0, solzen=60, direct=1)
         shallow_pred = emu500_fyi_pond.predict(pond_depth=0.05, **kw)
         deep_pred    = emu500_fyi_pond.predict(pond_depth=0.55, **kw)
         # NIR portion (band 100+)
@@ -804,6 +808,7 @@ class TestBuiltEmulators:
             kw = {
                 "pond_depth":          rng.uniform(*bounds["pond_depth"]),
                 "sea_ice_temperature": rng.uniform(*bounds["sea_ice_temperature"]),
+                "sea_ice_bubble_radius": rng.uniform(*bounds["sea_ice_bubble_radius"]),
                 "black_carbon":        rng.uniform(*bounds["black_carbon"]),
                 "solzen":              int(rng.uniform(*bounds["solzen"])),
                 "direct":              int(round(rng.uniform(*bounds["direct"]))),

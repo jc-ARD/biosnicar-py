@@ -19,6 +19,7 @@ The held-out set (seed 777, distinct from training seed 42) is cached in
 data/emulators/experiments/fyi_bare_holdout.npz.
 """
 
+import itertools
 import json
 import sys
 import time
@@ -110,45 +111,139 @@ def evaluate(emu, params, ref, flx):
 
 
 def degeneracy_analysis():
-    """Jacobian collinearity between rho_DL and brine_volume_fraction.
+    """rho_DL / brine_volume_fraction collinearity, two ways.
 
-    |cosine| near 1 at most base points means the two parameters push the
-    spectrum along the same direction (a degenerate ridge for inversion).
+    The Jacobian cosine is the prior-free, noise-free proxy: it asks whether
+    the two parameters push the spectrum in the same direction.  The quantity
+    that actually governs a retrieval is the **posterior correlation**, which
+    additionally accounts for the other fitted parameters, the measurement
+    noise and the calibrated forward-model error.  Both are reported, because
+    they differ materially and only the second is decision-relevant.
+
+    Marginal 1-sigma is inflated over its value-if-the-partner-were-known by
+    exactly 1/sqrt(1 - r**2), with r the posterior correlation.
+
+    Ranges come from the live config rather than being hardcoded, so this
+    cannot silently drift out of date when the emulator is reparameterised.
     """
     from biosnicar.drivers.run_model import run_model
+    from biosnicar.inverse.optimize import retrieve
+    from biosnicar.inverse.model_error import ModelErrorCovariance
+
+    P = CFG["params"]
+    vb_lo, vb_hi = P["brine_volume_fraction"]
+    rho_lo, rho_hi = P["rho_DL"]
+    bbl_lo, bbl_hi = P["sea_ice_bubble_radius"]
 
     rng = np.random.default_rng(123)
-    cosines, base_points = [], []
-    for _ in range(20):
+    cosines, corrs, inflations, base_points = [], [], [], []
+    all_pairs = {}
+
+    emu = None
+    try:
+        from biosnicar.sea_ice.emulator_configs import load_sea_ice_emulators
+        emu = load_sea_ice_emulators(["FYI_bare"])["FYI_bare"]
+        ME = ModelErrorCovariance.load()
+    except Exception as exc:                      # pragma: no cover
+        print(f"  posterior correlation unavailable ({exc}); cosine only")
+
+    FIT = ["brine_volume_fraction", "sea_ice_bubble_radius",
+           "black_carbon", "rho_DL"]
+
+    bc_lo, bc_hi = P["black_carbon"]
+    for _ in range(24):
         p = {
-            "brine_volume_fraction": rng.uniform(0.03, 0.12),
-            "sea_ice_bubble_radius": 10 ** rng.uniform(np.log10(60), np.log10(900)),
-            "black_carbon": 0.0,
-            "rho_DL": rng.uniform(830, 890),
+            "brine_volume_fraction": rng.uniform(vb_lo, vb_hi),
+            "sea_ice_bubble_radius": 10 ** rng.uniform(np.log10(bbl_lo + 1),
+                                                       np.log10(bbl_hi + 1)) - 1,
+            # Sampled, not pinned at zero: black_carbon sits on its lower
+            # bound otherwise, which makes its Jacobian a boundary case and
+            # its correlations unrepresentative of a real retrieval.
+            "black_carbon": 10 ** rng.uniform(np.log10(bc_lo + 1),
+                                              np.log10(bc_hi + 1)) - 1,
+            "rho_DL": rng.uniform(rho_lo, rho_hi),
             "solzen": int(rng.integers(25, 75)),
             "direct": 1,
         }
+
         def alb(q):
             return np.asarray(run_model(**CFG["transform_fn"](q)).albedo)
 
-        dvb = 0.005 * (0.141 - 0.019)
-        drho = 0.005 * (900 - 820)
-        p_vb = dict(p); p_vb["brine_volume_fraction"] += dvb
-        p_rho = dict(p); p_rho["rho_DL"] += drho
+        # --- 1. Jacobian cosine (central differences, clipped to bounds) ---
+        dvb = 0.005 * (vb_hi - vb_lo)
+        drho = 0.005 * (rho_hi - rho_lo)
+        p_vb = dict(p); p_vb["brine_volume_fraction"] = min(p["brine_volume_fraction"] + dvb, vb_hi)
+        p_rho = dict(p); p_rho["rho_DL"] = min(p["rho_DL"] + drho, rho_hi)
         a0 = alb(p)
-        j_vb = (alb(p_vb) - a0) / dvb * (0.141 - 0.019)   # range-normalised
-        j_rho = (alb(p_rho) - a0) / drho * (900 - 820)
+        j_vb = (alb(p_vb) - a0) / (p_vb["brine_volume_fraction"] - p["brine_volume_fraction"])
+        j_rho = (alb(p_rho) - a0) / (p_rho["rho_DL"] - p["rho_DL"])
         denom = np.linalg.norm(j_vb) * np.linalg.norm(j_rho)
-        cos = float(j_vb @ j_rho / denom) if denom > 0 else 0.0
-        cosines.append(cos)
+        cosines.append(float(j_vb @ j_rho / denom) if denom > 0 else 0.0)
+
+        # --- 2. Posterior correlation from the real OE path ---
+        if emu is not None:
+            y = np.asarray(emu.predict(**p), float)
+            try:
+                r = retrieve(
+                    observed=y, parameters=FIT, emulator=emu,
+                    fixed_params={"solzen": p["solzen"], "direct": p["direct"]},
+                    bounds={k: P[k] for k in FIT},
+                    x0={k: p[k] for k in FIT},
+                    obs_uncertainty=np.full(480, 0.01),
+                    method="oe", model_error=ME,
+                )
+                cm = r.parameter_correlation()
+                c = cm[("brine_volume_fraction", "rho_DL")]
+                corrs.append(float(c))
+                inflations.append(float(1.0 / np.sqrt(max(1.0 - c ** 2, 1e-12))))
+                for a, b in itertools.combinations(FIT, 2):
+                    all_pairs.setdefault((a, b), []).append(float(cm[(a, b)]))
+            except Exception:                     # pragma: no cover
+                pass
+
         base_points.append({k: float(v) for k, v in p.items()})
-    return {
+
+    out = {
         "jacobian_cosine_mean": float(np.mean(np.abs(cosines))),
         "jacobian_cosine_min": float(np.min(np.abs(cosines))),
         "jacobian_cosine_max": float(np.max(np.abs(cosines))),
         "cosines": [float(c) for c in cosines],
-        "note": "|cos|~1 => rho_DL and Vb degenerate; <0.9 => separable",
+        "note": ("Jacobian cosine is a prior-free proxy and runs HIGHER than "
+                 "the posterior correlation, which is what governs retrieval. "
+                 "Quote posterior_corr_*, not the cosine."),
     }
+    if corrs:
+        a = np.abs(corrs)
+        out.update({
+            "posterior_corr_mean": float(a.mean()),
+            "posterior_corr_min": float(a.min()),
+            "posterior_corr_max": float(a.max()),
+            "posterior_corr_signs": {"positive": int(sum(1 for c in corrs if c > 0)),
+                                     "negative": int(sum(1 for c in corrs if c < 0))},
+            "frac_abs_corr_gt_0.8": float(np.mean(a > 0.8)),
+            "sigma_inflation_mean": float(np.mean(inflations)),
+            "sigma_inflation_max": float(np.max(inflations)),
+        })
+    if all_pairs:
+        # Every pair, not just the one historically tracked -- the largest
+        # degeneracy in this emulator is bubble_radius/rho_DL, which went
+        # unmeasured for as long as only rho_DL/Vb was looked at.
+        pairs = {}
+        for (a, b), v in all_pairs.items():
+            av = np.abs(v)
+            pairs[f"{a}|{b}"] = {
+                "mean_abs": float(av.mean()),
+                "max_abs": float(av.max()),
+                "n_positive": int(sum(1 for x in v if x > 0)),
+                "n_negative": int(sum(1 for x in v if x < 0)),
+                "sigma_inflation_mean": float(np.mean(
+                    1.0 / np.sqrt(np.clip(1.0 - av ** 2, 1e-12, None)))),
+                "sigma_inflation_max": float(np.max(
+                    1.0 / np.sqrt(np.clip(1.0 - av ** 2, 1e-12, None)))),
+            }
+        out["posterior_corr_all_pairs"] = dict(
+            sorted(pairs.items(), key=lambda kv: -kv[1]["mean_abs"]))
+    return out
 
 
 def _save_result(key, value):

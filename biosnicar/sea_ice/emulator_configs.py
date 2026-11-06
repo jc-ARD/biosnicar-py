@@ -49,6 +49,10 @@ BAND_MASKS = {
 FYI_BARE_S_REF = 6.0   # psu — typical FYI drained-layer salinity
 MYI_BARE_S_REF = 2.0   # psu — typical desalinated MYI
 
+# Interior-layer density for _transform_myi_bare.  The *drained-layer* density
+# is now a retrieved parameter (rho_DL), so only the IL is fixed here.
+_MYI_IL_RHO = 870.0
+
 
 def _snap(rds):
     """Snap grain radius to nearest granular-ice LUT grid entry.
@@ -75,9 +79,21 @@ def _transform_fyi_bare(p):
     degenerate (T, S) pair.  Temperature is recovered by inverting the
     Cox & Weeks equation at the fixed reference salinity FYI_BARE_S_REF=6 psu.
     The IL salinity is set to half the reference (drainage gradient).
+
+    The inversion is done **at the sampled DL density**, because the forward
+    model now takes bulk density into account when computing brine volume.
+    Inverting the bubble-free relation instead would make the forward model
+    compute some other Vb than the one sampled — at rho_DL=820 kg/m3 roughly
+    11% lower — so ``brine_volume_fraction`` would name the brine volume of
+    hypothetical bubble-free ice rather than of this layer, and would become
+    degenerate with ``rho_DL``.  The whole point of the reparameterisation is
+    that it is not.
     """
     from biosnicar.sea_ice.brine_volume import invert_brine_volume
-    T   = invert_brine_volume(p["brine_volume_fraction"], FYI_BARE_S_REF)
+    T   = invert_brine_volume(
+        p["brine_volume_fraction"], FYI_BARE_S_REF,
+        bulk_density_kg_m3=p["rho_DL"],
+    )
     bbl = p["sea_ice_bubble_radius"]
     return dict(
         layer_type=[4, 4],
@@ -86,7 +102,10 @@ def _transform_fyi_bare(p):
         rho=[p["rho_DL"], 910],
         sea_ice_salinity=[FYI_BARE_S_REF, FYI_BARE_S_REF * 0.5],
         sea_ice_temperature=[T, T],
-        sea_ice_bubble_radius=[bbl, min(1000.0, bbl * 2.0)],
+        # IL cap is the LUT's bubble ceiling, not a physical limit.  It was
+        # 1000 — the *old* grid max — so for bbl >= 500 the interior layer's
+        # radius froze at 1000 regardless, over ~23% of the sampled log range.
+        sea_ice_bubble_radius=[bbl, min(2000.0, bbl * 2.0)],
         black_carbon=[p["black_carbon"], 0],
         solzen=p["solzen"],
         direct=p["direct"],
@@ -131,7 +150,7 @@ def _transform_fyi_summer(p):
         rho=[300, 850, 910],
         sea_ice_salinity=[None, 4, 2],
         sea_ice_temperature=[None, T, T],
-        sea_ice_bubble_radius=[None, bbl, min(1000.0, bbl * 2.0)],
+        sea_ice_bubble_radius=[None, bbl, min(2000.0, bbl * 2.0)],
         black_carbon=[p["black_carbon"], 0, 0],
         solzen=p["solzen"],
         direct=p["direct"],
@@ -139,19 +158,29 @@ def _transform_fyi_summer(p):
 
 
 def _transform_myi_bare(p):
-    """Bare MYI: lower salinity, larger bubbles, slightly lower IL density.
+    """Bare MYI: lower salinity, larger bubbles, lower drained-layer density.
 
     Primary parameter is ``brine_volume_fraction`` (Vb) rather than (T, S).
-    Temperature is recovered via Cox & Weeks inversion at MYI_BARE_S_REF=2 psu.
+    Temperature is recovered via Cox & Weeks inversion at MYI_BARE_S_REF=2 psu
+    and at the *sampled* ``rho_DL`` (see ``_transform_fyi_bare`` for why the
+    density has to match the one the forward model will use).
+
+    ``rho_DL`` was previously hard-coded at 850 kg/m3, so the parameter that
+    most distinguishes multi-year ice — its low density, from drained brine
+    and trapped gas — could not be retrieved at all.  Timco & Frederking
+    (1996) give 720-910 kg/m3 for MYI above the waterline.
     """
     from biosnicar.sea_ice.brine_volume import invert_brine_volume
-    T   = invert_brine_volume(p["brine_volume_fraction"], MYI_BARE_S_REF)
+    T   = invert_brine_volume(
+        p["brine_volume_fraction"], MYI_BARE_S_REF,
+        bulk_density_kg_m3=p["rho_DL"],
+    )
     bbl = p["sea_ice_bubble_radius"]
     return dict(
         layer_type=[4, 4],
         dz=[0.30, 2.70],
         rds=[500, 500],
-        rho=[850, 870],
+        rho=[p["rho_DL"], _MYI_IL_RHO],
         sea_ice_salinity=[MYI_BARE_S_REF, max(0.3, MYI_BARE_S_REF * 0.4)],
         sea_ice_temperature=[T, T],
         sea_ice_bubble_radius=[bbl, min(2000.0, bbl * 1.5)],
@@ -180,8 +209,26 @@ def _transform_young_ice(p):
 
 
 def _transform_fyi_pond(p):
-    """Melt pond on FYI: liquid water layer over DL + IL."""
+    """Melt pond on FYI: liquid water layer over DL + IL.
+
+    The floor's bubble radius is retrieved rather than fixed.  It was
+    hard-coded at 200 um — a winter-ice value — which left the emulator unable
+    to produce a pond darker than BBA 0.144, while 21% of the Morassutti
+    observations are darker than that at *any* parameter setting.  Those
+    spectra were consequently won by MYI_bare and FYI_bare, which do reach
+    down to ~0.11.
+
+    Coarseness is the right knob, and it is a real variable: melt-season pond
+    floors are deteriorated ice with large voids, not winter ice.  Over
+    200-2000 um the floor's BBA moves 0.178 -> 0.066, a factor of 2.7, so
+    fixing it at any single value is a strong assumption.  The alternatives
+    reach the dark end only through physically indefensible settings — black
+    carbon at 12000-25000 ppb (against a ~2000 ng/g literature maximum, and
+    1000 ppb is already an effective-LAP proxy), or a floor density of
+    916 kg/m3, which is bubble-free pure ice.
+    """
     T = p["sea_ice_temperature"]
+    bbl = p["sea_ice_bubble_radius"]
     return dict(
         layer_type=[5, 4, 4],
         dz=[p["pond_depth"], 0.05, 1.40],
@@ -189,7 +236,7 @@ def _transform_fyi_pond(p):
         rho=[1000, 850, 910],
         sea_ice_salinity=[None, 8, 6],
         sea_ice_temperature=[None, T, T],
-        sea_ice_bubble_radius=[None, 200, 500],
+        sea_ice_bubble_radius=[None, bbl, min(2000.0, bbl * 2.5)],
         black_carbon=[0, p["black_carbon"], 0],
         solzen=p["solzen"],
         direct=p["direct"],
@@ -205,11 +252,16 @@ SEA_ICE_EMULATOR_CONFIGS = {
         "description": "Winter/spring bare first-year ice (no snow, no SSL)",
         "band_mask": "vis_only",
         # (T, S) replaced by brine_volume_fraction to eliminate degeneracy.
-        # Vb bounds correspond to T in [-22, -2.1]°C at S_ref=FYI_BARE_S_REF=6 psu.
-        # Post-hoc T recovery: T = invert_brine_volume(Vb, FYI_BARE_S_REF)
+        # Vb bounds correspond to T in [-22, -2.1]°C at S_ref=FYI_BARE_S_REF=6 psu,
+        # intersected over rho_DL in [820, 900] so every sampled (Vb, rho_DL)
+        # pair is invertible.  The upper bound was 0.141 while brine volume was
+        # computed bubble-free; that value is not reachable in ice that holds
+        # air, so it described nothing the forward model could produce.
+        # Post-hoc T recovery:
+        #   T = invert_brine_volume(Vb, FYI_BARE_S_REF, bulk_density_kg_m3=rho_DL)
         "vb_s_ref": FYI_BARE_S_REF,   # for seasonal brine-volume priors
         "params": {
-            "brine_volume_fraction":  (0.019, 0.141),
+            "brine_volume_fraction":  (0.019, 0.123),
             "sea_ice_bubble_radius":  (50.0,  1000.0),
             "black_carbon":           (0.0,   5000.0),
             "rho_DL":                 (820.0, 900.0),
@@ -254,7 +306,13 @@ SEA_ICE_EMULATOR_CONFIGS = {
         "params": {
             "ssl_grain_radius":       (500.0, 5000.0),
             "sea_ice_temperature":    (-10.0, -2.0),
-            "sea_ice_bubble_radius":  (50.0,  500.0),
+            # Raised from 500.  On the 23 SHEBA spectra the old ceiling was
+            # pinned by 9 retrievals with a mean averaging kernel of 0.87 —
+            # the measurement pushing hard against it, not drifting there.
+            # A forward-model scan put the optimum beyond 500 in half the
+            # pinned cases.  Matched to FYI_bare now that the LUT reaches
+            # 2000 um, so neither the bound nor the grid is the constraint.
+            "sea_ice_bubble_radius":  (50.0,  1000.0),
             "black_carbon":           (0.0,   5000.0),
             "solzen":                 (20,    80),
             "direct":                 (0,     1),
@@ -267,19 +325,27 @@ SEA_ICE_EMULATOR_CONFIGS = {
         "description": "Bare multiyear ice (lower salinity, larger bubbles)",
         "band_mask": "vis_only",
         # (T, S) replaced by brine_volume_fraction.
-        # Vb bounds correspond to T in [-22, -2.1]°C at S_ref=MYI_BARE_S_REF=2 psu.
+        # Vb bounds correspond to T in [-21, -2.2]°C at S_ref=MYI_BARE_S_REF=2
+        # psu, intersected over rho_DL in [720, 900] so every sampled
+        # (Vb, rho_DL) pair is invertible.
         "vb_s_ref": MYI_BARE_S_REF,   # for seasonal brine-volume priors
         "params": {
-            "brine_volume_fraction":  (0.0065, 0.045),  # T in [-21, -2.2]°C at S=2 psu
+            # Was (0.0065, 0.042) when rho_DL was pinned at 850; the
+            # intersection over the sampled density range is slightly tighter.
+            "brine_volume_fraction":  (0.0063, 0.0346),
             "sea_ice_bubble_radius":  (200.0, 2000.0),
             "black_carbon":           (0.0,   5000.0),
+            # Newly retrieved.  Timco & Frederking (1996): MYI above the
+            # waterline is 720-910 kg/m³, and the sea-ice LUT now spans
+            # 700-920, so the full literature range is usable.
+            "rho_DL":                 (720.0, 900.0),
             "solzen":                 (20,    80),
             "direct":                 (0,     1),
         },
         "transform_fn":       _transform_myi_bare,
         "n_samples":          30000,
         "hidden_layer_sizes": (256, 256, 128, 64),
-        "emulator_file": str(_DATA_DIR / "sea_ice_MYI_bare_5param.npz"),
+        "emulator_file": str(_DATA_DIR / "sea_ice_MYI_bare_6param.npz"),
     },
     "FYI_pond": {
         "description": "Melt pond on first-year ice",
@@ -287,13 +353,17 @@ SEA_ICE_EMULATOR_CONFIGS = {
         "params": {
             "pond_depth":             (0.02,  0.60),
             "sea_ice_temperature":    (-10.0, -2.0),
+            # Newly retrieved — see _transform_fyi_pond.  Fixed at 200 um the
+            # emulator bottomed out at BBA 0.144 and could not represent 21%
+            # of the Morassutti ponds at any setting.
+            "sea_ice_bubble_radius":  (200.0, 2000.0),
             "black_carbon":           (0.0,   3000.0),
             "solzen":                 (20,    80),
             "direct":                 (0,     1),
         },
         "transform_fn":  _transform_fyi_pond,
-        "n_samples":     10000,
-        "emulator_file": str(_DATA_DIR / "sea_ice_FYI_pond_5param.npz"),
+        "n_samples":     12000,
+        "emulator_file": str(_DATA_DIR / "sea_ice_FYI_pond_6param.npz"),
     },
     "young_ice": {
         "description": "Young ice — grease ice, nilas, grey ice (0.5–30 cm)",

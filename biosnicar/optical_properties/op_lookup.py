@@ -51,7 +51,13 @@ class OpLookupTable:
         Returns:
             numpy array of shape (480,)
         """
-        idx = self._radius_to_idx[int(radius)]
+        # round, do NOT truncate: a radius computed from a formula can land a
+        # hair under an integer (e.g. 799.9999999999999 from an SSA
+        # conversion), and int() would silently select the 799 um entry
+        # instead of 800 -- a real, untraceable albedo shift.  Rounding fixes
+        # float noise while still raising KeyError for genuinely off-grid
+        # radii, which is the existing contract.
+        idx = self._radius_to_idx[int(round(radius))]
         return self.data[var_name][idx]
 
 
@@ -85,5 +91,6 @@ class HexOpLookupTable:
         Returns:
             numpy array of shape (480,)
         """
-        idx = self._key_to_idx[(int(side), int(length))]
+        # round rather than truncate -- see the note in LUT.get above.
+        idx = self._key_to_idx[(int(round(side)), int(round(length)))]
         return self.data[var_name][idx]

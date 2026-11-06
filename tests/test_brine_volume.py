@@ -41,12 +41,17 @@ class TestBrineVolumePhysics:
 
 
 class TestBrineVolumeReferenceValues:
-    """Spot checks against published approximate values.
+    """Spot checks against the published Cox & Weeks (1983) Table 1 values.
 
-    Note: The C&W polynomial as implemented gives values somewhat higher
-    than the rounded approximations in the original paper; both sets are
-    physically consistent.  The tolerance is set to 40% to accommodate
-    the ambiguity in the original paper's unit conventions.
+    These are reproduced to within 3%.  SMRT's independent implementation of
+    the same paper departs from the published values by the same margin (see
+    TestBrineVolumeAgainstSMRT), so the residual is rounding in the published
+    table rather than error here.
+
+    This tolerance was previously 40%, on the stated grounds of "ambiguity in
+    the original paper's unit conventions".  The SMRT cross-check found no
+    such ambiguity, and a 40% band is wide enough to pass almost any
+    implementation.  Do not loosen it again without evidence.
     """
 
     @pytest.mark.parametrize("S,T,expected", [
@@ -56,9 +61,50 @@ class TestBrineVolumeReferenceValues:
     ])
     def test_reference_values(self, S, T, expected):
         nu_b = compute_brine_volume(S, T)
-        assert nu_b == pytest.approx(expected, rel=0.40), (
+        assert nu_b == pytest.approx(expected, rel=0.05), (
             f"S={S} psu, T={T}°C: got {nu_b:.4f}, expected ~{expected:.4f}"
         )
+
+
+class TestBrineVolumeAgainstSMRT:
+    """Regression pin against SMRT v1.7.3's Cox & Weeks implementation.
+
+    SMRT (Picard et al.) is the community sea-ice/snow microwave RT model and
+    implements the same Cox & Weeks (1983) polynomials independently.  It is a
+    microwave model, so it shares no radiative observable with BioSNICAR --
+    but brine volume fraction is frequency-independent, which makes it a
+    genuine external check on this module's geophysics.
+
+    Expected values were generated from
+    ``smrt.permittivity.brine.brine_volume_cox83_lepparanta88(T_kelvin,
+    S_psu * PSU, porosity=0)`` with SMRT v1.7.3, and are hard-coded so the
+    suite does not depend on SMRT being installed.
+
+    The 0.04% tolerance is the pure-ice density constant: this module uses
+    rho_i(0 degC) = 0.917 g/cm3, SMRT uses 0.9167 (a 0.0327% difference).
+    A failure here means the polynomials or the formula have drifted.
+    """
+
+    @pytest.mark.parametrize("S,T,smrt_value", [
+        (1.0,  -5.0,  0.009894677),
+        (5.0,  -5.0,  0.049798505),
+        (5.0,  -10.0, 0.027733183),
+        (8.0,  -15.0, 0.033050828),
+        (12.0, -20.0, 0.040714540),
+        (5.0,  -30.0, 0.004443732),
+    ])
+    def test_matches_smrt(self, S, T, smrt_value):
+        nu_b = compute_brine_volume(S, T)
+        assert nu_b == pytest.approx(smrt_value, rel=4e-4), (
+            f"S={S} psu, T={T}°C: biosnicar {nu_b:.9f} vs SMRT {smrt_value:.9f} "
+            f"({abs(nu_b - smrt_value) / smrt_value:.4%} apart)"
+        )
+
+    def test_clamp_below_30C_warns(self):
+        """Below -30 degC the result is held constant, not a C&W value."""
+        with pytest.warns(RuntimeWarning, match="Cox & Weeks"):
+            clamped = compute_brine_volume(5.0, -35.0)
+        assert clamped == pytest.approx(compute_brine_volume(5.0, -30.0))
 
 
 class TestBrineVolumeValidation:
@@ -132,3 +178,120 @@ class TestBrineSalinityLiquidus:
         from biosnicar.sea_ice.brine_volume import brine_salinity_at_temp as Sb
         assert isinstance(Sb(-10.0), float)
         assert Sb(np.array([-5.0, -10.0])).shape == (2,)
+
+
+class TestPorosity:
+    """Gas (air) content: the Cox & Weeks term that was previously omitted.
+
+    Cox & Weeks describe brine and gas as two halves of one density balance.
+    The air content can be stated either as a porosity or as a measured bulk
+    density; expected values below come from SMRT v1.7.3 and are hard-coded so
+    the suite does not depend on SMRT being installed.
+    """
+
+    def test_default_is_bubble_free(self):
+        """Omitting both arguments must reproduce the old behaviour exactly."""
+        for S, T in [(5.0, -5.0), (8.0, -10.0), (12.0, -25.0)]:
+            assert compute_brine_volume(S, T) == compute_brine_volume(S, T, porosity=0.0)
+
+    def test_porosity_scales_linearly(self):
+        """The gas term enters as a simple (1 - Va) factor."""
+        base = compute_brine_volume(5.0, -10.0)
+        for Va in [0.0, 0.02, 0.05, 0.10, 0.25]:
+            assert compute_brine_volume(5.0, -10.0, porosity=Va) == pytest.approx(
+                (1.0 - Va) * base, rel=1e-12
+            )
+
+    @pytest.mark.parametrize("S,T,Va,smrt_value", [
+        (5.0,  -10.0, 0.02, 0.027178519),
+        (5.0,  -10.0, 0.10, 0.024959865),
+        (12.0, -20.0, 0.05, 0.038678813),
+        (2.0,  -28.0, 0.02, 0.002098774),
+    ])
+    def test_porosity_matches_smrt(self, S, T, Va, smrt_value):
+        nu_b = compute_brine_volume(S, T, porosity=Va)
+        assert nu_b == pytest.approx(smrt_value, rel=4e-4)
+
+    @pytest.mark.parametrize("S,T,rho,smrt_value", [
+        (5.0,  -10.0, 850.0, 0.025519701),
+        (5.0,  -10.0, 910.0, 0.027321092),
+        (12.0, -20.0, 820.0, 0.035872085),
+        (2.0,  -28.0, 880.0, 0.002044021),
+    ])
+    def test_bulk_density_matches_smrt(self, S, T, rho, smrt_value):
+        """The bulk-density path is exact to the precision of the stored literals.
+
+        Unlike the porosity path (rel=4e-4, limited by the 0.917 vs 0.9167
+        pure-ice density constant), this path never evaluates rho_i at all, so
+        the only residual is the rounding of the 9-significant-figure values above
+        (worst case ~1e-7 relative, on the smallest value in the set).
+        """
+        nu_b = compute_brine_volume(S, T, bulk_density_kg_m3=rho)
+        assert nu_b == pytest.approx(smrt_value, rel=1e-6)
+
+    def test_porosity_and_density_are_mutually_exclusive(self):
+        with pytest.raises(ValueError, match="not both"):
+            compute_brine_volume(5.0, -10.0, porosity=0.05, bulk_density_kg_m3=880.0)
+
+    def test_rejects_bad_porosity(self):
+        for bad in [-0.01, 1.0, 1.5]:
+            with pytest.raises(ValueError, match="porosity"):
+                compute_brine_volume(5.0, -10.0, porosity=bad)
+
+    def test_rejects_bad_density(self):
+        with pytest.raises(ValueError, match="bulk_density"):
+            compute_brine_volume(5.0, -10.0, bulk_density_kg_m3=0.0)
+
+
+class TestGasVolume:
+    """compute_gas_volume — the gas half of the same density balance."""
+
+    def test_consistent_with_brine_path(self):
+        """Va from the gas equation must reproduce the bulk-density brine volume."""
+        from biosnicar.sea_ice.brine_volume import compute_gas_volume
+        for T in [-5.0, -15.0, -25.0]:
+            for S in [2.0, 8.0]:
+                for rho in [830.0, 880.0, 910.0]:
+                    Va = compute_gas_volume(S, T, rho)
+                    via_porosity = compute_brine_volume(S, T, porosity=Va)
+                    via_density = compute_brine_volume(S, T, bulk_density_kg_m3=rho)
+                    assert via_porosity == pytest.approx(via_density, abs=1e-12), (
+                        f"S={S} T={T} rho={rho}: brine and gas halves disagree"
+                    )
+
+    def test_denser_ice_holds_less_air(self):
+        from biosnicar.sea_ice.brine_volume import compute_gas_volume
+        vals = [compute_gas_volume(5.0, -10.0, r) for r in [820, 850, 880, 910]]
+        assert all(vals[i] > vals[i + 1] for i in range(len(vals) - 1))
+
+    def test_clipped_at_zero(self):
+        """Density above the gas-free Cox & Weeks density cannot give negative air."""
+        from biosnicar.sea_ice.brine_volume import compute_gas_volume
+        assert compute_gas_volume(5.0, -10.0, 1000.0) == 0.0
+
+    def test_scalar_and_vector(self):
+        import numpy as np
+        from biosnicar.sea_ice.brine_volume import compute_gas_volume
+        assert isinstance(compute_gas_volume(5.0, -10.0, 880.0), float)
+        out = compute_gas_volume(np.array([5.0, 8.0]), np.array([-10.0, -12.0]),
+                                 np.array([880.0, 900.0]))
+        assert out.shape == (2,)
+
+
+class TestInversionWithDensity:
+    """invert_brine_volume must invert the same relation the forward model uses."""
+
+    @pytest.mark.parametrize("rho", [820.0, 860.0, 900.0])
+    @pytest.mark.parametrize("vb", [0.02, 0.05, 0.10])
+    def test_round_trip(self, rho, vb):
+        from biosnicar.sea_ice.brine_volume import invert_brine_volume
+        T = invert_brine_volume(vb, 6.0, bulk_density_kg_m3=rho)
+        back = compute_brine_volume(6.0, T, bulk_density_kg_m3=rho)
+        assert back == pytest.approx(vb, abs=1e-5)
+
+    def test_density_changes_recovered_temperature(self):
+        """A denser layer needs a colder temperature for the same brine volume."""
+        from biosnicar.sea_ice.brine_volume import invert_brine_volume
+        T_light = invert_brine_volume(0.05, 6.0, bulk_density_kg_m3=820.0)
+        T_dense = invert_brine_volume(0.05, 6.0, bulk_density_kg_m3=900.0)
+        assert T_dense < T_light

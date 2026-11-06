@@ -155,8 +155,24 @@ Save/load emulator to/from `.npz`. No sklearn required for loading.
 | `param_names`      | list[str]      | Ordered parameter names.             |
 | `bounds`           | dict           | `{name: (min, max)}` from training.  |
 | `n_pca_components` | int            | Number of PCA components retained.   |
-| `training_score`   | float          | R² on training data.                 |
+| `training_score`   | float          | R² on the **PCA coefficients**, scored on the training data — not held out, not a spectral accuracy figure. See below. |
 | `flx_slr`          | ndarray (480,) | Solar flux spectrum from build time. |
+
+#### Reading `training_score`
+
+`training_score` is sklearn's multioutput R² over the retained PCA coefficients,
+evaluated on the same samples the network was fitted to. It averages uniformly
+across components, so the near-zero-variance tail components count as much as
+the first — which drags the mean down without saying anything about spectral
+accuracy. The shipped `FYI_bare` sea-ice emulator reports 0.70 here while its
+held-out **spectral** R² is 0.998.
+
+To measure real accuracy, reconstruct spectra on fresh samples and score them
+against the forward model. Draw those samples the way `Emulator.build` does —
+Latin hypercube, with `_LOG_SAMPLE_PARAMS` in log10(x+1) space. Sampling those
+uniformly in linear space tests the emulator where it was barely trained and
+badly understates it. `scripts/audit_sea_ice_emulators.py` does this correctly
+for the sea-ice fleet.
 
 ### `run_emulator(emulator, **params)`
 
@@ -315,7 +331,7 @@ BioSNICAR includes five pre-built emulators for Arctic sea ice surface types, ex
 | `FYI_snow` | `snow_depth`, `snow_grain_radius`, `sea_ice_temperature`, `black_carbon`, `solzen`, `direct` | Similar to glacier snow emulator |
 | `FYI_summer` | `ssl_grain_radius`, `sea_ice_temperature`, `sea_ice_bubble_radius`, `black_carbon`, `solzen`, `direct` | Includes Surface Scattering Layer (SSL) grain radius |
 | `MYI_bare` | `brine_volume_fraction`, `sea_ice_bubble_radius`, `black_carbon`, `solzen`, `direct` | Lower salinity MYI; same Vb reparameterisation |
-| `FYI_pond` | `pond_depth`, `sea_ice_temperature`, `black_carbon`, `solzen`, `direct` | Pond depth is the primary parameter |
+| `FYI_pond` | `pond_depth`, `sea_ice_temperature`, `sea_ice_bubble_radius`, `black_carbon`, `solzen`, `direct` | Pond depth is the primary parameter. `sea_ice_bubble_radius` is the *floor* coarseness — fixed at 200 µm the emulator could not reach 21% of observed ponds |
 
 ### The `brine_volume_fraction` reparameterisation
 

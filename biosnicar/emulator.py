@@ -257,7 +257,25 @@ class Emulator:
 
     @property
     def training_score(self):
-        """R² score on held-out validation set (from build)."""
+        """R² on the PCA coefficients, scored on the TRAINING data (from build).
+
+        Read this with care — it is not a spectral accuracy figure, and it is
+        not held out:
+
+        * It scores the **PCA coefficients**, not reconstructed spectra, and
+          sklearn averages R² uniformly across all retained components.  The
+          26th component explains almost none of the spectrum but counts as
+          much as the first, so this number can look alarming while spectral
+          accuracy is excellent.  Measured 2026-11-05: ``FYI_bare`` reports
+          0.70 here while its held-out **spectral** R² is 0.998 (RMSE 0.009).
+        * It is evaluated on the same samples the network was fitted to.
+
+        For a real quality figure, score reconstructed spectra against the
+        forward model on fresh samples — and draw those samples the way
+        :meth:`build` does, Latin hypercube with ``_LOG_SAMPLE_PARAMS`` in
+        log10(x+1) space.  Sampling uniformly instead over-weights the sparse
+        high end of the log-sampled parameters and badly understates accuracy.
+        """
         return self._training_score
 
     @property
@@ -451,7 +469,9 @@ class Emulator:
         )
         mlp.fit(X_scaled, pca_coeffs)
 
-        # Validation score (R² on held-out validation set)
+        # R² on the PCA coefficients, scored on the training data itself —
+        # NOT held out, and not a spectral accuracy figure.  See the
+        # training_score property for why it reads low for some emulators.
         r2_score = mlp.score(X_scaled, pca_coeffs)
 
         # --- 6. Extract weights and assemble emulator ---

@@ -82,7 +82,7 @@ Use this when you already know the surface type (e.g. from a classification mask
 from biosnicar.emulator import Emulator
 from biosnicar.inverse.optimize import retrieve
 
-emu_pond = Emulator.load("data/emulators/sea_ice_FYI_pond_5param.npz")
+emu_pond = Emulator.load("data/emulators/sea_ice_FYI_pond_6param.npz")
 
 result = retrieve(
     observed=observed,
@@ -133,7 +133,7 @@ The dominant broadband-albedo control is bubble scattering. Brine volume (determ
 
 | Parameter | Range | Units | Role |
 |-----------|-------|-------|------|
-| `brine_volume_fraction` | 0.019 to 0.141 | dimensionless | Combined T+S effect; see below |
+| `brine_volume_fraction` | 0.019 to 0.123 | dimensionless | Combined T+S effect; see below. Upper bound was 0.141 while ν_b was computed bubble-free — not reachable in ice that holds air |
 | `sea_ice_bubble_radius` | 50 to 1000 | μm | Controls NIR scattering efficiency |
 | `black_carbon` | 0 to 5000 | ppb | VIS darkening (cryoconite proxy) |
 | `rho_DL` | 820 to 900 | kg/m³ | DL density (affects air fraction + scattering) |
@@ -180,7 +180,7 @@ MYI has lower salinity (0–6 ppt vs 1–20 ppt for FYI) and larger bubbles (200
 
 | Parameter | Range | Units | Role |
 |-----------|-------|-------|------|
-| `brine_volume_fraction` | 0.0065 to 0.045 | — | The optically active quantity (T and S enter only through it; post-hoc T at S_ref = 2 psu) |
+| `brine_volume_fraction` | 0.0065 to 0.042 | — | The optically active quantity (T and S enter only through it; post-hoc T at S_ref = 2 psu). Upper bound was 0.045 under the bubble-free relation |
 | `sea_ice_bubble_radius` | 200 to 2000 | μm | Scattering |
 | `black_carbon` | 0 to 5000 | ppb | Surface darkening |
 | `solzen` | 20 to 80 | degrees | — |
@@ -215,46 +215,312 @@ FYI_bare, MYI_bare:  (256, 256, 128, 64)  — deeper for high-dimensional spectr
 FYI_snow, FYI_summer, FYI_pond:  (128, 128, 64)  — standard
 ```
 
-Bare sea ice albedo (layer_type=4) is controlled by brine optics, which produce a spectrally complex absorption signature spanning many PCA dimensions (~27 components). The larger MLP is needed to map the 6–7 input parameters to this high-dimensional output space accurately.
+Bare sea ice albedo (layer_type=4) is controlled by brine optics, which produce a spectrally complex absorption signature spanning many PCA dimensions (26 components). The larger MLP is needed to map the 6–7 input parameters to this high-dimensional output space accurately.
 
-Snow and pond surfaces are dominated by scattering (grain radius, depth) and produce smoother spectral shapes (~6 PCA dimensions). The smaller default architecture is sufficient.
+Snow and pond surfaces are dominated by scattering (grain radius, depth) and produce smoother spectral shapes (4–6 PCA dimensions). The smaller default architecture is sufficient.
 
 ### Why the reported "training R²" is misleading for bare ice
 
-The production FYI_bare emulator reports training R² ≈ 0.70 (MYI_bare ≈ 0.66) vs > 0.98 for
-snow/pond types.  **This is a metric artifact, not a quality problem.**  The reported score is
-sklearn's multioutput R² in PCA-*coefficient* space: a uniform average over ~26 components, where
-near-zero-variance tail components are barely predictable and drag the mean down.
+The shipped FYI_bare emulator reports training R² 0.697 and MYI_bare 0.623, against 0.98–0.996
+for the snow/summer/pond/young-ice types.  **This is a metric artifact, not a quality problem,
+and it is not even held out.**  The reported score is sklearn's multioutput R² in
+PCA-*coefficient* space, scored on the training samples themselves: a uniform average over the
+retained components, where the near-zero-variance tail components are barely predictable and
+drag the mean down.  The bare-ice emulators retain 26 components against 4–6 for the others,
+which is the whole of the difference — a longer tail to average over, not a worse fit.
 
 Measured properly — against 2,000 held-out forward-model spectra (seed 777, disjoint from
 training) in albedo space — the shipped FYI_bare emulator achieves:
 
-| Metric | Value |
-|---|---|
-| Pooled spectral R² | **0.998** |
-| Spectral MAE | 0.0021 |
-| BBA MAE | 0.0024 |
-| Max spectral error | 0.46 |
+| Metric | Value | Before the 2026-11-05 physics rebuild |
+|---|---|---|
+| Pooled spectral R² | **0.9977** | 0.9978 |
+| Per-spectrum R², median | 0.9983 | 0.9983 |
+| Per-spectrum R², 5th pctile | 0.9881 | 0.9842 |
+| Spectral MAE | 0.0026 | 0.0023 |
+| BBA MAE | 0.0024 | 0.0021 |
+| Max spectral error | 0.49 | 0.52 |
 
-(Values for the shipped 60,000-sample emulator after the physics-audit rebuild — cold-branch
-Cox & Weeks fix, brine salinity/density cap — re-measured on a regenerated 2000-spectrum
-holdout.  The original audit showed the 30k→60k upgrade halves BBA MAE; the 60k choice was
-confirmed on a second, never-before-used holdout, ruling out selection bias.)  A rho_DL/brine-volume Jacobian collinearity analysis
-found the two parameters separable (mean |cos| = 0.37) — no further reparameterisation is needed.
-Audit script: `scripts/experiments/fyi_bare_audit.py`.
+Both columns are the shipped 60,000-sample emulator on a freshly generated 2000-spectrum
+holdout; the right-hand column is the same measurement before the air-fraction and LUT-density
+fixes.  Accuracy is unchanged to within the noise of a single holdout draw — the physics fixes
+moved what the emulator approximates, not how well it approximates it.  The worst-case tail
+improved (5th-percentile per-spectrum R² 0.984 → 0.988): the density axis no longer clamps, so
+the forward model it is fitting is smoother in `rho_DL`.
+
+Audit script: `scripts/experiments/fyi_bare_audit.py` (FYI_bare, 2000 spectra, with the
+`exp1`–`exp4` architecture comparisons); `scripts/audit_sea_ice_emulators.py` audits all six
+emulators at once.  The `exp1`–`exp4` rows cached in
+`data/emulators/experiments/fyi_bare_audit_results.json` predate the rebuild and have **not**
+been re-measured — treat them as architecture guidance, not as current figures.
 
 The day-to-day diagnostic for emulator quality remains **BBA MAE** via `emulator.verify()`;
 production emulators sit at 0.002–0.004 for all surface types.
 
+#### All six emulators, held-out spectral accuracy
+
+Measured 2026-11-05 by `scripts/audit_sea_ice_emulators.py` (250 fresh LHS samples per
+emulator, drawn the way `Emulator.build` draws them, scored as reconstructed spectra against
+the forward model).  The "PCA ceiling" column is the best any network could do given the
+retained components — it separates network error from compression error.
+
+| Emulator | Network R² | RMSE | PCA ceiling R² | Ceiling RMSE |
+|---|---|---|---|---|
+| FYI_bare | 0.9981 | 0.0093 | 0.9997 | 0.0035 |
+| MYI_bare | 0.9977 | 0.0099 | 0.9997 | 0.0036 |
+| FYI_summer | 1.0000 | 0.0015 | 1.0000 | 0.0008 |
+| FYI_snow | 0.9999 | 0.0023 | 1.0000 | 0.0016 |
+| FYI_pond | 0.9999 | 0.0014 | 1.0000 | 0.0011 |
+| young_ice | 0.9990 | 0.0022 | 0.9996 | 0.0014 |
+
+> **Sampling trap.** Draw the audit samples the way the build draws them. `_LOG_SAMPLE_PARAMS`
+> (`black_carbon`, the algae and dust species, `sea_ice_bubble_radius`, `tau_snow`,
+> `ice_thickness_cm`) are sampled in log10(x+1) space, concentrating training at the low end.
+> Sampling those uniformly in linear space instead tests the emulator mostly where it was barely
+> trained and understates FYI_bare at R² ≈ 0.80 / RMSE 0.063 — an artefact of the measurement,
+> not of the emulator.
+
+### Parameter degeneracy in FYI_bare
+
+All numbers below come from `python scripts/experiments/fyi_bare_audit.py baseline`: 24 random
+base points drawn from the live config, scored through the real OE path with the calibrated
+forward-model error covariance. Ranges are read from `SEA_ICE_EMULATOR_CONFIGS`, so this cannot
+drift out of date when the emulator is reparameterised.
+
+#### rho_DL / brine-volume: smaller than the cosine suggests
+
+**Jacobian cosine** compares the spectral direction `rho_DL` pushes against the direction
+`brine_volume_fraction` pushes. It is prior-free, noise-free, and ignores the other fitted
+parameters.
+
+| | Mean \|cos\| | Min | Max |
+|---|---|---|---|
+| After the 2026-11-05 rebuild | 0.73 | 0.28 | 0.95 |
+| Before | 0.42 | 0.03 | 0.90 |
+
+**Posterior correlation** is what actually governs a retrieval — all four fitted parameters,
+the measurement noise, and the forward-model error:
+
+| Quantity | Mean | Min | Max |
+|---|---|---|---|
+| \|posterior corr(Vb, rho_DL)\| | **0.31** | 0.07 | 0.77 |
+| Marginal σ inflation, 1/√(1−r²) | **1.10×** | 1.00× | 1.56× |
+| Averaging kernel, `rho_DL` | 0.94 | 0.84 | 1.00 |
+| Averaging kernel, `brine_volume_fraction` | 0.70 | 0.33 | 0.96 |
+
+**The cosine overstates this pair badly.** Conditioning on the other parameters and a realistic
+error budget takes the typical collinearity from 0.73 down to 0.31, costing only 1.10× on the
+marginal σ. Both parameters stay measurement-determined; `rho_DL`'s averaging kernel never drops
+below 0.84, so it is not prior-dominated. The collinearity *did* rise with the 2026-11-05
+rebuild — before it, the LUT density axis started at 870 kg/m³ and the interpolator clamps
+rather than extrapolates, so most of the sampled `rho_DL` range was flat and its Jacobian was
+mostly numerical noise, which is uncorrelated with anything. That is expected, not a regression.
+
+Note how sampling-dependent this is: holding `solzen` fixed at 55° instead of sampling it raises
+the mean to 0.53. That sensitivity is itself the argument for reading the correlation per
+retrieval rather than quoting a constant.
+
+#### The dominant degeneracy is bubble radius / density
+
+Measuring every pair rather than only the one historically tracked changes the priority. After
+the 2026-11-06 retrain (corrected LUT bubble axis, MYI retrieving density):
+
+| Emulator | Worst pair | Mean \|r\| | σ inflation | Sign stable? |
+|---|---|---|---|---|
+| MYI_bare | `sea_ice_bubble_radius` / `rho_DL` | **0.982** | 7.9× | **yes** (0/24) |
+| FYI_bare | `sea_ice_bubble_radius` / `rho_DL` | **0.961** | 6.4× | **yes** (0/24) |
+| young_ice | `ice_thickness_cm` / `ocean_albedo` | 0.846 | 2.9× | **yes** (0/24) |
+| FYI_pond | `sea_ice_temperature` / `black_carbon` | 0.810 | 3.5× | nearly (21/3) |
+| FYI_summer | `sea_ice_bubble_radius` / `black_carbon` | 0.649 | 2.4× | **yes** (0/24) |
+| FYI_snow | `tau_snow` / `black_carbon` | 0.636 | 1.8× | no (16/8) |
+
+**The radius/density correlation rose with the retrain — from 0.837 to 0.96 — and that is the
+correct outcome, not a regression.** It is the same lesson as the density axis: the LUT bubble
+grid used to clamp below 100 µm and above 1000 µm, so a large part of the sampled radius range
+was inert and its Jacobian was mostly numerical noise, which is uncorrelated with anything. With
+both axes genuinely active, the two parameters are what the code says they are — two knobs on
+one product, `sca_coeff = sca_cff_vlm(r) × ν_air` — and they are very nearly interchangeable.
+
+At \|r\| = 0.96–0.98 the marginal σ is inflated 6–8× (up to 20× at worst). **Reporting bubble
+radius and density as separately determined quantities is not defensible at those values.**
+Report SSA.
+
+A live MYI retrieval makes the point concretely. Truth r = 800 µm, ρ = 780 kg/m³, SSA = 0.7183:
+
+| Quantity | Retrieved | 1σ | Fractional | Error vs truth |
+|---|---|---|---|---|
+| bubble radius | 589 µm | ±327 | **56%** | −26% |
+| density | 811 kg/m³ | ±55 | 6.8% | +4% |
+| **SSA** | **0.7220** | **±0.031** | **4.3%** | **+0.5%** |
+
+SSA is 13× better determined than the radius, and accurate where the components are not.
+
+#### Why only one of these is worth reparameterising
+
+For granular ice the codebase already handles exactly this pattern: `rds` and `rho` are
+degenerate, and the constrained combination is retrieved instead — see `RetrievalResult.ssa`,
+whose docstring notes "different (rds, rho) pairs with the same SSA produce nearly identical
+spectra". The bubbly-ice analogue has no such treatment.
+
+Whether a rotation can help depends on whether the correlation keeps its sign:
+
+- `sea_ice_bubble_radius` / `rho_DL` is negative at **all 24** base points. A reparameterisation
+  is viable, and is logged as an open item in `ROADMAP.md` — it needs a retrain, so it is not
+  done here.
+- `brine_volume_fraction` / `rho_DL` **changes sign** (17 positive, 7 negative, spanning −0.60 to
+  +0.77). No global linear rotation can decorrelate a relationship that reverses; it would trade
+  a small state-dependent correlation for a fixed one that is wrong over much of the domain. A
+  retrain on rotated coordinates is therefore **not** planned for this pair.
+
+#### Fleet-wide: every emulator has one
+
+`scripts/audit_sea_ice_degeneracy.py` runs the same posterior measurement over all six
+emulators and every parameter pair. The FYI_bare result is not a contained quirk:
+
+| Emulator | Worst pair | Mean \|r\| | σ inflation | Sign stable? |
+|---|---|---|---|---|
+| FYI_bare | `sea_ice_bubble_radius` / `rho_DL` | 0.89 | 4.5× | **yes** (0/24) |
+| MYI_bare | `sea_ice_bubble_radius` / `black_carbon` | 0.85 | 3.2× | no (3/21) |
+| young_ice | `ice_thickness_cm` / `ocean_albedo` | 0.85 | 2.9× | **yes** (0/24) |
+| FYI_pond | `sea_ice_temperature` / `black_carbon` | 0.79 | 2.8× | nearly (22/2) |
+| FYI_summer | `sea_ice_bubble_radius` / `black_carbon` | 0.76 | 2.1× | **yes** (0/24) |
+| FYI_snow | `tau_snow` / `black_carbon` | 0.49 | 1.5× | no (16/8) |
+
+Two readings worth drawing out.
+
+**FYI_snow is the control case, and it validates the whole approach.** `tau_snow` is itself a
+reparameterisation (snow depth ÷ grain radius) introduced because depth and grain size are
+degenerate. It worked: `tau_snow` / `snow_grain_radius` is now the *least* degenerate pair in
+that emulator (0.24), and FYI_snow has the mildest worst-pair in the fleet. Where the technique
+applies, it delivers.
+
+**Three pairs keep a stable sign and are therefore reparameterisable** — FYI_bare's
+bubble/density, FYI_summer's bubble/BC, and young_ice's thickness/ocean-albedo. Each needs a
+retrain, so each is logged in `ROADMAP.md` rather than done.
+
+#### On real spectra: bounds, and a parameter that isn't retrieved
+
+Synthetic states start each fit at the truth, which measures uncertainty inflation but cannot
+see a ridge sliding the optimiser onto a hard bound.
+`tests/validation_data/parameter_identifiability_sheba.py` checks that against the 23 SHEBA
+spectra. **22 of 92 retrieved parameters (24%) land within 2% of a bound, and 19 of 23 spectra
+carry a pair at \|r\| > 0.8.**
+
+Pairing the pin with the averaging kernel separates two opposite diagnoses:
+
+| Surface | Pinned parameter | Count | Mean A | Reading |
+|---|---|---|---|---|
+| FYI_summer | `sea_ice_bubble_radius` @ hi | 8 | 0.74 | measurement pushing against the ceiling |
+| FYI_snow | `black_carbon` @ lo | 7 | 0.49 | clean snow — benign |
+| FYI_snow | `tau_snow` @ lo | 5 | 0.97 | wants *less* snow than the class allows |
+| FYI_snow | `sea_ice_temperature` @ hi | 2 | 0.03 | flat likelihood — **value meaningless** |
+
+> **`sea_ice_temperature` is reported but not retrieved.** Across 22 of the 23 SHEBA spectra its
+> averaging kernel averages **0.048** — roughly 95% prior, 5% measurement. The fleet sweep agrees
+> (mean A of 0.16 for FYI_summer, 0.25 for FYI_snow, 0.29 for young_ice). This is expected on
+> reflection: temperature acts only through brine volume and brine salinity, and the bare-ice and
+> SSL emulators are `vis_only`-masked, where bubble scattering swamps brine absorption. There is
+> no temperature signal in the VIS to retrieve. Treat a retrieved `sea_ice_temperature` as the
+> prior unless its averaging kernel says otherwise.
+
+On the FYI_summer ceiling: scanning bubble radius through the *full forward model* past the
+500 µm bound (the emulator is not valid outside it) shows the optimum lies beyond 500 in only 4
+of the 8 pinned cases, and the improvement is marginal except for one poorly-fit spectrum
+(RMSE 1.21e-3 → 1.01e-3 at 1000 µm). The ceiling is half what the sea-ice LUT supports and half
+what FYI_bare allows, so it is worth revisiting — but it is a tidiness issue, not an accuracy
+bug. Notably the two spectra whose scan was *flat* are exactly the two with the lowest averaging
+kernel (A = 0.20, 0.45): low information content predicts a flat likelihood, which is a useful
+cross-check that the diagnostic is measuring what it claims.
+
+#### Report SSA, not radius and density separately
+
+Radius and density are individually degenerate; their combination is not. The quantity that
+carries the unique signature is the specific surface area of the air/ice interface,
+
+```
+SSA = 3 (1 - rho/917) / (r * rho)        [m2 kg-1]
+```
+
+This follows from the code rather than by analogy. Scattering is formed as
+`sca_coeff = sca_cff_vlm(r) x nu_air` and absorption as `(1 - nu_air) x alpha_ice`. Form the
+single-scattering albedo and the density cancels, leaving **ω a function of SSA alone** — and ω
+is what governs the albedo of an optically thick layer.
+
+Measured on the forward model along true iso-SSA curves (radius swept ~5×, density 820→895,
+spread compared against the same radius span at fixed density):
+
+| Band | Variation removed by holding SSA fixed |
+|---|---|
+| NIR (1005–1995 nm) | **88%** |
+| VIS (405–995 nm) | **61%** |
+
+And in the posterior, over 24 FYI_bare states:
+
+| Fractional 1σ | Mean | Median |
+|---|---|---|
+| bubble radius, σ_r/r | 0.583 | 0.317 |
+| **SSA, σ_SSA/SSA** | **0.440** | **0.187** |
+| SSA, wrongly assuming independence | 0.765 | 0.541 |
+
+SSA is better determined than bubble radius in **22 of 24** states, and accounting for the
+radius/density covariance shrinks its uncertainty **3-fold**. `RetrievalResult.ssa` and
+`.ssa_uncertainty` now compute this for sea-ice retrievals and use the posterior covariance.
+
+**Four caveats, because SSA is not a universal answer.**
+
+1. **It is weaker in the VIS, which is where the bare-ice emulators look.** ω = f(SSA) holds
+   where ice absorbs; in the VIS ω → 1 and the remaining signal is carried by the asymmetry
+   parameter, which depends on radius *alone*. That is why iso-SSA removes 88% of NIR but only
+   61% of VIS variation, and why radius/density correlate at 0.85 rather than 0.999. The
+   residual is real information — so SSA is reported *alongside* the components, not instead of
+   them.
+
+2. **SSA amplifies density error at sea-ice densities.** `d(ln SSA)/d(ln rho) = -1/phi` with
+   `phi = 1 - rho/917 ≈ 0.03–0.11`, so the factor is 9–30×. A 2% density error becomes a ~30%
+   SSA error. This is physical, not a coordinate artefact — the air fraction is a small
+   difference of two large numbers — but it means SSA is only useful where density is genuinely
+   constrained. For snow (`phi ≈ 0.67`) the amplification is negligible; for dense sea ice it is
+   not.
+
+3. **Only FYI_bare retrieves both components.** The other five emulators hard-code density
+   (`FYI_summer` uses `rho=[300, 850, 910]`), so there is no retrieved density to form SSA from.
+   On the 23 SHEBA spectra, which classify as FYI_snow or FYI_summer, SSA is available for
+   **none of them**. Making SSA the primary reported quantity fleet-wide requires those
+   emulators to sample density, which means retraining them.
+
+4. **It addresses one of the six measured degeneracies.** Radius/density is FYI_bare's worst
+   pair, but MYI_bare's and FYI_summer's is `sea_ice_bubble_radius`/`black_carbon`, young_ice's
+   is `ice_thickness_cm`/`ocean_albedo`, and FYI_pond's is `sea_ice_temperature`/`black_carbon`.
+   SSA does nothing for any of those. Where density is held fixed there is of course no
+   radius/density degeneracy to cure in the first place.
+
+#### What to do instead
+
+Read the correlation for the retrieval in front of you rather than assuming a constant:
+
+```python
+fit = result.all_fits["FYI_bare"]
+fit.parameter_correlation()[("brine_volume_fraction", "rho_DL")]   # e.g. -0.31
+fit.degenerate_parameters(threshold=0.8)
+# [('sea_ice_bubble_radius', 'rho_DL', -0.993)]
+```
+
+Both require `method="oe"`. Where `|r|` is high, report the pair as a jointly constrained
+combination and widen the marginal bars by 1/√(1−r²); where it is low, the two are separately
+informative.
+
 ### PCA component counts
 
-| Surface type | Typical n_pca (production) | Physical reason |
+Retained to 99.9% of output variance. Shipped fleet, measured 2026-11-05:
+
+| Surface type | n_pca (shipped) | Physical reason |
 |---|---|---|
-| FYI_bare | ~27 | Brine absorption bands span full NIR |
-| MYI_bare | ~25 | Similar to FYI_bare, reduced brine |
-| FYI_snow | ~6 | Smooth scattering function |
-| FYI_summer | ~8 | SSL grain radius + mild brine |
-| FYI_pond | ~6 | Water absorption smooth |
+| FYI_bare | 26 | Brine absorption bands span full NIR |
+| MYI_bare | 26 | Similar to FYI_bare, reduced brine |
+| FYI_snow | 6 | Smooth scattering function |
+| FYI_summer | 5 | SSL grain radius + mild brine |
+| FYI_pond | 4 | Water absorption smooth |
+| young_ice | 4 | Two-stream slab, smooth in thickness |
 
 ## Building Custom Emulators
 
@@ -572,7 +838,7 @@ result = retrieve(
 result = retrieve(
     observed=spectrum,
     parameters=["pond_depth"],
-    emulator=Emulator.load("data/emulators/sea_ice_FYI_pond_5param.npz"),
+    emulator=Emulator.load("data/emulators/sea_ice_FYI_pond_6param.npz"),
     fixed_params={
         "sea_ice_temperature": -5.0,
         "black_carbon": 0.0,

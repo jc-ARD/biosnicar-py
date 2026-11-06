@@ -103,3 +103,131 @@ class TestNearestLutRadius:
         hi = float(lut.data["radii"].max())
         with pytest.warns(UserWarning, match="outside the"):
             assert _nearest_lut_radius(hi * 2.0, lut) == int(hi)
+
+
+class TestDensityIsHonoured:
+    """Bulk density must reach the optics, both in-module and through the LUT.
+
+    The sea-ice LUT is interpolated with *clamping* rather than extrapolation
+    (``column_OPs._interpolate_sea_ice_lut``), so any density outside the LUT's
+    rho grid is silently replaced by the nearest edge.  The grid used to start
+    at 870 while the shipped presets use a drained-layer density of 850 and the
+    FYI_bare emulator samples rho_DL down to 820 — so the parameter did nothing
+    over most of its range.  These tests fail if that gap reopens.
+    """
+
+    def test_lut_grid_covers_configured_densities(self):
+        import numpy as np
+        import biosnicar.optical_properties.column_OPs as C
+
+        data = np.load(C._SEA_ICE_LUT_PATH)
+        rho_grid = data["rho_grid"]
+
+        # Lowest density the model is ever asked for: FYI_bare emulator rho_DL.
+        from biosnicar.sea_ice.emulator_configs import SEA_ICE_EMULATOR_CONFIGS
+        rho_lo = SEA_ICE_EMULATOR_CONFIGS["FYI_bare"]["params"]["rho_DL"][0]
+
+        assert rho_grid.min() <= rho_lo, (
+            f"LUT rho grid starts at {rho_grid.min()} but the FYI_bare emulator "
+            f"samples rho_DL down to {rho_lo}; everything below the grid edge is "
+            "clamped, so the parameter would be inert over that range."
+        )
+        # Shipped presets use a Jin et al. (2023) drained-layer density of 850.
+        assert rho_grid.min() <= 850.0
+
+    def test_density_changes_the_interpolated_optics(self):
+        """Two densities inside the grid must give different optics."""
+        import numpy as np
+        from biosnicar.optical_properties.column_OPs import _interpolate_sea_ice_lut
+
+        tau_light, ssa_light, _ = _interpolate_sea_ice_lut(6.0, -10.0, 850.0, 300.0)
+        tau_dense, ssa_dense, _ = _interpolate_sea_ice_lut(6.0, -10.0, 910.0, 300.0)
+        assert not np.allclose(tau_light, tau_dense), (
+            "density is not reaching the LUT interpolation"
+        )
+        # Less dense ice holds more air, so scatters more.
+        assert ssa_light.mean() > ssa_dense.mean()
+
+    def test_optics_use_density_for_brine_volume(self):
+        """compute_sea_ice_optics must pass bulk density into Cox & Weeks.
+
+        Denser ice holds less air *and* less brine, so its brine volume is
+        higher per unit mass but its scattering is lower.  The direct check is
+        that the function's nu_b matches the bulk-density form.
+        """
+        from biosnicar.sea_ice.brine_volume import compute_brine_volume
+
+        S, T, rho = 8.0, -10.0, 850.0
+        bubble_free = compute_brine_volume(S, T)
+        with_density = compute_brine_volume(S, T, bulk_density_kg_m3=rho)
+        assert with_density < bubble_free, "porosity must reduce brine volume"
+        # ~7% at this density — the gas fraction.
+        assert 0.03 < (bubble_free - with_density) / bubble_free < 0.12
+
+
+class TestBubbleRadiusIsHonoured:
+    """Every sampled bubble radius must land inside the LUT's bubble grid.
+
+    Same failure mode as TestDensityIsHonoured, found later and on a different
+    axis.  ``_interpolate_sea_ice_lut`` clamps, and the bubble grid was
+    ``[100, 300, 500, 1000]`` against sampled ranges of 50-1000 (FYI_bare),
+    50-500 (FYI_summer) and 200-2000 (MYI_bare).  So tau and ssa were
+    bit-identical for every radius below 100 and above 1000: the bottom of
+    FYI_bare's range and roughly 30% of MYI_bare's log range did nothing, and
+    at r=50 the clamped tau was wrong by a factor of 2.
+
+    This is a generic guard over the whole fleet so a new or widened emulator
+    cannot silently reopen it on either edge.
+    """
+
+    def _grid(self):
+        import numpy as np
+        import biosnicar.optical_properties.column_OPs as C
+        return np.load(C._SEA_ICE_LUT_PATH)["bubble_radius_grid"]
+
+    def test_grid_covers_every_configured_bubble_radius(self):
+        from biosnicar.sea_ice.emulator_configs import SEA_ICE_EMULATOR_CONFIGS
+
+        grid = self._grid()
+        for name, cfg in SEA_ICE_EMULATOR_CONFIGS.items():
+            bounds = cfg["params"].get("sea_ice_bubble_radius")
+            if bounds is None:
+                continue
+            lo, hi = bounds
+            assert grid.min() <= lo, (
+                f"{name} samples sea_ice_bubble_radius down to {lo} um but the "
+                f"LUT bubble grid starts at {grid.min()}; everything below is "
+                "clamped, making the parameter inert over that range."
+            )
+            assert grid.max() >= hi, (
+                f"{name} samples sea_ice_bubble_radius up to {hi} um but the "
+                f"LUT bubble grid ends at {grid.max()}; everything above is "
+                "clamped."
+            )
+
+    def test_radius_changes_optics_at_both_extremes(self):
+        """The edges are where clamping hides, so probe them specifically."""
+        import numpy as np
+        from biosnicar.optical_properties.column_OPs import _interpolate_sea_ice_lut
+
+        grid = self._grid()
+        lo, hi = float(grid.min()), float(grid.max())
+        for a, b in ((lo, lo * 1.5), (hi / 1.5, hi)):
+            tau_a, _, _ = _interpolate_sea_ice_lut(6.0, -10.0, 870.0, a)
+            tau_b, _, _ = _interpolate_sea_ice_lut(6.0, -10.0, 870.0, b)
+            assert not np.allclose(tau_a, tau_b), (
+                f"optics identical at bubble radii {a} and {b} um — the grid "
+                "is clamping inside its own nominal range."
+            )
+
+    def test_smaller_bubbles_scatter_more(self):
+        """Scattering goes as 1/r, so tau must fall monotonically with r."""
+        import numpy as np
+        from biosnicar.optical_properties.column_OPs import _interpolate_sea_ice_lut
+
+        grid = sorted(float(x) for x in self._grid())
+        taus = [_interpolate_sea_ice_lut(6.0, -10.0, 870.0, r)[0].mean()
+                for r in grid]
+        assert all(a > b for a, b in zip(taus, taus[1:])), (
+            f"tau not monotonically decreasing in bubble radius: {taus}"
+        )

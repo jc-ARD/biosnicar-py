@@ -146,6 +146,25 @@ def run_model(
             - **sea_ice_bubble_radius** (*float | list*) — effective air-
               bubble radius (µm, typically 100–1000)
 
+            Optical parameterisation (alternatives to the above — supply
+            one set or the other, never both for the same layer):
+
+            - **ssa** (*float | list*) — specific surface area of the
+              air/ice interface (m² kg⁻¹), replacing ``rds`` for granular
+              and glacier-ice layers and ``sea_ice_bubble_radius`` for
+              ``layer_type=4``.  Requires ``layer_type``, and ``rho`` for
+              bubbly layers.  Radius and density are individually degenerate
+              — the spectrum constrains their combination — so SSA is the
+              better-conditioned coordinate.  **Two conventions**: granular
+              layers use ``3/(r·ρ_ice)`` and bubbly layers
+              ``3(1 − ρ/917)/(r·ρ)``; the layer type selects, since they
+              differ by ~2× at snow densities.  See
+              :mod:`biosnicar.sea_ice.parameterisation`.
+            - **brine_volume_fraction** (*float | list*) — replaces
+              ``sea_ice_temperature`` for ``layer_type=4``, inverting
+              Cox & Weeks (1983) at that layer's salinity and bulk density.
+              Requires ``sea_ice_salinity`` and ``rho``.
+
             Impurities (scalar = apply to first layer only; list = per-layer):
 
             - **black_carbon** (*float | list*) — black carbon (ppb)
@@ -177,6 +196,21 @@ def run_model(
             black_carbon=500,
         )
 
+        # The same column in the optical parameterisation
+        from biosnicar.sea_ice import specific_surface_area
+        outputs = run_model(
+            solzen=60,
+            layer_type=[0, 4, 4],
+            dz=[0.15, 0.05, 1.45],
+            rho=[300, 895, 895],
+            ssa=[specific_surface_area(200, "granular"),
+                 specific_surface_area(100, "bubbly", 895),
+                 specific_surface_area(200, "bubbly", 895)],
+            sea_ice_salinity=[None, 12, 8],
+            brine_volume_fraction=[None, 0.082, 0.049],
+            black_carbon=500,
+        )
+
         # Both outputs use the same attribute names
         print(outputs.BBA)          # or outputs.broadband
         print(outputs.albedo)       # or outputs.spectrum
@@ -204,6 +238,7 @@ def run_model(
     )
 
     if overrides:
+        overrides = _resolve_parameterisations(overrides)
         _apply_overrides(overrides, ice, illumination, impurities, input_file)
 
     if validate:
@@ -317,6 +352,124 @@ def _blend_with_pond(ice_outputs, f, pond_depth, pond_preset_arg,
 
     pond_outputs = run_model(input_file=input_file, solver=solver, **pond_kwargs)
     return blend_pond_fraction(ice_outputs, pond_outputs, f)
+
+
+# Alternative ("optical") parameterisations, resolved to canonical model
+# inputs before _apply_overrides sees them.  Keyed by the alias the caller
+# supplies; the value is the canonical key(s) it replaces.
+_ALIAS_PARAMETERISATIONS = {
+    "ssa": ("rds", "sea_ice_bubble_radius"),
+    "brine_volume_fraction": ("sea_ice_temperature",),
+}
+
+
+def _as_layer_list(value, n):
+    """Broadcast a scalar to *n* layers, or validate an existing list."""
+    if isinstance(value, (list, tuple)):
+        if len(value) != n:
+            raise ValueError(
+                f"expected {n} per-layer values to match layer_type, got "
+                f"{len(value)}"
+            )
+        return list(value)
+    return [value] * n
+
+
+def _resolve_parameterisations(overrides):
+    """Convert ``ssa`` / ``brine_volume_fraction`` to canonical model inputs.
+
+    Radius and density are individually degenerate and temperature acts on the
+    optics only through brine volume, so a caller may prefer to specify the
+    combination the measurement actually constrains.  Either set is accepted;
+    giving both for the same layer is an error rather than a silent
+    precedence rule.
+
+    ``ssa`` becomes ``sea_ice_bubble_radius`` for ``layer_type=4`` and ``rds``
+    otherwise, using the granular or bubbly convention as the layer type
+    dictates (see :mod:`biosnicar.sea_ice.parameterisation` — the two formulas
+    differ by ~2x at snow densities, so the topology is not guessed).
+
+    ``brine_volume_fraction`` becomes ``sea_ice_temperature`` by inverting
+    Cox & Weeks (1983) at that layer's salinity and bulk density.
+    """
+    aliases = [k for k in _ALIAS_PARAMETERISATIONS if k in overrides]
+    if not aliases:
+        return overrides
+
+    from biosnicar.sea_ice.parameterisation import (
+        radius_from_ssa, topology_for_layer_type,
+    )
+
+    out = dict(overrides)
+    layer_type = out.get("layer_type")
+    if layer_type is None:
+        raise ValueError(
+            f"{aliases[0]!r} requires `layer_type` to be given in the same "
+            "call: the conversion depends on the layer's topology "
+            "(granular vs bubbly ice), which cannot be inferred otherwise."
+        )
+    layer_type = layer_type if isinstance(layer_type, (list, tuple)) else [layer_type]
+    n = len(layer_type)
+
+    for alias in aliases:
+        values = _as_layer_list(out.pop(alias), n)
+        for i, v in enumerate(values):
+            if v is None:
+                continue
+            lt = int(layer_type[i])
+            if alias == "ssa":
+                target = "sea_ice_bubble_radius" if lt == 4 else "rds"
+                topology = topology_for_layer_type(lt)
+                rho = None
+                if topology == "bubbly":
+                    rho_list = out.get("rho")
+                    if rho_list is None:
+                        raise ValueError(
+                            f"ssa for layer {i} (layer_type={lt}) needs `rho` "
+                            "in the same call: SSA fixes only the combination "
+                            "3*(1 - rho/917)/(r*rho), so density closes it."
+                        )
+                    rho = _as_layer_list(rho_list, n)[i]
+                new_value = radius_from_ssa(v, topology, rho)
+            else:   # brine_volume_fraction
+                if lt != 4:
+                    raise ValueError(
+                        f"brine_volume_fraction is only meaningful for "
+                        f"layer_type=4 (sea ice); layer {i} is "
+                        f"layer_type={lt}."
+                    )
+                target = "sea_ice_temperature"
+                sal = out.get("sea_ice_salinity")
+                rho_list = out.get("rho")
+                if sal is None or rho_list is None:
+                    raise ValueError(
+                        f"brine_volume_fraction for layer {i} needs both "
+                        "`sea_ice_salinity` and `rho` in the same call: brine "
+                        "volume is a function of salinity, temperature and "
+                        "bulk density together (Cox & Weeks 1983)."
+                    )
+                from biosnicar.sea_ice.brine_volume import invert_brine_volume
+                new_value = float(invert_brine_volume(
+                    v, _as_layer_list(sal, n)[i],
+                    bulk_density_kg_m3=_as_layer_list(rho_list, n)[i],
+                ))
+
+            existing = out.get(target)
+            if existing is not None:
+                at_i = _as_layer_list(existing, n)[i]
+                if at_i is not None:
+                    raise ValueError(
+                        f"layer {i}: both {alias!r} and {target!r} were given "
+                        f"({alias}={v!r}, {target}={at_i!r}). They are two "
+                        "ways of saying the same thing — supply one."
+                    )
+                slot = _as_layer_list(existing, n)
+            else:
+                slot = [None] * n
+            slot[i] = new_value
+            out[target] = slot
+
+    return out
 
 
 def _apply_overrides(overrides, ice, illumination, impurities, input_file):

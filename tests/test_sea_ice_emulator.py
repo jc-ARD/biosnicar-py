@@ -73,6 +73,7 @@ class TestTransformFn:
         fn = SEA_ICE_EMULATOR_CONFIGS["FYI_pond"]["transform_fn"]
         result = fn({
             "pond_depth": 0.20,
+            "sea_ice_bubble_radius": 200.0,
             "sea_ice_temperature": -5.0,
             "black_carbon": 1200.0,
             "solzen": 60,
@@ -106,7 +107,8 @@ class TestSeaIceEmulatorBuild:
         assert emu_fyi_bare.flx_slr.shape == (480,)
 
     def test_pond_emulator_has_correct_params(self, emu_fyi_pond):
-        expected = {"pond_depth", "sea_ice_temperature", "black_carbon", "solzen", "direct"}
+        expected = {"pond_depth", "sea_ice_temperature", "sea_ice_bubble_radius",
+                    "black_carbon", "solzen", "direct"}
         assert set(emu_fyi_pond.param_names) == expected
 
 
@@ -137,7 +139,8 @@ class TestSeaIceEmulatorPredict:
         assert dirty_bba < clean_bba
 
     def test_deeper_pond_lower_nir(self, emu_fyi_pond):
-        kw = dict(sea_ice_temperature=-5.0, black_carbon=1200.0, solzen=60, direct=1)
+        kw = dict(sea_ice_temperature=-5.0, sea_ice_bubble_radius=200.0,
+                  black_carbon=1200.0, solzen=60, direct=1)
         shallow = emu_fyi_pond.predict(pond_depth=0.05, **kw)
         deep    = emu_fyi_pond.predict(pond_depth=0.40, **kw)
         # NIR (bands 50:) should be lower for deeper pond
@@ -146,6 +149,7 @@ class TestSeaIceEmulatorPredict:
     def test_pond_predict_shape(self, emu_fyi_pond):
         pred = emu_fyi_pond.predict(
             pond_depth=0.15, sea_ice_temperature=-5.0,
+            sea_ice_bubble_radius=200.0,
             black_carbon=1200.0, solzen=60, direct=1,
         )
         assert pred.shape == (480,)
@@ -301,6 +305,7 @@ class TestRetrieveSeaIce:
         # A clear pond spectrum should be classified as FYI_pond
         obs = emu_fyi_pond.predict(
             pond_depth=0.20, sea_ice_temperature=-5.0,
+            sea_ice_bubble_radius=200.0,
             black_carbon=1200.0, solzen=60, direct=1,
         )
         result = retrieve_sea_ice(

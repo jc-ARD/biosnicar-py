@@ -162,6 +162,7 @@ class TestBatchRetrieval:
         pond = np.asarray(run_model(
             **SEA_ICE_EMULATOR_CONFIGS["FYI_pond"]["transform_fn"](dict(
                 pond_depth=0.25, sea_ice_temperature=-4, black_carbon=100,
+                sea_ice_bubble_radius=200.0,
                 solzen=60, direct=1,
             ))
         ).albedo)
@@ -248,6 +249,7 @@ class TestBatchAuditRegressions:
         pond = np.asarray(run_model(
             **SEA_ICE_EMULATOR_CONFIGS["FYI_pond"]["transform_fn"](dict(
                 pond_depth=0.25, sea_ice_temperature=-4, black_carbon=100,
+                sea_ice_bubble_radius=200.0,
                 solzen=60, direct=1,
             ))
         ).albedo)

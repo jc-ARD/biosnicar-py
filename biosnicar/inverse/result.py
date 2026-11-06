@@ -36,13 +36,18 @@ def _compute_ssa(rds_um, rho):
     return 3.0 * phi / (r_m * rho)
 
 
-def _ssa_uncertainty(rds, rho, sigma_rds, sigma_rho):
+def _ssa_uncertainty(rds, rho, sigma_rds, sigma_rho, cov_rds_rho=0.0):
     """Propagate 1-sigma uncertainties in rds and rho to SSA.
 
     Uses first-order error propagation:
 
         sigma_SSA^2 = (dSSA/drds)^2 * sigma_rds^2
                     + (dSSA/drho)^2 * sigma_rho^2
+                    + 2 (dSSA/drds)(dSSA/drho) cov(rds, rho)
+
+    The covariance term is not optional here.  It is supplied from the OE
+    posterior when available (``method="oe"``); omitting it assumes the two
+    are independent, which they emphatically are not.
 
     Partial derivatives of SSA = 3(1 - rho/917) / (r * rho):
 
@@ -65,7 +70,14 @@ def _ssa_uncertainty(rds, rho, sigma_rds, sigma_rho):
     dSSA_drho = -3.0 / (r_m * rho ** 2)
 
     var = (dSSA_drds * sigma_rds) ** 2 + (dSSA_drho * sigma_rho) ** 2
-    return float(np.sqrt(var))
+    if cov_rds_rho:
+        # Radius and density are strongly anti-correlated along the scattering
+        # ridge (posterior r ~ -0.99 for FYI_bare).  Both partials are
+        # negative, so with cov < 0 this term SUBTRACTS: SSA is far better
+        # determined than either component, which is the whole reason to
+        # report it.  Dropping the term overstates sigma_SSA several-fold.
+        var += 2.0 * dSSA_drds * dSSA_drho * cov_rds_rho
+    return float(np.sqrt(max(var, 0.0)))
 
 
 @dataclass
@@ -133,36 +145,128 @@ class RetrievalResult:
     dfs: Optional[float] = None
     log_evidence: Optional[float] = None
 
+    def parameter_correlation(self) -> Dict:
+        """Posterior correlation matrix as ``{(p_i, p_j): r}`` (``method="oe"``).
+
+        Empty unless the OE engine populated ``posterior_covariance``.
+
+        A correlation near +/-1 means the two parameters trade off against each
+        other: the measurement constrains a combination of them better than
+        either alone.  The marginal 1-sigma on each is inflated over its
+        value-if-the-other-were-known by ``1 / sqrt(1 - r**2)`` — so r = 0.5
+        costs 15%, r = 0.9 costs 2.3x, r = 0.99 costs 7x.
+
+        For sea-ice retrievals this lives on the per-type fits, e.g.
+        ``result.all_fits["FYI_bare"].parameter_correlation()``.
+        """
+        pc = self.posterior_covariance
+        if not pc:
+            return {}
+        names = [p for p in self.best_fit if (p, p) in pc]
+        sig = {p: float(np.sqrt(max(pc[(p, p)], 0.0))) for p in names}
+        out = {}
+        for a in names:
+            for b in names:
+                d = sig[a] * sig[b]
+                out[(a, b)] = float(pc[(a, b)] / d) if d > 0 else 0.0
+        return out
+
+    def degenerate_parameters(self, threshold: float = 0.8):
+        """Parameter pairs whose posterior correlation exceeds *threshold*.
+
+        Returns ``[(p_i, p_j, r), ...]`` sorted by ``|r|`` descending, each
+        pair listed once.  Empty unless ``method="oe"``.
+
+        Use this instead of assuming a given pair is degenerate: collinearity
+        in sea ice is strongly state-dependent, and for the FYI_bare
+        ``rho_DL``/``brine_volume_fraction`` pair the correlation both varies
+        in magnitude and *changes sign* across the parameter space.
+        """
+        corr = self.parameter_correlation()
+        seen, out = set(), []
+        for (a, b), r in corr.items():
+            if a == b or (b, a) in seen:
+                continue
+            seen.add((a, b))
+            if abs(r) >= threshold:
+                out.append((a, b, r))
+        return sorted(out, key=lambda t: -abs(t[2]))
+
+    def _ssa_param_names(self):
+        """Which (radius, density) pair in ``best_fit`` defines SSA, if any.
+
+        Glacier ice names them ``rds``/``rho``; the sea-ice emulators name the
+        same physical quantities ``sea_ice_bubble_radius``/``rho_DL``.  Before
+        this lookup existed, ``ssa`` silently returned None for every sea-ice
+        retrieval even though the formula below is derived for bubbly ice.
+        """
+        for r_name, d_name in (("rds", "rho"),
+                               ("sea_ice_bubble_radius", "rho_DL")):
+            if self.best_fit.get(r_name) is not None and \
+                    self.best_fit.get(d_name) is not None:
+                return r_name, d_name
+        return None, None
+
     @property
     def ssa(self):
-        """Specific surface area (m2 kg-1) derived from rds and rho.
+        """Specific surface area (m2 kg-1) of the air/ice interface.
 
-        For bubbly ice: SSA = 3 * (1 - rho/917) / (rds_m * rho).
-        Returns None if rds or rho was not retrieved (or fixed).
+        For bubbly ice: SSA = 3 * (1 - rho/917) / (rds_m * rho), from either
+        ``rds``/``rho`` (glacier ice) or
+        ``sea_ice_bubble_radius``/``rho_DL`` (sea ice).  None if the pair was
+        not retrieved.
 
-        SSA is the quantity the inversion actually constrains —
-        different (rds, rho) pairs with the same SSA produce nearly
-        identical spectra.
+        **Prefer this over the two components separately.**  Radius and
+        density are individually degenerate — the measurement constrains
+        their combination.  Measured on the forward model along true iso-SSA
+        curves (radius swept ~5x, density 820-895 kg/m3), holding SSA fixed
+        removes **88% of the NIR spectral variation and 61% of the VIS**.
+
+        The residual matters too, which is why this is offered alongside the
+        components rather than replacing them: the single-scattering albedo
+        is a function of SSA alone, but the asymmetry parameter depends on
+        radius alone, and in the VIS — where ice barely absorbs and omega -> 1
+        — that second handle carries much of the signal.
         """
-        rds = self.best_fit.get("rds")
-        rho = self.best_fit.get("rho")
-        if rds is None or rho is None:
+        r_name, d_name = self._ssa_param_names()
+        if r_name is None:
             return None
-        return _compute_ssa(rds, rho)
+        return _compute_ssa(self.best_fit[r_name], self.best_fit[d_name])
 
     @property
     def ssa_uncertainty(self):
-        """1-sigma uncertainty on SSA (m2 kg-1), propagated from rds and rho.
+        """1-sigma uncertainty on SSA (m2 kg-1).
 
-        Returns None if either parameter was not retrieved.
+        Uses the OE posterior *covariance* between radius and density when it
+        is available (``method="oe"``), not just the two marginal sigmas.
+        That matters: the pair is strongly anti-correlated along the
+        scattering ridge, and both partials of SSA are negative, so the
+        cross-term subtracts.  Assuming independence overstates this several-
+        fold and hides the very point of reporting SSA.
+
+        Returns None if the (radius, density) pair was not retrieved.
         """
-        rds = self.best_fit.get("rds")
-        rho = self.best_fit.get("rho")
-        if rds is None or rho is None:
+        r_name, d_name = self._ssa_param_names()
+        if r_name is None:
             return None
-        sigma_rds = self.uncertainty.get("rds", 0.0)
-        sigma_rho = self.uncertainty.get("rho", 0.0)
-        return _ssa_uncertainty(rds, rho, sigma_rds, sigma_rho)
+        sig_r = self.uncertainty.get(r_name, 0.0)
+        sig_d = self.uncertainty.get(d_name, 0.0)
+        # Rebuild the covariance from the CORRELATION times the linear-space
+        # sigmas.  posterior_covariance is stored in optimiser space, and
+        # sea_ice_bubble_radius / rds are log-sampled there, so its raw entry
+        # is in log10(x+1) units while `uncertainty` is linear -- mixing them
+        # silently reduces the cross-term to nothing.  Correlation is
+        # invariant under the per-parameter rescaling, so this is exact to
+        # first order and needs no Jacobian factor.
+        cov = 0.0
+        corr = self.parameter_correlation()
+        if corr:
+            r_rd = corr.get((r_name, d_name), corr.get((d_name, r_name), 0.0))
+            cov = float(r_rd) * sig_r * sig_d
+        return _ssa_uncertainty(
+            self.best_fit[r_name], self.best_fit[d_name],
+            sig_r, sig_d, cov_rds_rho=cov,
+        )
 
     def to_outputs(self):
         """Return the predicted spectrum as an :class:`~biosnicar.classes.outputs.Outputs` object.
