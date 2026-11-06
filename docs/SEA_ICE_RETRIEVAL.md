@@ -489,6 +489,8 @@ takes seconds.
 | Open water albedo | Fresnel/Cox & Munk physics: BBA 0.02 (SZA 20°) → 0.07 (60°) → ~0.3 (80°, calm); wind darkens high-SZA water |
 | Emulator fidelity | FYI_bare held-out spectral R² 0.9977, BBA MAE 0.0024 (2000 forward-model spectra, seed 777, re-measured after the 2026-11-05 physics rebuild); all six sea-ice emulators 0.998–1.000 |
 | Parameter degeneracy | Dominant pair is `sea_ice_bubble_radius`/`rho_DL`: posterior correlation 0.84 mean, 0.995 max, same sign at all 24 base points, inflating marginal σ 4.2× typical / 9.8× worst. `rho_DL`/`brine_volume_fraction`, previously the tracked pair, is minor (0.31 mean, 1.1× inflation) and **changes sign**. All parameters stay measurement-determined (averaging kernel ≥ 0.84 for `rho_DL`). Read per-retrieval via `parameter_correlation()`, not asserted globally |
+| **`sea_ice_temperature` is not retrieved** | Averaging kernel **0.048** across 22 of 23 SHEBA spectra — roughly 95% prior, 5% measurement. Temperature acts only through brine volume/salinity, and the bare-ice and SSL emulators are `vis_only`-masked where bubble scattering swamps brine absorption. Reported with an uncertainty, but the spectrum is barely informing it. Check `averaging_kernel_diag` before quoting it |
+| Bound-pinning on real data | 22/92 retrieved parameters (24%) land within 2% of a bound on SHEBA; 19/23 spectra carry a \|r\| > 0.8 pair. Pin + high averaging kernel = bound binding; pin + low = flat likelihood and the value is meaningless. See `tests/validation_data/parameter_identifiability_sheba.py` |
 | Parameter identifiability | Synthetic validation, seed 2026 — see §3 |
 
 Full tables, provenance caveats (which labels are independent vs inferred),

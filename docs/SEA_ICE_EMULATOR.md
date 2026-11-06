@@ -363,6 +363,66 @@ Whether a rotation can help depends on whether the correlation keeps its sign:
   a small state-dependent correlation for a fixed one that is wrong over much of the domain. A
   retrain on rotated coordinates is therefore **not** planned for this pair.
 
+#### Fleet-wide: every emulator has one
+
+`scripts/audit_sea_ice_degeneracy.py` runs the same posterior measurement over all six
+emulators and every parameter pair. The FYI_bare result is not a contained quirk:
+
+| Emulator | Worst pair | Mean \|r\| | σ inflation | Sign stable? |
+|---|---|---|---|---|
+| FYI_bare | `sea_ice_bubble_radius` / `rho_DL` | 0.89 | 4.5× | **yes** (0/24) |
+| MYI_bare | `sea_ice_bubble_radius` / `black_carbon` | 0.85 | 3.2× | no (3/21) |
+| young_ice | `ice_thickness_cm` / `ocean_albedo` | 0.85 | 2.9× | **yes** (0/24) |
+| FYI_pond | `sea_ice_temperature` / `black_carbon` | 0.79 | 2.8× | nearly (22/2) |
+| FYI_summer | `sea_ice_bubble_radius` / `black_carbon` | 0.76 | 2.1× | **yes** (0/24) |
+| FYI_snow | `tau_snow` / `black_carbon` | 0.49 | 1.5× | no (16/8) |
+
+Two readings worth drawing out.
+
+**FYI_snow is the control case, and it validates the whole approach.** `tau_snow` is itself a
+reparameterisation (snow depth ÷ grain radius) introduced because depth and grain size are
+degenerate. It worked: `tau_snow` / `snow_grain_radius` is now the *least* degenerate pair in
+that emulator (0.24), and FYI_snow has the mildest worst-pair in the fleet. Where the technique
+applies, it delivers.
+
+**Three pairs keep a stable sign and are therefore reparameterisable** — FYI_bare's
+bubble/density, FYI_summer's bubble/BC, and young_ice's thickness/ocean-albedo. Each needs a
+retrain, so each is logged in `ROADMAP.md` rather than done.
+
+#### On real spectra: bounds, and a parameter that isn't retrieved
+
+Synthetic states start each fit at the truth, which measures uncertainty inflation but cannot
+see a ridge sliding the optimiser onto a hard bound.
+`tests/validation_data/parameter_identifiability_sheba.py` checks that against the 23 SHEBA
+spectra. **22 of 92 retrieved parameters (24%) land within 2% of a bound, and 19 of 23 spectra
+carry a pair at \|r\| > 0.8.**
+
+Pairing the pin with the averaging kernel separates two opposite diagnoses:
+
+| Surface | Pinned parameter | Count | Mean A | Reading |
+|---|---|---|---|---|
+| FYI_summer | `sea_ice_bubble_radius` @ hi | 8 | 0.74 | measurement pushing against the ceiling |
+| FYI_snow | `black_carbon` @ lo | 7 | 0.49 | clean snow — benign |
+| FYI_snow | `tau_snow` @ lo | 5 | 0.97 | wants *less* snow than the class allows |
+| FYI_snow | `sea_ice_temperature` @ hi | 2 | 0.03 | flat likelihood — **value meaningless** |
+
+> **`sea_ice_temperature` is reported but not retrieved.** Across 22 of the 23 SHEBA spectra its
+> averaging kernel averages **0.048** — roughly 95% prior, 5% measurement. The fleet sweep agrees
+> (mean A of 0.16 for FYI_summer, 0.25 for FYI_snow, 0.29 for young_ice). This is expected on
+> reflection: temperature acts only through brine volume and brine salinity, and the bare-ice and
+> SSL emulators are `vis_only`-masked, where bubble scattering swamps brine absorption. There is
+> no temperature signal in the VIS to retrieve. Treat a retrieved `sea_ice_temperature` as the
+> prior unless its averaging kernel says otherwise.
+
+On the FYI_summer ceiling: scanning bubble radius through the *full forward model* past the
+500 µm bound (the emulator is not valid outside it) shows the optimum lies beyond 500 in only 4
+of the 8 pinned cases, and the improvement is marginal except for one poorly-fit spectrum
+(RMSE 1.21e-3 → 1.01e-3 at 1000 µm). The ceiling is half what the sea-ice LUT supports and half
+what FYI_bare allows, so it is worth revisiting — but it is a tidiness issue, not an accuracy
+bug. Notably the two spectra whose scan was *flat* are exactly the two with the lowest averaging
+kernel (A = 0.20, 0.45): low information content predicts a flat likelihood, which is a useful
+cross-check that the diagnostic is measuring what it claims.
+
 #### What to do instead
 
 Read the correlation for the retrieval in front of you rather than assuming a constant:

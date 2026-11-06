@@ -88,6 +88,43 @@ Changed
   **Retrieval, classification and field-validation numbers in ROADMAP.md
   predate this change and still need regenerating.**
 
+- **``sea_ice_temperature`` is reported but not retrieved.**  Across 22 of the
+  23 SHEBA spectra its averaging-kernel diagonal averages **0.048** — roughly
+  95% prior, 5% measurement.  The fleet sweep agrees (mean 0.16 for
+  FYI_summer, 0.25 for FYI_snow, 0.29 for young_ice).
+
+  Expected on reflection: temperature acts only through brine volume and brine
+  salinity, and the bare-ice and SSL emulators are ``vis_only``-masked, where
+  bubble scattering swamps brine absorption.  There is no temperature signal
+  in the VIS.  It is currently returned with an uncertainty that implies more
+  than it should.  Logged in ``ROADMAP.md`` as the highest-value open item
+  from this work; no behaviour change here beyond documenting it and making
+  the averaging kernel easy to check.
+
+- **Every emulator carries a degeneracy, not only FYI_bare.**  Worst pair per
+  emulator, mean posterior ``|r|``: FYI_bare 0.89
+  (``sea_ice_bubble_radius``/``rho_DL``), MYI_bare 0.85
+  (``sea_ice_bubble_radius``/``black_carbon``), young_ice 0.85
+  (``ice_thickness_cm``/``ocean_albedo``), FYI_pond 0.79
+  (``sea_ice_temperature``/``black_carbon``), FYI_summer 0.76
+  (``sea_ice_bubble_radius``/``black_carbon``), FYI_snow 0.49.
+
+  Three keep a stable sign across all base points — FYI_bare, FYI_summer and
+  young_ice — so a reparameterisation can help there; each needs its own
+  retrain.  FYI_snow is the evidence the technique works: ``tau_snow`` is
+  itself a reparameterisation (depth / grain radius), and the pair it was
+  introduced to fix is now the *least* degenerate in that emulator (0.24).
+
+- **24% of parameters land on a bound in real SHEBA retrievals** (22 of 92),
+  with 19 of 23 spectra carrying a pair above ``|r|`` = 0.8.  Pairing the pin with
+  the averaging kernel separates a binding bound (high A — the measurement is
+  pushing against it) from a flat likelihood (low A — the value drifted to the
+  wall and means nothing).  A forward-model scan past ``FYI_summer``'s 500 um
+  bubble-radius ceiling — half what the sea-ice LUT supports and half what
+  FYI_bare allows — finds the optimum beyond 500 in only 4 of 8 pinned cases,
+  with marginal gain, so that ceiling is a tidiness issue rather than an
+  accuracy bug.
+
 - **The dominant FYI_bare degeneracy is ``sea_ice_bubble_radius``/``rho_DL``,
   not the pair that was being tracked.**  Measuring all six parameter pairs
   instead of one gives posterior correlation **0.84 mean, 0.995 max**, the same
@@ -186,6 +223,18 @@ Fixed
 
 Added
 ~~~~~
+- **``scripts/audit_sea_ice_degeneracy.py``** — posterior degeneracy audit for
+  the whole fleet: every parameter pair of every emulator, with sign stability
+  (which decides whether a reparameterisation can help) and averaging kernels.
+  Generalises the FYI_bare-only, one-pair-only diagnostic that let the
+  dominant degeneracies go unmeasured.
+
+- **``tests/validation_data/parameter_identifiability_sheba.py``** — the same
+  question on real spectra: which retrieved parameters sit on a bound, and
+  whether the averaging kernel says the bound is binding or the likelihood is
+  flat.  Catches the rail-pinning failure mode that a synthetic sweep started
+  at the truth cannot see.
+
 - **``RetrievalResult.parameter_correlation()`` and ``.degenerate_parameters()``**
   (``method="oe"``).  The OE engine already stored the full posterior
   covariance; these turn it into correlations and flag pairs above a
