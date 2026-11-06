@@ -322,29 +322,38 @@ retrieval rather than quoting a constant.
 
 #### The dominant degeneracy is bubble radius / density
 
-Measuring every pair rather than only the one historically tracked changes the priority:
+Measuring every pair rather than only the one historically tracked changes the priority. After
+the 2026-11-06 retrain (corrected LUT bubble axis, MYI retrieving density):
 
-| Pair | Mean \|r\| | Max \|r\| | Sign (+/−) | σ inflation mean | max |
-|---|---|---|---|---|---|
-| `sea_ice_bubble_radius` / `rho_DL` | **0.84** | **0.995** | **0 / 24** | **4.2×** | **9.8×** |
-| `sea_ice_bubble_radius` / `black_carbon` | 0.57 | 0.97 | 6 / 18 | 1.6× | 4.0× |
-| `black_carbon` / `rho_DL` | 0.49 | 0.97 | 17 / 7 | 1.6× | 4.1× |
-| `brine_volume_fraction` / `black_carbon` | 0.39 | 0.96 | 16 / 8 | 1.3× | 3.4× |
-| `brine_volume_fraction` / `rho_DL` | 0.31 | 0.77 | 17 / 7 | 1.1× | 1.6× |
-| `brine_volume_fraction` / `sea_ice_bubble_radius` | 0.29 | 0.88 | 13 / 11 | 1.1× | 2.1× |
+| Emulator | Worst pair | Mean \|r\| | σ inflation | Sign stable? |
+|---|---|---|---|---|
+| MYI_bare | `sea_ice_bubble_radius` / `rho_DL` | **0.982** | 7.9× | **yes** (0/24) |
+| FYI_bare | `sea_ice_bubble_radius` / `rho_DL` | **0.972** | 7.2× | **yes** (0/24) |
+| young_ice | `ice_thickness_cm` / `ocean_albedo` | 0.846 | 2.9× | **yes** (0/24) |
+| FYI_pond | `sea_ice_temperature` / `black_carbon` | 0.810 | 3.5× | nearly (21/3) |
+| FYI_summer | `sea_ice_bubble_radius` / `black_carbon` | 0.677 | 1.8× | **yes** (0/24) |
+| FYI_snow | `tau_snow` / `black_carbon` | 0.636 | 1.8× | no (16/8) |
 
-**`sea_ice_bubble_radius` / `rho_DL` is the real degeneracy in FYI_bare** — nearly 3× the mean
-correlation of the pair that was being tracked, costing 4.2× on the marginal σ typically and
-9.8× at worst, and *negative at every one of 24 base points*. It went unmeasured for as long as
-the audit only looked at `rho_DL` vs Vb.
+**The radius/density correlation rose with the retrain — from 0.837 to 0.972 — and that is the
+correct outcome, not a regression.** It is the same lesson as the density axis: the LUT bubble
+grid used to clamp below 100 µm and above 1000 µm, so a large part of the sampled radius range
+was inert and its Jacobian was mostly numerical noise, which is uncorrelated with anything. With
+both axes genuinely active, the two parameters are what the code says they are — two knobs on
+one product, `sca_coeff = sca_cff_vlm(r) × ν_air` — and they are very nearly interchangeable.
 
-The mechanism is visible in `sea_ice_optics.py`: layer scattering is formed as
-`sca_coeff = sca_cff_vlm(bubble_radius) × ν_air`, and `ν_air` is set by density — two knobs on
-one product. They are not perfectly interchangeable: the asymmetry parameter depends on radius
-but not air fraction, absorption on air fraction but not radius, and the FYI_bare
-parameterisation additionally ties temperature to (Vb, `rho_DL`). That is why the correlation is
-0.84 rather than 0.999, and why spectra along a constant-`sca_coeff` curve still differ visibly
-in the VIS.
+At \|r\| = 0.97–0.98 the marginal σ is inflated 7–8× (up to 20× at worst). **Reporting bubble
+radius and density as separately determined quantities is not defensible at those values.**
+Report SSA.
+
+A live MYI retrieval makes the point concretely. Truth r = 800 µm, ρ = 780 kg/m³, SSA = 0.7183:
+
+| Quantity | Retrieved | 1σ | Fractional | Error vs truth |
+|---|---|---|---|---|
+| bubble radius | 589 µm | ±327 | **56%** | −26% |
+| density | 811 kg/m³ | ±55 | 6.8% | +4% |
+| **SSA** | **0.7220** | **±0.031** | **4.3%** | **+0.5%** |
+
+SSA is 13× better determined than the radius, and accurate where the components are not.
 
 #### Why only one of these is worth reparameterising
 

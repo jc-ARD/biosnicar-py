@@ -49,10 +49,9 @@ BAND_MASKS = {
 FYI_BARE_S_REF = 6.0   # psu — typical FYI drained-layer salinity
 MYI_BARE_S_REF = 2.0   # psu — typical desalinated MYI
 
-# DL bulk density used by _transform_myi_bare.  The inversion must be done at
-# the same density the forward model will use for that layer, or the sampled
-# brine_volume_fraction is not the brine volume the model actually sees.
-_MYI_DL_RHO = 850.0
+# Interior-layer density for _transform_myi_bare.  The *drained-layer* density
+# is now a retrieved parameter (rho_DL), so only the IL is fixed here.
+_MYI_IL_RHO = 870.0
 
 
 def _snap(rds):
@@ -156,24 +155,29 @@ def _transform_fyi_summer(p):
 
 
 def _transform_myi_bare(p):
-    """Bare MYI: lower salinity, larger bubbles, slightly lower IL density.
+    """Bare MYI: lower salinity, larger bubbles, lower drained-layer density.
 
     Primary parameter is ``brine_volume_fraction`` (Vb) rather than (T, S).
-    Temperature is recovered via Cox & Weeks inversion at MYI_BARE_S_REF=2 psu,
-    at the DL density of 850 kg/m3 the forward model uses for this layer (see
-    ``_transform_fyi_bare`` for why the density has to match).
+    Temperature is recovered via Cox & Weeks inversion at MYI_BARE_S_REF=2 psu
+    and at the *sampled* ``rho_DL`` (see ``_transform_fyi_bare`` for why the
+    density has to match the one the forward model will use).
+
+    ``rho_DL`` was previously hard-coded at 850 kg/m3, so the parameter that
+    most distinguishes multi-year ice — its low density, from drained brine
+    and trapped gas — could not be retrieved at all.  Timco & Frederking
+    (1996) give 720-910 kg/m3 for MYI above the waterline.
     """
     from biosnicar.sea_ice.brine_volume import invert_brine_volume
     T   = invert_brine_volume(
         p["brine_volume_fraction"], MYI_BARE_S_REF,
-        bulk_density_kg_m3=_MYI_DL_RHO,
+        bulk_density_kg_m3=p["rho_DL"],
     )
     bbl = p["sea_ice_bubble_radius"]
     return dict(
         layer_type=[4, 4],
         dz=[0.30, 2.70],
         rds=[500, 500],
-        rho=[850, 870],
+        rho=[p["rho_DL"], _MYI_IL_RHO],
         sea_ice_salinity=[MYI_BARE_S_REF, max(0.3, MYI_BARE_S_REF * 0.4)],
         sea_ice_temperature=[T, T],
         sea_ice_bubble_radius=[bbl, min(2000.0, bbl * 1.5)],
@@ -294,21 +298,27 @@ SEA_ICE_EMULATOR_CONFIGS = {
         "description": "Bare multiyear ice (lower salinity, larger bubbles)",
         "band_mask": "vis_only",
         # (T, S) replaced by brine_volume_fraction.
-        # Vb bounds correspond to T in [-22, -2.1]°C at S_ref=MYI_BARE_S_REF=2 psu.
+        # Vb bounds correspond to T in [-21, -2.2]°C at S_ref=MYI_BARE_S_REF=2
+        # psu, intersected over rho_DL in [720, 900] so every sampled
+        # (Vb, rho_DL) pair is invertible.
         "vb_s_ref": MYI_BARE_S_REF,   # for seasonal brine-volume priors
         "params": {
-            # T in [-21, -2.2]°C at S=2 psu, at the DL density of 850 kg/m³.
-            # Upper bound was 0.045 under the bubble-free relation.
-            "brine_volume_fraction":  (0.0065, 0.042),
+            # Was (0.0065, 0.042) when rho_DL was pinned at 850; the
+            # intersection over the sampled density range is slightly tighter.
+            "brine_volume_fraction":  (0.0063, 0.0346),
             "sea_ice_bubble_radius":  (200.0, 2000.0),
             "black_carbon":           (0.0,   5000.0),
+            # Newly retrieved.  Timco & Frederking (1996): MYI above the
+            # waterline is 720-910 kg/m³, and the sea-ice LUT now spans
+            # 700-920, so the full literature range is usable.
+            "rho_DL":                 (720.0, 900.0),
             "solzen":                 (20,    80),
             "direct":                 (0,     1),
         },
         "transform_fn":       _transform_myi_bare,
         "n_samples":          30000,
         "hidden_layer_sizes": (256, 256, 128, 64),
-        "emulator_file": str(_DATA_DIR / "sea_ice_MYI_bare_5param.npz"),
+        "emulator_file": str(_DATA_DIR / "sea_ice_MYI_bare_6param.npz"),
     },
     "FYI_pond": {
         "description": "Melt pond on first-year ice",

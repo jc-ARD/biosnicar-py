@@ -88,6 +88,77 @@ Changed
   **Retrieval, classification and field-validation numbers in ROADMAP.md
   predate this change and still need regenerating.**
 
+- **All six emulators retrained** on the corrected LUT (21 min).  Held-out
+  spectral accuracy is unchanged to slightly better::
+
+      emulator      R2 before -> after    vis-only RMSE before -> after
+      FYI_bare       0.9981     0.9983        0.0050      0.0056
+      MYI_bare       0.9977     0.9979        0.0069      0.0054
+      FYI_summer     1.0000     1.0000        0.0031      0.0024
+      FYI_snow       0.9999     0.9999        0.0030      0.0035
+      FYI_pond       0.9999     0.9999        0.0017      0.0017
+      young_ice      0.9990     0.9990        0.0024      0.0024
+
+  MYI_bare *improved* despite gaining a sixth parameter at the same 30k
+  sample count, so no larger rebuild was needed: removing the inert radius
+  region makes the function smoother to learn, which more than offsets the
+  extra dimension.
+
+- **The radius/density degeneracy got worse, and that is the correct
+  outcome.**  Posterior correlation for ``sea_ice_bubble_radius``/``rho_DL``
+  went from 0.837 to **0.972** for FYI_bare, and MYI_bare — where density was
+  previously not retrieved at all — comes in at **0.982**.  Marginal sigma is
+  inflated **7-8x**, up to 20x at worst, with the same sign at all 24 base
+  points.
+
+  Same lesson as the density axis: a clamped parameter has a Jacobian that is
+  mostly numerical noise, and noise is uncorrelated with everything.  With
+  both axes genuinely active the two parameters are what the code says they
+  are — two knobs on the single product ``sca_cff_vlm(r) * nu_air`` — and are
+  very nearly interchangeable.  The fix did not create the degeneracy, it
+  stopped hiding it.
+
+  **At |r| = 0.97-0.98, reporting bubble radius and density as separately
+  determined quantities is not defensible.**  Report ``RetrievalResult.ssa``.
+  On a live MYI retrieval with truth r = 800 um, rho = 780 kg/m3
+  (SSA = 0.7183): radius comes back 589 +/- 327 um (56% uncertainty, 26% from
+  truth) and density 811 +/- 55, while **SSA comes back 0.7220 +/- 0.031 —
+  4.3% uncertainty and 0.5% from truth**.  SSA is 13x better determined than
+  the radius and accurate where the components are not.
+
+- **Sea-ice LUT bubble-radius axis extended to 50-2000 um** (was
+  [100, 300, 500, 1000]), and the LUT rebuilt — 11 log-spaced points,
+  3696 grid points, ~30 s.
+
+  Same defect as the density axis, on a different axis and found later.
+  ``_interpolate_sea_ice_lut`` clamps rather than extrapolating, and the
+  emulators sample 50-1000 (FYI_bare), 50-500 (FYI_summer) and 200-2000
+  (MYI_bare).  So ``tau`` and ``ssa`` were **bit-identical** for every radius
+  below 100 and above 1000: the bottom of FYI_bare's range and roughly 30% of
+  MYI_bare's log range were inert, exactly like ``rho_DL`` below 870 before.
+
+  It was not merely flat, it was wrong: at r = 50 um the clamped ``tau`` is
+  1153 against a correct 2238 — a factor of 2.  Verified bit-identical at the
+  three shared grid radii (100, 300, 1000), so the rebuild adds resolution
+  without changing physics.  ``tests/test_sea_ice_optics.py`` now guards both
+  edges across the whole fleet, so a new or widened emulator cannot reopen it.
+
+- **MYI_bare retrieves drained-layer density.**  ``_transform_myi_bare``
+  hard-coded ``rho=[850, 870]``, so the parameter that most distinguishes
+  multi-year ice — its low density, from drained brine and trapped gas —
+  could not be retrieved at all.  ``rho_DL`` is now sampled over
+  **(720, 900) kg/m3**, the Timco & Frederking (1996) range for MYI above the
+  waterline, which the extended LUT density axis (700-920) now covers.
+
+  ``brine_volume_fraction`` bounds tighten from (0.0065, 0.042) to
+  (0.0063, 0.0346): the old range was computed at the pinned density of 850,
+  and the intersection over the sampled range is what keeps every
+  (Vb, rho_DL) pair invertible.  The emulator becomes 6-parameter and is
+  written to ``sea_ice_MYI_bare_6param.npz``.
+
+  This also makes ``RetrievalResult.ssa`` available for MYI retrievals, which
+  need a retrieved radius *and* density to form it.
+
 - **``run_model`` accepts the optical parameterisation as an alternative to
   the physical one.**  ``ssa=`` in place of ``rds``/``sea_ice_bubble_radius``,
   and ``brine_volume_fraction=`` in place of ``sea_ice_temperature``.  Either
@@ -119,6 +190,30 @@ Changed
 
 Fixed
 ~~~~~
+- **``test_vectorized_parallel_matches_single`` asserted bit-identity that is
+  not available.**  It compared float32 scene fields at ``atol=1e-9``, finer
+  than float32 can represent — the ULP at a cost of 25.9 is 1.9e-6.  It passed
+  by luck until the 2026-11-06 retrain nudged one pixel's cost onto the
+  neighbouring ULP (measured difference: exactly 1.0 ULP, and zero on a
+  different scene, i.e. data-dependent rounding rather than a logic
+  divergence).
+
+  Chunking cannot change the mathematics — pixels are independent — but it
+  changes the shapes handed to the batched linear algebra, and a different
+  BLAS kernel accumulates in a different order.  Measured divergence splits
+  along a physically meaningful line::
+
+      point estimates (param_*, cost)   <= 1.5e-6 relative   float32 ULP
+      covariance-derived (unc_*, dfs)   <= 1.0e-4 relative   ~100x worse
+
+  Both of the latter come through ``inv(H)``, and ``H`` is ill-conditioned
+  because of the parameter degeneracies — the bubble-radius/density posterior
+  correlation of 0.97-0.98 gives a condition number of order ``(1+r)/(1-r)``.
+  So the retrieval is stable and only its error bars amplify round-off.
+  Tolerances are now set from those measurements with headroom, and surface
+  type — the discrete field a real divergence would break — is still required
+  to match exactly.
+
 - **``LUT.get`` truncated the radius instead of rounding it.**
   ``idx = self._radius_to_idx[int(radius)]`` turns a radius of
   799.9999999999999 — which is what an SSA conversion or any other float

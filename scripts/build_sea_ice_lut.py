@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """Pre-compute sea-ice optical property LUT and save to data/OP_data/480band/luts/sea_ice.npz.
 
-Grid: T(7) × S(6) × density(8) × bubble_radius(4) = 1344 combinations.
+Grid: T(7) × S(6) × density(8) × bubble_radius(11) = 3696 combinations.
 Each point stores (tau_per_m, ssa, g) at 480 wavelengths.
 
 Run from the repo root:
     uv run python scripts/build_sea_ice_lut.py
 
-Expected runtime: ~10 s on a modern laptop (the per-point cost is dominated by
+Expected runtime: ~30 s on a modern laptop (the per-point cost is dominated by
 the cached brine-RI LUT, which is built once up front).
 
 Rebuilding this LUT invalidates the shipped sea-ice emulators in
@@ -43,7 +43,17 @@ S_GRID = np.array([1, 4, 6, 8, 10, 12], dtype=float)
 # clamped flat to 870 and the parameter did nothing over it.  820 and 850 are
 # added to close that gap.
 RHO_GRID = np.array([700, 780, 820, 850, 870, 890, 910, 920], dtype=float)
-BUBBLE_GRID = np.array([100, 300, 500, 1000], dtype=float)
+# Bubble-radius grid must cover every radius the emulators sample, for the
+# same reason as RHO_GRID: _interpolate_sea_ice_lut CLAMPS rather than
+# extrapolating.  The old grid was [100, 300, 500, 1000], against sampled
+# ranges of 50-1000 (FYI_bare), 50-500 (FYI_summer) and 200-2000 (MYI_bare) —
+# so tau and ssa were bit-identical for every radius below 100 and above
+# 1000, making the bottom of FYI_bare's range and ~30% of MYI_bare's log
+# range inert.  Log-spaced, since scattering goes as 1/r and varies fastest
+# at the small end.
+BUBBLE_GRID = np.array(
+    [50, 75, 100, 150, 200, 300, 450, 700, 1000, 1400, 2000], dtype=float
+)
 
 N_TOTAL = len(T_GRID) * len(S_GRID) * len(RHO_GRID) * len(BUBBLE_GRID)
 

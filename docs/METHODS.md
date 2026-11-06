@@ -107,7 +107,7 @@ The brine real refractive index is computed using the full Quan & Fry (1995) wav
                 [ε_brine(1 − ν_b)  + ε_ice(2 + ν_b)]
 ```
 
-Absorption comes from the imaginary part of n_eff = √ε_eff. Scattering comes from air bubbles via the `bubbly_air.npz` LUT. Results are pre-computed to `data/OP_data/480band/luts/sea_ice.npz` over T (7) × S (6) × density (8) × bubble_radius (4) = 1344 grid points. The density axis spans 700–920 kg/m³; it must cover every density the model is asked for, because the interpolator *clamps* rather than extrapolates. Brine RI is also pre-computed to `data/OP_data/brine_rfidx.npz` over the 7-point temperature grid only (T dimension only; S is no longer needed since S_brine is determined by T).
+Absorption comes from the imaginary part of n_eff = √ε_eff. Scattering comes from air bubbles via the `bubbly_air.npz` LUT. Results are pre-computed to `data/OP_data/480band/luts/sea_ice.npz` over T (7) × S (6) × density (8) × bubble_radius (11) = 3696 grid points. The density axis spans 700–920 kg/m³ and the bubble-radius axis 50–2000 µm (log-spaced). Both must cover every value the model is asked for, because the interpolator *clamps* rather than extrapolates — anything outside is silently replaced by the nearest edge, making the parameter inert over that range. Both axes have been caught doing exactly that: density below 870, and bubble radius below 100 or above 1000. Brine RI is also pre-computed to `data/OP_data/brine_rfidx.npz` over the 7-point temperature grid only (T dimension only; S is no longer needed since S_brine is determined by T).
 
 Sea ice requires the **adding-doubling solver** (default). The Toon solver does not handle the Fresnel interface correctly.
 

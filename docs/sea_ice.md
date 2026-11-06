@@ -178,6 +178,7 @@ non-zero only in the blue/green. Typical BBA: 0.02 at SZA 20°, 0.06–0.07 at
 | Liquidus S_b(T) derived from F&G (1967) brine volume by salt balance (not a direct Assur fit) | Within a few psu of accepted values for −2 to −15 °C; saturates against the ~233 psu eutectic below ≈−18 °C, where inverting a volume fit is least reliable | Very cold ice (< −18 °C) |
 | ~~CW83 gas-free brine volume + separate density-balance air fraction~~ | **Fixed 2026-11-05.** ν_b and ν_air now both come from CW83 at the layer bulk density. The overestimate was 1–9% across the shipped presets | — |
 | ~~Absorption ignored air content~~ | **Fixed 2026-11-05.** Absorption was that of the ice+brine phase applied across the whole layer, so it did not fall as the layer became more porous (~82 m⁻¹ from 920 down to 500 kg/m³). Now scaled by (1 − ν_air) | — |
+| ~~Bubble radius clamped outside 100–1000 µm~~ | **Fixed 2026-11-06.** The LUT bubble grid was `[100, 300, 500, 1000]` while the emulators sample 50–2000 µm, so τ and ω were bit-identical outside that window — and at r = 50 µm the clamped τ was wrong by 2×. Grid is now 11 log-spaced points over 50–2000 | — |
 | Bubble scattering linear in ν_air | Independent-scatterer assumption from a single-bubble LUT. Bubbles are 100–1000 µm against 0.2–5 µm light, so inter-bubble clearance stays many wavelengths and the approximation holds well into high porosity | Untested above ~15% air |
 | CW83 cold-branch polynomial clamped at −30 °C | No brine-volume change below −30 °C (polynomial validity limit) | Extreme winter T < −30 °C |
 
