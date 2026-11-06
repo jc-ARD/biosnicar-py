@@ -328,20 +328,20 @@ the 2026-11-06 retrain (corrected LUT bubble axis, MYI retrieving density):
 | Emulator | Worst pair | Mean \|r\| | σ inflation | Sign stable? |
 |---|---|---|---|---|
 | MYI_bare | `sea_ice_bubble_radius` / `rho_DL` | **0.982** | 7.9× | **yes** (0/24) |
-| FYI_bare | `sea_ice_bubble_radius` / `rho_DL` | **0.972** | 7.2× | **yes** (0/24) |
+| FYI_bare | `sea_ice_bubble_radius` / `rho_DL` | **0.961** | 6.4× | **yes** (0/24) |
 | young_ice | `ice_thickness_cm` / `ocean_albedo` | 0.846 | 2.9× | **yes** (0/24) |
 | FYI_pond | `sea_ice_temperature` / `black_carbon` | 0.810 | 3.5× | nearly (21/3) |
-| FYI_summer | `sea_ice_bubble_radius` / `black_carbon` | 0.677 | 1.8× | **yes** (0/24) |
+| FYI_summer | `sea_ice_bubble_radius` / `black_carbon` | 0.649 | 2.4× | **yes** (0/24) |
 | FYI_snow | `tau_snow` / `black_carbon` | 0.636 | 1.8× | no (16/8) |
 
-**The radius/density correlation rose with the retrain — from 0.837 to 0.972 — and that is the
+**The radius/density correlation rose with the retrain — from 0.837 to 0.96 — and that is the
 correct outcome, not a regression.** It is the same lesson as the density axis: the LUT bubble
 grid used to clamp below 100 µm and above 1000 µm, so a large part of the sampled radius range
 was inert and its Jacobian was mostly numerical noise, which is uncorrelated with anything. With
 both axes genuinely active, the two parameters are what the code says they are — two knobs on
 one product, `sca_coeff = sca_cff_vlm(r) × ν_air` — and they are very nearly interchangeable.
 
-At \|r\| = 0.97–0.98 the marginal σ is inflated 7–8× (up to 20× at worst). **Reporting bubble
+At \|r\| = 0.96–0.98 the marginal σ is inflated 6–8× (up to 20× at worst). **Reporting bubble
 radius and density as separately determined quantities is not defensible at those values.**
 Report SSA.
 

@@ -88,6 +88,62 @@ Changed
   **Retrieval, classification and field-validation numbers in ROADMAP.md
   predate this change and still need regenerating.**
 
+- **Field validation re-measured after the physics work.**  Snow and bare ice
+  are unchanged; melt ponds regressed and the cause is not yet settled.
+
+  Unchanged — SHEBA (Grenfell & Light 2007)::
+
+      spring snow       6/7 full-spectrum,  7/7 S2,  7/7 L8
+      summer bare ice  16/16 full-spectrum, 16/16 S2, 15/16 L8
+
+  Regressed — Morassutti (1995) melt ponds::
+
+      classification (504 records)   77%  ->  62%
+      classification (120-record block)   ->  51%
+      depth within +/-25%            ~22% ->  15%
+
+  Three explanations ruled out.  It is **not** model flexibility from
+  MYI_bare's new density parameter: the OE path, whose Laplace evidence
+  carries an Occam factor, scores 62.5% against the default's 61.9%.  It is
+  **not** near-ties: FYI_pond's chi-squared runs ~284% above the winning
+  type.  And it is **not** bound-railing: only 5 of 109 misses railed on
+  ``pond_depth`` or ``black_carbon``.  FYI_pond simply cannot fit those
+  spectra.
+
+  The likely cause is the pond floor calibration (BC = 1000 ppb, rho = 895),
+  fitted against Morassutti under the old forward model and already flagged
+  as stale in ``docs/sea_ice.md``.  Recalibrating it changes a shipped preset,
+  so it is logged rather than done here.  **The old 77% / 22% figures should
+  not be quoted.**
+
+- **A fourth frozen parameter region, this time in the transforms.**
+  ``_transform_fyi_bare`` and ``_transform_fyi_summer`` set the interior
+  layer's bubble radius as ``min(1000.0, bbl * 2.0)``.  That ``1000.0`` is the
+  *old* LUT ceiling hard-coded into the transform, so for ``bbl >= 500`` the
+  interior layer's radius froze at 1000 um regardless of what was sampled —
+  over roughly 23% of FYI_bare's sampled log range, in the 1.45 m layer that
+  dominates optical depth.  Both now cap at 2000, the current LUT ceiling.
+  (MYI_bare's ``min(2000.0, bbl * 1.5)`` was already at the real ceiling and
+  is unchanged.)
+
+  Same pattern a fourth time — density below 870, bubble radius below 100,
+  bubble radius above 1000, and now a transform cap left behind at a limit
+  that had since been raised.  Each silently froze a parameter the config
+  claimed to be sampling.
+
+- **FYI_summer's bubble-radius ceiling raised from 500 to 1000 um.**  On the
+  23 SHEBA spectra the old ceiling was pinned by 9 retrievals at a mean
+  averaging kernel of 0.87 — the measurement pushing hard against it, not
+  drifting there — and a forward-model scan put the optimum beyond 500 in half
+  the pinned cases.  Matched to FYI_bare now the LUT reaches 2000 um.
+
+  FYI_bare and FYI_summer rebuilt.  FYI_bare improves on every measure:
+  held-out spectral R2 0.9983 -> **0.9987**, RMSE 0.0089 -> 0.0078, vis-only
+  0.0056 -> 0.0047, and its PCA-coefficient training score 0.697 -> 0.845 —
+  removing the frozen interior layer makes the function markedly easier to
+  fit.  FYI_summer is marginally worse (vis-only 0.0024 -> 0.0033), which is
+  expected: its radius range doubled at the same sample count.
+
 - **All six emulators retrained** on the corrected LUT (21 min).  Held-out
   spectral accuracy is unchanged to slightly better::
 

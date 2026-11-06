@@ -102,7 +102,10 @@ def _transform_fyi_bare(p):
         rho=[p["rho_DL"], 910],
         sea_ice_salinity=[FYI_BARE_S_REF, FYI_BARE_S_REF * 0.5],
         sea_ice_temperature=[T, T],
-        sea_ice_bubble_radius=[bbl, min(1000.0, bbl * 2.0)],
+        # IL cap is the LUT's bubble ceiling, not a physical limit.  It was
+        # 1000 — the *old* grid max — so for bbl >= 500 the interior layer's
+        # radius froze at 1000 regardless, over ~23% of the sampled log range.
+        sea_ice_bubble_radius=[bbl, min(2000.0, bbl * 2.0)],
         black_carbon=[p["black_carbon"], 0],
         solzen=p["solzen"],
         direct=p["direct"],
@@ -147,7 +150,7 @@ def _transform_fyi_summer(p):
         rho=[300, 850, 910],
         sea_ice_salinity=[None, 4, 2],
         sea_ice_temperature=[None, T, T],
-        sea_ice_bubble_radius=[None, bbl, min(1000.0, bbl * 2.0)],
+        sea_ice_bubble_radius=[None, bbl, min(2000.0, bbl * 2.0)],
         black_carbon=[p["black_carbon"], 0, 0],
         solzen=p["solzen"],
         direct=p["direct"],
@@ -285,7 +288,13 @@ SEA_ICE_EMULATOR_CONFIGS = {
         "params": {
             "ssl_grain_radius":       (500.0, 5000.0),
             "sea_ice_temperature":    (-10.0, -2.0),
-            "sea_ice_bubble_radius":  (50.0,  500.0),
+            # Raised from 500.  On the 23 SHEBA spectra the old ceiling was
+            # pinned by 9 retrievals with a mean averaging kernel of 0.87 —
+            # the measurement pushing hard against it, not drifting there.
+            # A forward-model scan put the optimum beyond 500 in half the
+            # pinned cases.  Matched to FYI_bare now that the LUT reaches
+            # 2000 um, so neither the bound nor the grid is the constraint.
+            "sea_ice_bubble_radius":  (50.0,  1000.0),
             "black_carbon":           (0.0,   5000.0),
             "solzen":                 (20,    80),
             "direct":                 (0,     1),
