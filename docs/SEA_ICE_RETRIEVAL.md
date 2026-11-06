@@ -237,8 +237,24 @@ res.class_probabilities   # {type: probability}, sums to 1
 res.dfs                   # information content of the winning fit
 res.averaging_kernel_diag # {param: 0..1}  ~1 = measured, ~0 = prior-driven
 res.uncertainty           # 1-sigma per parameter (posterior covariance)
+
+# Provenance of each retrieved value — shown by default in summary() and plot()
+res.information_content()         # {param: 0..1}, same as averaging_kernel_diag
+res.parameter_provenance()        # {param: "measured" | "prior-influenced" | "not retrieved"}
 res.prior_dominated_parameters()  # {param: True if prior-driven (kernel < 0.5)}
+res.measured_parameters()         # the subset the spectrum actually determined
 ```
+
+`summary()` prints an `info` / `provenance` column and warns explicitly about
+anything below a kernel of 0.1, so a parameter the spectrum never constrained
+cannot be read as a measurement by accident. Thresholds are defined once in
+`biosnicar.inverse.information` and shared with the hyperspectral path. Scene
+retrievals carry the same information as `akd_<name>` rasters alongside
+`param_<name>` and `unc_<name>`.
+
+**The kernel is measured against the prior you supplied, not against truth** —
+widen the prior and it rises for free. Read it with the `at_bounds` quality
+flag and `parameter_correlation()`, not alone.
 
 **Spectrum-only vs priors-on (provenance).** The `known_month` priors are
 powerful — they can change the *classification*, not just sharpen parameters
@@ -489,7 +505,7 @@ takes seconds.
 | Open water albedo | Fresnel/Cox & Munk physics: BBA 0.02 (SZA 20°) → 0.07 (60°) → ~0.3 (80°, calm); wind darkens high-SZA water |
 | Emulator fidelity | FYI_bare held-out spectral R² 0.9977, BBA MAE 0.0024 (2000 forward-model spectra, seed 777, re-measured after the 2026-11-05 physics rebuild); all six sea-ice emulators 0.998–1.000 |
 | Parameter degeneracy | Dominant pair is `sea_ice_bubble_radius`/`rho_DL`: posterior correlation 0.84 mean, 0.995 max, same sign at all 24 base points, inflating marginal σ 4.2× typical / 9.8× worst. `rho_DL`/`brine_volume_fraction`, previously the tracked pair, is minor (0.31 mean, 1.1× inflation) and **changes sign**. All parameters stay measurement-determined (averaging kernel ≥ 0.84 for `rho_DL`). Read per-retrieval via `parameter_correlation()`, not asserted globally |
-| **`sea_ice_temperature` is not retrieved** | Averaging kernel **0.048** across 22 of 23 SHEBA spectra — roughly 95% prior, 5% measurement. Temperature acts only through brine volume/salinity, and the bare-ice and SSL emulators are `vis_only`-masked where bubble scattering swamps brine absorption. Reported with an uncertainty, but the spectrum is barely informing it. Check `averaging_kernel_diag` before quoting it |
+| **`sea_ice_temperature` is not retrieved** | Averaging kernel **0.048** across 22 of 23 SHEBA spectra — roughly 95% prior, 5% measurement. Temperature acts only through brine volume/salinity, and the bare-ice and SSL emulators are `vis_only`-masked where bubble scattering swamps brine absorption. Now **flagged automatically**: `summary()`, `plot()` and `parameter_provenance()` mark it `not retrieved`, and `measured_parameters()` excludes it. That makes the limitation visible; it does not remove it — the fix is SWIR coverage, which waits on the SWIR model-error term |
 | Bound-pinning on real data | 22/92 retrieved parameters (24%) land within 2% of a bound on SHEBA; 19/23 spectra carry a \|r\| > 0.8 pair. Pin + high averaging kernel = bound binding; pin + low = flat likelihood and the value is meaningless. See `tests/validation_data/parameter_identifiability_sheba.py` |
 | Parameter identifiability | Synthetic validation, seed 2026 — see §3 |
 

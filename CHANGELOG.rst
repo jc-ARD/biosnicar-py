@@ -8,6 +8,53 @@ and this project adheres to `Semantic Versioning <https://semver.org/spec/v2.0.0
 Unreleased
 -----------
 
+Added
+~~~~~
+
+- **Per-parameter information content is now part of the output contract.**
+  Optimal estimation always computed the averaging kernel, but only the
+  ``averaging_kernel_diag`` dict carried it, and nothing consumed that by
+  default: ``summary()``, ``plot()`` and the scene rasters presented every
+  free parameter with the same authority whether the spectrum determined it
+  or the prior did.  A reader could not tell a measurement from a
+  restatement of their own assumptions, and ``uncertainty`` cannot tell them
+  apart — a narrow prior and a sharp measurement both give a small sigma.
+
+  New module :mod:`biosnicar.inverse.information` defines one convention —
+  ``MEASURED_THRESHOLD = 0.5``, ``NOT_RETRIEVED_THRESHOLD = 0.1`` — shared by
+  everything that reports a retrieved value.  The lower threshold is set from
+  measurement: ``sea_ice_temperature`` scores an averaging kernel of 0.048
+  across 22 of 23 SHEBA spectra.
+
+  Both ``RetrievalResult`` and ``SeaIceRetrievalResult`` gain
+  ``information_content()``, ``parameter_provenance()`` and
+  ``measured_parameters()``; ``prior_dominated_parameters()`` now exists on
+  both and takes its default threshold from the shared constant instead of
+  each class hard-coding 0.5.  ``summary()`` grows an ``info`` /
+  ``provenance`` column and an explicit warning for anything below the lower
+  threshold; ``plot_retrieval`` hatches prior-influenced bars and greys out
+  not-retrieved ones.  Output without averaging kernels (non-OE methods) is
+  unchanged.
+
+  Note the caveat, documented in the module: the averaging kernel is measured
+  relative to *the prior supplied*, not against truth.  A wide prior inflates
+  it for free.  Read it alongside ``QualityFlag.AT_BOUNDS`` and
+  ``parameter_correlation()``.
+
+- **Scene output carries information content.**  ``SeaIceSceneResult`` writes
+  ``akd_<name>`` rasters beside ``param_<name>`` and ``unc_<name>`` when the
+  retrieval produced averaging kernels, and ``summary()`` reports the
+  scene-mean per parameter.  Downstream consumers reading ``param_<name>`` as
+  a measurement can now mask on it.
+
+Fixed
+~~~~~
+
+- **The per-pixel loop retrieval path dropped the averaging kernel.**
+  ``_result_to_record`` omitted ``averaging_kernel_diag`` while the
+  vectorised batch path carried it, so whether a scene result retained
+  per-parameter provenance depended on which engine produced it.
+
 Changed
 ~~~~~~~
 - **Sea-ice gas (air) content now follows Cox & Weeks (1983).**

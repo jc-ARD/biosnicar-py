@@ -156,7 +156,26 @@ class SeaIceRetrievalResult:
     spectrum_only_surface_type: Optional[str] = None
     spectrum_only_class_probabilities: Dict[str, float] = field(default_factory=dict)
 
-    def prior_dominated_parameters(self, threshold: float = 0.5) -> Dict[str, bool]:
+    def information_content(self) -> Dict[str, float]:
+        """``{param: averaging-kernel diagonal}`` — 1 = measured, 0 = prior.
+
+        Empty unless ``method="oe"``.  ``uncertainty`` alone cannot tell you
+        which: a narrow prior and a sharp measurement both produce a small
+        sigma.  See :mod:`biosnicar.inverse.information`.
+        """
+        return dict(self.averaging_kernel_diag or {})
+
+    def parameter_provenance(self, **kw) -> Dict[str, str]:
+        """``{param: "measured" | "prior-influenced" | "not retrieved"}``.
+
+        Derived quantities such as ``snow_depth`` and ``ice_thickness``
+        carry no averaging kernel of their own and come back ``"unknown"``,
+        rather than being omitted — an absent entry would read as approval.
+        """
+        from biosnicar.inverse import information as _info
+        return _info.provenance(self.averaging_kernel_diag, self.parameters, **kw)
+
+    def prior_dominated_parameters(self, threshold: float = None) -> Dict[str, bool]:
         """Per-parameter provenance from the averaging kernel (``method="oe"``).
 
         Returns ``{param: prior_dominated}`` where the value is True when the
@@ -164,8 +183,31 @@ class SeaIceRetrievalResult:
         retrieved value came mostly from the prior rather than the measurement
         (low information content).  Empty unless ``method="oe"`` populated
         ``averaging_kernel_diag``.
+
+        *threshold* defaults to
+        :data:`biosnicar.inverse.information.MEASURED_THRESHOLD` (0.5), shared
+        with the hyperspectral :class:`~biosnicar.inverse.result.RetrievalResult`
+        so the two do not drift apart.
         """
+        from biosnicar.inverse import information as _info
+        if threshold is None:
+            threshold = _info.MEASURED_THRESHOLD
         return {p: (a < threshold) for p, a in self.averaging_kernel_diag.items()}
+
+    def measured_parameters(self, threshold: float = None) -> Dict[str, float]:
+        """The subset of ``parameters`` the spectrum actually determined.
+
+        Returns all of them when no averaging kernel is available, since
+        nothing has then been shown either way.
+        """
+        from biosnicar.inverse import information as _info
+        akd = self.averaging_kernel_diag or {}
+        if not akd:
+            return dict(self.parameters)
+        if threshold is None:
+            threshold = _info.MEASURED_THRESHOLD
+        return {p: v for p, v in self.parameters.items()
+                if akd.get(p, float("nan")) >= threshold}
 
     def quality_flag_description(self) -> Dict[str, bool]:
         """Unpack the quality bitmask into ``{flag_name: bool}``."""
@@ -224,9 +266,11 @@ class SeaIceRetrievalResult:
         set_flags = [n for n, on in self.quality_flag_description().items() if on]
         lines.append(f"  Quality flags  : {', '.join(set_flags) if set_flags else 'none'}")
         lines.append("  Retrieved parameters:")
-        for name, val in self.parameters.items():
-            unc = self.uncertainty.get(name, float("nan"))
-            lines.append(f"    {name:28s} = {val:12.4f}  ±  {unc:.4f}")
+        from biosnicar.inverse import information as _info
+        lines.extend(_info.format_parameter_lines(
+            self.parameters, self.uncertainty, self.averaging_kernel_diag,
+            name_width=28,
+        ))
         lines.append("  Cost per surface type:")
         ranked = sorted(self.cost_per_type.items(), key=lambda kv: kv[1])
         for stype, cost in ranked:
@@ -867,6 +911,12 @@ def _result_to_record(result: SeaIceRetrievalResult) -> dict:
                                 in result.class_probabilities.items()},
         "prior_resolved": result.prior_resolved,
         "spectrum_only_surface_type": result.spectrum_only_surface_type,
+        # Per-parameter information content.  The vectorised batch path has
+        # always carried this; the per-pixel loop path dropped it, so scene
+        # results built from the loop engine silently lost provenance while
+        # the batch engine kept it.
+        "averaging_kernel_diag": {k: float(v) for k, v
+                                  in result.averaging_kernel_diag.items()},
     }
 
 

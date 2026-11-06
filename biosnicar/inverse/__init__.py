@@ -13,12 +13,14 @@ Quick start
 """
 
 from biosnicar.emulator import Emulator  # re-export for convenience
+from biosnicar.inverse import information
 from biosnicar.inverse.optimize import retrieve, DEFAULT_BOUNDS
 from biosnicar.inverse.result import RetrievalResult
 
 __all__ = [
     "Emulator",
     "retrieve",
+    "information",
     "RetrievalResult",
     "DEFAULT_BOUNDS",
 ]

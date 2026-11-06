@@ -66,13 +66,17 @@ print("=" * 70)
 print("1. Optimal-estimation retrieval of a melt pond (full 480-band spectrum)")
 print("=" * 70)
 emu = load_sea_ice_emulators(["FYI_pond"])["FYI_pond"]
+# FYI_pond retrieves the pond floor's bubble radius (its coarseness), so the
+# forward model needs a value for it; it is held fixed here to keep this
+# example's information-content story to three parameters.
 truth = dict(pond_depth=0.25, sea_ice_temperature=-4.0, black_carbon=100.0,
-             solzen=60, direct=1)
+             sea_ice_bubble_radius=200.0, solzen=60, direct=1)
 obs = forward_obs("FYI_pond", truth)
 free = ["pond_depth", "sea_ice_temperature", "black_carbon"]
+FIXED = {"solzen": 60, "direct": 1, "sea_ice_bubble_radius": 200.0}
 
 r = retrieve(observed=obs, parameters=free, emulator=emu,
-             fixed_params={"solzen": 60, "direct": 1},
+             fixed_params=FIXED,
              obs_uncertainty=np.full(480, NOISE), method="oe")
 
 truth_vals = {"pond_depth": 0.25, "sea_ice_temperature": -4.0, "black_carbon": 100.0}
@@ -101,18 +105,24 @@ band_obs = to_platform(obs, "sentinel2", flx_slr=emu.flx_slr)
 y_s2 = np.array([getattr(band_obs, b) for b in bands])
 r_s2 = retrieve(observed=y_s2, parameters=free, emulator=emu,
                 platform="sentinel2", observed_band_names=bands,
-                fixed_params={"solzen": 60, "direct": 1},
+                fixed_params=FIXED,
                 obs_uncertainty=np.full(len(bands), 0.02), method="oe")
 
 print(f"  full 480-band spectrum : DFS = {r_hs.dfs:.2f}")
 print(f"  Sentinel-2 (4 bands)   : DFS = {r_s2.dfs:.2f}")
 print("  per-parameter info content (1 = measured, 0 = prior-driven):")
-print(f"    {'parameter':22s} {'hyperspectral':>14s} {'S2 4-band':>12s}")
+print(f"    {'parameter':22s} {'hyperspectral':>14s} {'S2 4-band':>12s}   "
+      f"{'provenance (S2)':>18s}")
+prov_s2 = r_s2.parameter_provenance()
 for p in free:
     print(f"    {p:22s} {r_hs.averaging_kernel_diag[p]:14.2f} "
-          f"{r_s2.averaging_kernel_diag[p]:12.2f}")
+          f"{r_s2.averaging_kernel_diag[p]:12.2f}   {prov_s2[p]:>18s}")
 print("  → with fewer bands, parameters fall back on the prior; OE says so,")
 print("    instead of reporting them as if measured.")
+print("  summary() carries the same labels, so this is visible by default:")
+print("\n".join("    " + ln for ln in r_s2.summary().splitlines()))
+print(f"  parameters the S2 bands actually determined: "
+      f"{sorted(r_s2.measured_parameters())}")
 
 
 # ── 3. OE classification: posterior probabilities, not a bare label ──────────

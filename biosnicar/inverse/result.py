@@ -192,6 +192,62 @@ class RetrievalResult:
                 out.append((a, b, r))
         return sorted(out, key=lambda t: -abs(t[2]))
 
+    # ── Information content: measurement or prior? ──────────────────────
+
+    def information_content(self) -> Dict[str, float]:
+        """``{param: averaging-kernel diagonal}`` — 1 = measured, 0 = prior.
+
+        Empty unless ``method="oe"``.  This is the diagnostic that
+        ``uncertainty`` cannot give you: a small sigma means either the
+        spectrum pinned the value or the prior was narrow and the spectrum
+        said nothing, and only the averaging kernel tells the two apart.
+
+        See :mod:`biosnicar.inverse.information` for the threshold
+        convention shared across the package.
+        """
+        return dict(self.averaging_kernel_diag or {})
+
+    def parameter_provenance(self, **kw) -> Dict[str, str]:
+        """``{param: "measured" | "prior-influenced" | "not retrieved"}``.
+
+        Parameters with no averaging kernel (non-OE methods, or derived
+        quantities) are labelled ``"unknown"`` rather than dropped.
+        """
+        from biosnicar.inverse import information as _info
+        return _info.provenance(self.averaging_kernel_diag, self.best_fit, **kw)
+
+    def prior_dominated_parameters(self, threshold: float = None) -> Dict[str, bool]:
+        """``{param: True}`` where the prior, not the spectrum, set the value.
+
+        *threshold* defaults to
+        :data:`biosnicar.inverse.information.MEASURED_THRESHOLD` (0.5).
+        Empty unless ``method="oe"``.  Mirrors the method of the same name
+        on :class:`~biosnicar.sea_ice.retrieve.SeaIceRetrievalResult`, which
+        shares this threshold.
+        """
+        from biosnicar.inverse import information as _info
+        if threshold is None:
+            threshold = _info.MEASURED_THRESHOLD
+        return {p: (a < threshold) for p, a in (self.averaging_kernel_diag or {}).items()}
+
+    def measured_parameters(self, threshold: float = None) -> Dict[str, float]:
+        """The subset of ``best_fit`` the measurement actually determined.
+
+        Use this when the retrieved values are going somewhere they will be
+        read as measurements — a publication table, a downstream fusion
+        step — rather than filtering ``best_fit`` by eye.  Returns the whole
+        of ``best_fit`` when no averaging kernel is available, since in that
+        case nothing has been shown either way.
+        """
+        from biosnicar.inverse import information as _info
+        akd = self.averaging_kernel_diag or {}
+        if not akd:
+            return dict(self.best_fit)
+        if threshold is None:
+            threshold = _info.MEASURED_THRESHOLD
+        return {p: v for p, v in self.best_fit.items()
+                if akd.get(p, float("nan")) >= threshold}
+
     def _ssa_param_names(self):
         """Which (radius, density) pair in ``best_fit`` defines SSA, if any.
 
@@ -322,9 +378,11 @@ class RetrievalResult:
         lines = [f"RetrievalResult (method={self.method}, converged={self.converged})"]
         lines.append(f"  Cost: {self.cost:.4f}  |  Function evaluations: {self.n_function_evals}")
         lines.append("  Best-fit parameters:")
-        for name, val in self.best_fit.items():
-            unc = self.uncertainty.get(name, float("nan"))
-            lines.append(f"    {name:25s} = {val:12.4f}  ±  {unc:.4f}")
+        from biosnicar.inverse import information as _info
+        lines.extend(_info.format_parameter_lines(
+            self.best_fit, self.uncertainty, self.averaging_kernel_diag,
+            name_width=25,
+        ))
         if self.ssa is not None:
             lines.append("  Derived quantities:")
             lines.append(
