@@ -88,6 +88,43 @@ Changed
   **Retrieval, classification and field-validation numbers in ROADMAP.md
   predate this change and still need regenerating.**
 
+- **``RetrievalResult.ssa`` now works for sea-ice retrievals, and its
+  uncertainty uses the posterior covariance.**  Two bugs, one policy.
+
+  The ``ssa`` property keyed only off ``rds``/``rho``, the glacier-ice
+  parameter names.  The sea-ice emulators call the same physical quantities
+  ``sea_ice_bubble_radius``/``rho_DL``, so ``ssa`` silently returned ``None``
+  for every sea-ice retrieval — even though ``_compute_ssa``'s formula is
+  derived for bubbly ice and its docstring says so.
+
+  ``_ssa_uncertainty`` assumed radius and density were independent.  They are
+  strongly anti-correlated along the scattering ridge (posterior r = -0.85
+  mean, -0.99 at worst), and both partials of SSA are negative, so the
+  cross-term subtracts.  Including it shrinks sigma_SSA **3x**.  The
+  covariance is rebuilt from the correlation times the linear-space sigmas,
+  because ``posterior_covariance`` is stored in optimiser space where
+  ``sea_ice_bubble_radius`` is log-sampled — mixing the two spaces reduces the
+  cross-term to nothing.
+
+  The policy behind it: radius and density are individually degenerate, their
+  combination is not.  This follows from the code — scattering is
+  ``sca_cff_vlm(r) * nu_air`` and absorption ``(1 - nu_air) * alpha_ice``, so
+  in the single-scattering albedo the density cancels and omega is a function
+  of SSA alone.  Measured along true iso-SSA curves, holding SSA fixed removes
+  **88% of NIR and 61% of VIS** spectral variation; in the posterior,
+  sigma_SSA/SSA beats sigma_r/r in **22 of 24** states (0.44 vs 0.58 mean).
+
+  Four limits, recorded so the policy is not over-applied: (1) it is weaker in
+  the VIS, where omega -> 1 and the asymmetry parameter — a function of radius
+  alone — carries the signal, which is why the pair correlates at 0.85 not
+  0.999 and why SSA is reported *alongside* the components rather than
+  replacing them; (2) SSA amplifies density error by 1/phi = 9-30x at sea-ice
+  densities, since the air fraction is a small difference of large numbers;
+  (3) only FYI_bare retrieves both components — the other five hard-code
+  density, so SSA is computable for 0 of the 23 SHEBA spectra, and making it
+  primary fleet-wide needs a retrain of each; (4) it addresses one of the six
+  measured degeneracies and none of the others.
+
 - **``sea_ice_temperature`` is reported but not retrieved.**  Across 22 of the
   23 SHEBA spectra its averaging-kernel diagonal averages **0.048** — roughly
   95% prior, 5% measurement.  The fleet sweep agrees (mean 0.16 for

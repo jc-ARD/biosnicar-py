@@ -408,3 +408,80 @@ class TestParameterCorrelation:
         assert sigma_marginal / sigma_conditional == pytest.approx(
             1.0 / np.sqrt(1.0 - c ** 2)
         )
+
+
+class TestSSAFromSeaIceParameters:
+    """SSA must be reachable from the sea-ice parameter names, and its
+    uncertainty must use the radius/density covariance.
+
+    Before this, `ssa` keyed only off `rds`/`rho` and silently returned None
+    for every sea-ice retrieval, even though `_compute_ssa`'s formula is
+    derived for bubbly ice.  And `_ssa_uncertainty` assumed independence,
+    which overstates sigma_SSA ~3x for FYI_bare because radius and density
+    are strongly anti-correlated along the scattering ridge.
+    """
+
+    def _result(self, names, corr):
+        from biosnicar.inverse.result import RetrievalResult
+        r_name, d_name = names
+        rad, rho = 400.0, 860.0
+        s_r, s_d = 150.0, 18.0
+        pc = {
+            (r_name, r_name): s_r ** 2,
+            (d_name, d_name): s_d ** 2,
+            (r_name, d_name): corr * s_r * s_d,
+            (d_name, r_name): corr * s_r * s_d,
+        }
+        return RetrievalResult(
+            best_fit={r_name: rad, d_name: rho}, cost=0.0,
+            uncertainty={r_name: s_r, d_name: s_d},
+            predicted_albedo=np.zeros(3), observed=np.zeros(3),
+            converged=True, method="oe", n_function_evals=1,
+            posterior_covariance=pc,
+        )
+
+    def test_ssa_reachable_from_sea_ice_names(self):
+        sea = self._result(("sea_ice_bubble_radius", "rho_DL"), -0.85)
+        glacier = self._result(("rds", "rho"), -0.85)
+        assert sea.ssa is not None
+        assert sea.ssa == pytest.approx(glacier.ssa)
+        assert sea.ssa_uncertainty == pytest.approx(glacier.ssa_uncertainty)
+
+    def test_ssa_formula(self):
+        r = self._result(("sea_ice_bubble_radius", "rho_DL"), 0.0)
+        expected = 3.0 * (1.0 - 860.0 / 917.0) / (400e-6 * 860.0)
+        assert r.ssa == pytest.approx(expected)
+
+    def test_anticorrelation_shrinks_ssa_uncertainty(self):
+        """Both partials of SSA are negative, so a negative covariance
+        subtracts.  This is the whole reason SSA is worth reporting."""
+        indep = self._result(("sea_ice_bubble_radius", "rho_DL"), 0.0)
+        anti = self._result(("sea_ice_bubble_radius", "rho_DL"), -0.85)
+        assert anti.ssa_uncertainty < indep.ssa_uncertainty
+        assert anti.ssa_uncertainty == pytest.approx(
+            indep.ssa_uncertainty * 0.35, rel=0.2)
+
+    def test_none_when_pair_absent(self):
+        from biosnicar.inverse.result import RetrievalResult
+        r = RetrievalResult(
+            best_fit={"brine_volume_fraction": 0.05}, cost=0.0,
+            uncertainty={"brine_volume_fraction": 0.01},
+            predicted_albedo=np.zeros(3), observed=np.zeros(3),
+            converged=True, method="oe", n_function_evals=1,
+            posterior_covariance={("brine_volume_fraction",
+                                   "brine_volume_fraction"): 1e-4},
+        )
+        assert r.ssa is None and r.ssa_uncertainty is None
+
+    def test_falls_back_to_independence_without_oe(self):
+        """A non-OE fit has no covariance; SSA must still be computable."""
+        from biosnicar.inverse.result import RetrievalResult
+        r = RetrievalResult(
+            best_fit={"sea_ice_bubble_radius": 400.0, "rho_DL": 860.0},
+            cost=0.0,
+            uncertainty={"sea_ice_bubble_radius": 150.0, "rho_DL": 18.0},
+            predicted_albedo=np.zeros(3), observed=np.zeros(3),
+            converged=True, method="L-BFGS-B", n_function_evals=1,
+        )
+        assert r.ssa is not None
+        assert np.isfinite(r.ssa_uncertainty)

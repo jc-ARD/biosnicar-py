@@ -423,6 +423,68 @@ bug. Notably the two spectra whose scan was *flat* are exactly the two with the 
 kernel (A = 0.20, 0.45): low information content predicts a flat likelihood, which is a useful
 cross-check that the diagnostic is measuring what it claims.
 
+#### Report SSA, not radius and density separately
+
+Radius and density are individually degenerate; their combination is not. The quantity that
+carries the unique signature is the specific surface area of the air/ice interface,
+
+```
+SSA = 3 (1 - rho/917) / (r * rho)        [m2 kg-1]
+```
+
+This follows from the code rather than by analogy. Scattering is formed as
+`sca_coeff = sca_cff_vlm(r) x nu_air` and absorption as `(1 - nu_air) x alpha_ice`. Form the
+single-scattering albedo and the density cancels, leaving **ω a function of SSA alone** — and ω
+is what governs the albedo of an optically thick layer.
+
+Measured on the forward model along true iso-SSA curves (radius swept ~5×, density 820→895,
+spread compared against the same radius span at fixed density):
+
+| Band | Variation removed by holding SSA fixed |
+|---|---|
+| NIR (1005–1995 nm) | **88%** |
+| VIS (405–995 nm) | **61%** |
+
+And in the posterior, over 24 FYI_bare states:
+
+| Fractional 1σ | Mean | Median |
+|---|---|---|
+| bubble radius, σ_r/r | 0.583 | 0.317 |
+| **SSA, σ_SSA/SSA** | **0.440** | **0.187** |
+| SSA, wrongly assuming independence | 0.765 | 0.541 |
+
+SSA is better determined than bubble radius in **22 of 24** states, and accounting for the
+radius/density covariance shrinks its uncertainty **3-fold**. `RetrievalResult.ssa` and
+`.ssa_uncertainty` now compute this for sea-ice retrievals and use the posterior covariance.
+
+**Four caveats, because SSA is not a universal answer.**
+
+1. **It is weaker in the VIS, which is where the bare-ice emulators look.** ω = f(SSA) holds
+   where ice absorbs; in the VIS ω → 1 and the remaining signal is carried by the asymmetry
+   parameter, which depends on radius *alone*. That is why iso-SSA removes 88% of NIR but only
+   61% of VIS variation, and why radius/density correlate at 0.85 rather than 0.999. The
+   residual is real information — so SSA is reported *alongside* the components, not instead of
+   them.
+
+2. **SSA amplifies density error at sea-ice densities.** `d(ln SSA)/d(ln rho) = -1/phi` with
+   `phi = 1 - rho/917 ≈ 0.03–0.11`, so the factor is 9–30×. A 2% density error becomes a ~30%
+   SSA error. This is physical, not a coordinate artefact — the air fraction is a small
+   difference of two large numbers — but it means SSA is only useful where density is genuinely
+   constrained. For snow (`phi ≈ 0.67`) the amplification is negligible; for dense sea ice it is
+   not.
+
+3. **Only FYI_bare retrieves both components.** The other five emulators hard-code density
+   (`FYI_summer` uses `rho=[300, 850, 910]`), so there is no retrieved density to form SSA from.
+   On the 23 SHEBA spectra, which classify as FYI_snow or FYI_summer, SSA is available for
+   **none of them**. Making SSA the primary reported quantity fleet-wide requires those
+   emulators to sample density, which means retraining them.
+
+4. **It addresses one of the six measured degeneracies.** Radius/density is FYI_bare's worst
+   pair, but MYI_bare's and FYI_summer's is `sea_ice_bubble_radius`/`black_carbon`, young_ice's
+   is `ice_thickness_cm`/`ocean_albedo`, and FYI_pond's is `sea_ice_temperature`/`black_carbon`.
+   SSA does nothing for any of those. Where density is held fixed there is of course no
+   radius/density degeneracy to cure in the first place.
+
 #### What to do instead
 
 Read the correlation for the retrieval in front of you rather than assuming a constant:
