@@ -88,29 +88,49 @@ Changed
   **Retrieval, classification and field-validation numbers in ROADMAP.md
   predate this change and still need regenerating.**
 
-- **``rho_DL`` and ``brine_volume_fraction`` are now substantially degenerate**
-  — a real consequence of the LUT density fix, not a regression.  The Jacobian
-  collinearity between the two rose from mean ``|cos|`` 0.42 (min 0.03) to **0.73**
-  (min 0.43, max 0.90).  This is expected: with the grid clamping at 870 kg/m³,
-  most of the sampled ``rho_DL`` range was inert, so its Jacobian was close to
-  numerical noise and uncorrelated with anything.  Now that density genuinely
-  acts — through ν_air scattering and the (1 − ν_air) absorption weighting — it
-  pushes the spectrum in much the same direction brine volume does.
+- **The dominant FYI_bare degeneracy is ``sea_ice_bubble_radius``/``rho_DL``,
+  not the pair that was being tracked.**  Measuring all six parameter pairs
+  instead of one gives posterior correlation **0.84 mean, 0.995 max**, the same
+  sign at all 24 base points, inflating the marginal 1-sigma by **4.2x typical
+  and 9.8x worst** — against 0.31 / 1.10x for
+  ``rho_DL``/``brine_volume_fraction``.
+  It had never been measured because the audit only ever looked at the latter.
 
-  Forward accuracy is unaffected.  *Retrieval* is: joint retrievals of the two
-  constrain a combination rather than two independent parameters, and should
-  not be reported as the latter.  Reparameterising onto the along-ridge and
-  across-ridge directions is logged in ``ROADMAP.md`` and needs a retrain.
+  The mechanism is in ``sea_ice_optics.py``: layer scattering is formed as
+  ``sca_cff_vlm(bubble_radius) * nu_air`` and ``nu_air`` is set by density, so
+  the two parameters are knobs on one product.  They are not perfectly
+  interchangeable — the asymmetry parameter depends on radius but not air
+  fraction, absorption on air fraction but not radius — which is why the
+  correlation is 0.84 and not 0.999 (temperature is also tied to (Vb,
+  ``rho_DL``) by the parameterisation).
 
-  On what these corrections buy: fitting six SHEBA bare-ice spectra with the
-  poorly-constrained parameters free, the corrected and original forward models
-  fit **equally well** (mean RMSE 0.0107 both) once the three-layer SSL
-  structure is used.  At the 850–920 kg/m³ the sea-ice layers actually want,
-  air is only 0.6–8%.  What does change is parameter behaviour: retrieved
-  drained-layer densities are 899/900/891/900/900/895 corrected, against
-  785/828/890/900/897/900 before — same fit, tighter parameters.  These
-  corrections are landed for correctness and parameter interpretation, not for
-  fit quality, and should not be advertised as improving accuracy.
+  Unlike the ``brine_volume_fraction`` pair, this one's sign is stable, so
+  reparameterising onto the combination the measurement constrains is viable,
+  with the granular-ice ``rds``/``rho`` -> SSA treatment as precedent.  It
+  needs a retrain and is logged in ``ROADMAP.md`` rather than done here.
+
+- **``rho_DL``/``brine_volume_fraction`` collinearity rose with the LUT
+  density fix — measured, and smaller than the first diagnostic suggested.**
+  The Jacobian cosine went from mean 0.42 to 0.73, which is expected rather
+  than a regression: with the grid clamping at 870 kg/m³ most of the sampled
+  ``rho_DL`` range was inert, so its Jacobian was close to numerical noise and
+  uncorrelated with anything.  Now that density genuinely acts it pushes the
+  spectrum much the way brine volume does.
+
+  The cosine is a prior-free, noise-free proxy and overstates the problem.
+  The quantity that governs a retrieval is the posterior correlation from the
+  OE path, with all fitted parameters, the measurement noise and the
+  calibrated forward-model error: **0.31 mean, 0.77 max**, inflating the
+  marginal 1-sigma by 1/sqrt(1-r^2) = only **1.10x typical, 1.56x worst**.  Both
+  parameters remain measurement-determined; ``rho_DL``'s averaging kernel
+  never drops below 0.84, so it is not prior-dominated.
+
+  **Reparameterising onto along-/across-ridge coordinates was considered and
+  rejected.**  The correlation *changes sign* across the parameter space (17 of
+  24 base points positive, 7 negative, spanning -0.60 to +0.77), so no global
+  linear rotation can decorrelate it; one would trade a modest state-dependent
+  correlation for a fixed one that is wrong over half the domain.  No retrain
+  is planned on this account.
 
 Verified
 ~~~~~~~~
@@ -149,6 +169,14 @@ Fixed
   linear space over-weights the sparse high end and understates FYI_bare at
   R² ≈ 0.80 / RMSE 0.063 — an artefact of the measurement, not the emulator.
 
+- **The degeneracy diagnostic in ``scripts/experiments/fyi_bare_audit.py``
+  had stale hardcoded ranges** — it sampled ``brine_volume_fraction`` over
+  (0.03, 0.12) and ``rho_DL`` over (830, 890), and normalised by the retired
+  0.141 upper bound, none of which match the live config.  It now derives
+  every range from ``SEA_ICE_EMULATOR_CONFIGS`` so it cannot drift again, and
+  reports the posterior correlation and sigma inflation alongside the cosine,
+  with a note that only the former should be quoted.
+
 - **The clamp below −30 °C is no longer silent.**  ``compute_brine_volume``
   accepts temperatures to −44 °C but holds the result at its −30 °C value below
   the Cox & Weeks fitted range; it now emits a ``RuntimeWarning`` saying so, and
@@ -158,6 +186,15 @@ Fixed
 
 Added
 ~~~~~
+- **``RetrievalResult.parameter_correlation()`` and ``.degenerate_parameters()``**
+  (``method="oe"``).  The OE engine already stored the full posterior
+  covariance; these turn it into correlations and flag pairs above a
+  threshold, so callers can read the measured collinearity of their own
+  retrieval rather than relying on a blanket documented warning.  This matters
+  because sea-ice collinearity is strongly state-dependent: for the FYI_bare
+  ``rho_DL``/``brine_volume_fraction`` pair it varies from 0.07 to 0.77 *and
+  changes sign*, so any global statement about it is wrong somewhere.
+
 - **``scripts/audit_sea_ice_emulators.py``** — held-out spectral audit for all
   six sea-ice emulators in one run.  It replicates the build's Latin hypercube
   and log-space sampling (getting this wrong is what makes an excellent

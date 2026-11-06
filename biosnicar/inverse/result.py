@@ -133,6 +133,53 @@ class RetrievalResult:
     dfs: Optional[float] = None
     log_evidence: Optional[float] = None
 
+    def parameter_correlation(self) -> Dict:
+        """Posterior correlation matrix as ``{(p_i, p_j): r}`` (``method="oe"``).
+
+        Empty unless the OE engine populated ``posterior_covariance``.
+
+        A correlation near +/-1 means the two parameters trade off against each
+        other: the measurement constrains a combination of them better than
+        either alone.  The marginal 1-sigma on each is inflated over its
+        value-if-the-other-were-known by ``1 / sqrt(1 - r**2)`` — so r = 0.5
+        costs 15%, r = 0.9 costs 2.3x, r = 0.99 costs 7x.
+
+        For sea-ice retrievals this lives on the per-type fits, e.g.
+        ``result.all_fits["FYI_bare"].parameter_correlation()``.
+        """
+        pc = self.posterior_covariance
+        if not pc:
+            return {}
+        names = [p for p in self.best_fit if (p, p) in pc]
+        sig = {p: float(np.sqrt(max(pc[(p, p)], 0.0))) for p in names}
+        out = {}
+        for a in names:
+            for b in names:
+                d = sig[a] * sig[b]
+                out[(a, b)] = float(pc[(a, b)] / d) if d > 0 else 0.0
+        return out
+
+    def degenerate_parameters(self, threshold: float = 0.8):
+        """Parameter pairs whose posterior correlation exceeds *threshold*.
+
+        Returns ``[(p_i, p_j, r), ...]`` sorted by ``|r|`` descending, each
+        pair listed once.  Empty unless ``method="oe"``.
+
+        Use this instead of assuming a given pair is degenerate: collinearity
+        in sea ice is strongly state-dependent, and for the FYI_bare
+        ``rho_DL``/``brine_volume_fraction`` pair the correlation both varies
+        in magnitude and *changes sign* across the parameter space.
+        """
+        corr = self.parameter_correlation()
+        seen, out = set(), []
+        for (a, b), r in corr.items():
+            if a == b or (b, a) in seen:
+                continue
+            seen.add((a, b))
+            if abs(r) >= threshold:
+                out.append((a, b, r))
+        return sorted(out, key=lambda t: -abs(t[2]))
+
     @property
     def ssa(self):
         """Specific surface area (m2 kg-1) derived from rds and rho.

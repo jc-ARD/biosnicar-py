@@ -12,32 +12,96 @@
     "n_pca_components": 26
   },
   "degeneracy_rho_vb": {
-    "jacobian_cosine_mean": 0.7334736858524501,
-    "jacobian_cosine_min": 0.4292186614869134,
-    "jacobian_cosine_max": 0.9036482819817596,
+    "jacobian_cosine_mean": 0.7296388909394987,
+    "jacobian_cosine_min": 0.2817746098833831,
+    "jacobian_cosine_max": 0.9523327889377521,
     "cosines": [
-      -0.5140945402195825,
-      -0.9036482819817596,
-      -0.8986029818586678,
-      -0.7354010283568564,
-      -0.898585629658215,
-      -0.6992569893786129,
-      -0.7234914928873971,
-      -0.7470979162349853,
-      -0.9003861729240645,
-      -0.8159367907945275,
-      -0.8796027108450121,
-      -0.7354414088654613,
-      -0.6891526963572457,
-      -0.4292186614869134,
-      -0.5380939358054018,
-      -0.7599256957361744,
-      -0.7650914186320543,
-      -0.8105758348152758,
-      -0.467218572907821,
-      -0.7586509573029714
+      -0.42074368018237596,
+      -0.8443048858638735,
+      -0.91674985666251,
+      -0.9126026183437052,
+      -0.5841399451693695,
+      -0.6598591222484932,
+      -0.8845020349496938,
+      -0.7803979254567721,
+      -0.8066831677110291,
+      -0.7224617319123247,
+      -0.4109949031302155,
+      -0.2817746098833831,
+      -0.9523327889377521,
+      -0.9256165669214494,
+      -0.7049140188171574,
+      -0.7918891279969333,
+      -0.778368494033099,
+      -0.3358149396535812,
+      -0.5746539155991279,
+      -0.8771702630741589,
+      -0.850842301190762,
+      -0.8110778996832002,
+      0.7601538769535825,
+      -0.9232847081734205
     ],
-    "note": "|cos|~1 => rho_DL and Vb degenerate; <0.9 => separable"
+    "note": "Jacobian cosine is a prior-free proxy and runs HIGHER than the posterior correlation, which is what governs retrieval. Quote posterior_corr_*, not the cosine.",
+    "posterior_corr_mean": 0.3052061374873672,
+    "posterior_corr_min": 0.06492617740420532,
+    "posterior_corr_max": 0.7658317946808132,
+    "posterior_corr_signs": {
+      "positive": 17,
+      "negative": 7
+    },
+    "frac_abs_corr_gt_0.8": 0.0,
+    "sigma_inflation_mean": 1.0950686289567335,
+    "sigma_inflation_max": 1.5551109168948278,
+    "posterior_corr_all_pairs": {
+      "sea_ice_bubble_radius|rho_DL": {
+        "mean_abs": 0.8368036072301702,
+        "max_abs": 0.9947281799082404,
+        "n_positive": 0,
+        "n_negative": 24,
+        "sigma_inflation_mean": 4.154422014251029,
+        "sigma_inflation_max": 9.751644218692313
+      },
+      "sea_ice_bubble_radius|black_carbon": {
+        "mean_abs": 0.5730320149711637,
+        "max_abs": 0.9681327270691548,
+        "n_positive": 6,
+        "n_negative": 18,
+        "sigma_inflation_mean": 1.6439891518288796,
+        "sigma_inflation_max": 3.993009638340628
+      },
+      "black_carbon|rho_DL": {
+        "mean_abs": 0.4940853105372051,
+        "max_abs": 0.9696060769181694,
+        "n_positive": 17,
+        "n_negative": 7,
+        "sigma_inflation_mean": 1.5990070625813744,
+        "sigma_inflation_max": 4.0871157009544605
+      },
+      "brine_volume_fraction|black_carbon": {
+        "mean_abs": 0.393114811512792,
+        "max_abs": 0.9564071215709212,
+        "n_positive": 16,
+        "n_negative": 8,
+        "sigma_inflation_mean": 1.2563361916720774,
+        "sigma_inflation_max": 3.424227488486801
+      },
+      "brine_volume_fraction|rho_DL": {
+        "mean_abs": 0.3052061374873672,
+        "max_abs": 0.7658317946808132,
+        "n_positive": 17,
+        "n_negative": 7,
+        "sigma_inflation_mean": 1.0950686289567335,
+        "sigma_inflation_max": 1.5551109168948278
+      },
+      "brine_volume_fraction|sea_ice_bubble_radius": {
+        "mean_abs": 0.28800386085625246,
+        "max_abs": 0.8807185365441301,
+        "n_positive": 13,
+        "n_negative": 11,
+        "sigma_inflation_mean": 1.125959747305993,
+        "sigma_inflation_max": 2.1113081204825725
+      }
+    }
   },
   "exp1_60k": {
     "r2_pooled_albedo": 0.9984918098802361,

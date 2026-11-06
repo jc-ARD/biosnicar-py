@@ -488,7 +488,7 @@ takes seconds.
 | Young ice albedo vs thickness | Grenfell & Maykut (1977) Table 3: all checkpoints within ±0.03 (two-stream slab, frazil scattering 3.0 m⁻¹) |
 | Open water albedo | Fresnel/Cox & Munk physics: BBA 0.02 (SZA 20°) → 0.07 (60°) → ~0.3 (80°, calm); wind darkens high-SZA water |
 | Emulator fidelity | FYI_bare held-out spectral R² 0.9977, BBA MAE 0.0024 (2000 forward-model spectra, seed 777, re-measured after the 2026-11-05 physics rebuild); all six sea-ice emulators 0.998–1.000 |
-| Parameter degeneracy | `rho_DL` and `brine_volume_fraction` are substantially collinear after the LUT density fix (mean \|cos\| 0.73, max 0.90) — retrieve them as a pair, not as independent parameters |
+| Parameter degeneracy | Dominant pair is `sea_ice_bubble_radius`/`rho_DL`: posterior correlation 0.84 mean, 0.995 max, same sign at all 24 base points, inflating marginal σ 4.2× typical / 9.8× worst. `rho_DL`/`brine_volume_fraction`, previously the tracked pair, is minor (0.31 mean, 1.1× inflation) and **changes sign**. All parameters stay measurement-determined (averaging kernel ≥ 0.84 for `rho_DL`). Read per-retrieval via `parameter_correlation()`, not asserted globally |
 | Parameter identifiability | Synthetic validation, seed 2026 — see §3 |
 
 Full tables, provenance caveats (which labels are independent vs inferred),

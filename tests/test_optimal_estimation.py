@@ -341,3 +341,70 @@ class TestA3PriorProvenance:
         r = retrieve_sea_ice(flag_prior_influence=True,
                              **self._common(self._pond_obs()))
         assert r.prior_resolved is None
+
+
+class TestParameterCorrelation:
+    """`parameter_correlation` / `degenerate_parameters` on RetrievalResult.
+
+    These exist so callers can read the *measured* collinearity of their own
+    retrieval instead of relying on a blanket documented warning.  For the
+    FYI_bare rho_DL/brine_volume_fraction pair the correlation is strongly
+    state-dependent and changes sign, so a blanket claim would be wrong.
+    """
+
+    def _result(self):
+        from biosnicar.inverse.result import RetrievalResult
+        # Hand-built 2-parameter posterior with a known correlation of 0.6.
+        s1, s2, r = 2.0, 5.0, 0.6
+        pc = {
+            ("a", "a"): s1 ** 2,
+            ("b", "b"): s2 ** 2,
+            ("a", "b"): r * s1 * s2,
+            ("b", "a"): r * s1 * s2,
+        }
+        return RetrievalResult(
+            best_fit={"a": 1.0, "b": 2.0}, cost=0.0,
+            uncertainty={"a": s1, "b": s2},
+            predicted_albedo=np.zeros(3), observed=np.zeros(3),
+            converged=True, method="oe", n_function_evals=1,
+            posterior_covariance=pc,
+        )
+
+    def test_correlation_matches_covariance(self):
+        c = self._result().parameter_correlation()
+        assert c[("a", "a")] == pytest.approx(1.0)
+        assert c[("b", "b")] == pytest.approx(1.0)
+        assert c[("a", "b")] == pytest.approx(0.6)
+        assert c[("a", "b")] == pytest.approx(c[("b", "a")])
+
+    def test_degenerate_pairs_respect_threshold(self):
+        r = self._result()
+        assert r.degenerate_parameters(threshold=0.5) == [("a", "b", pytest.approx(0.6))]
+        assert r.degenerate_parameters(threshold=0.8) == []
+
+    def test_empty_without_oe(self):
+        from biosnicar.inverse.result import RetrievalResult
+        r = RetrievalResult(
+            best_fit={"a": 1.0}, cost=0.0, uncertainty={"a": 1.0},
+            predicted_albedo=np.zeros(3), observed=np.zeros(3),
+            converged=True, method="L-BFGS-B", n_function_evals=1,
+        )
+        assert r.parameter_correlation() == {}
+        assert r.degenerate_parameters() == []
+
+    def test_variance_inflation_identity(self):
+        """sigma_marginal / sigma_conditional == 1/sqrt(1-r^2) exactly.
+
+        This is the identity the docs quote when turning a correlation into a
+        cost, so it is pinned here rather than asserted in prose.
+        """
+        c = self._result().parameter_correlation()[("a", "b")]
+        pc = self._result().posterior_covariance
+        S = np.array([[pc[("a", "a")], pc[("a", "b")]],
+                      [pc[("b", "a")], pc[("b", "b")]]])
+        H = np.linalg.inv(S)
+        sigma_marginal = np.sqrt(S[0, 0])
+        sigma_conditional = 1.0 / np.sqrt(H[0, 0])
+        assert sigma_marginal / sigma_conditional == pytest.approx(
+            1.0 / np.sqrt(1.0 - c ** 2)
+        )

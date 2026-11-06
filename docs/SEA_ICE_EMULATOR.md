@@ -280,30 +280,103 @@ retained components — it separates network error from compression error.
 > trained and understates FYI_bare at R² ≈ 0.80 / RMSE 0.063 — an artefact of the measurement,
 > not of the emulator.
 
-### rho_DL / brine-volume degeneracy
+### Parameter degeneracy in FYI_bare
 
-A Jacobian collinearity analysis (run as part of `fyi_bare_audit.py baseline`) compares the spectral
-direction that `rho_DL` pushes against the direction `brine_volume_fraction` pushes, at 20
-random base points.  |cos| near 1 means the two parameters are interchangeable and the
-inversion sees a ridge rather than a minimum.
+All numbers below come from `python scripts/experiments/fyi_bare_audit.py baseline`: 24 random
+base points drawn from the live config, scored through the real OE path with the calibrated
+forward-model error covariance. Ranges are read from `SEA_ICE_EMULATOR_CONFIGS`, so this cannot
+drift out of date when the emulator is reparameterised.
+
+#### rho_DL / brine-volume: smaller than the cosine suggests
+
+**Jacobian cosine** compares the spectral direction `rho_DL` pushes against the direction
+`brine_volume_fraction` pushes. It is prior-free, noise-free, and ignores the other fitted
+parameters.
 
 | | Mean \|cos\| | Min | Max |
 |---|---|---|---|
-| After the 2026-11-05 rebuild | **0.73** | 0.43 | 0.90 |
+| After the 2026-11-05 rebuild | 0.73 | 0.28 | 0.95 |
 | Before | 0.42 | 0.03 | 0.90 |
 
-**The fixes made these two parameters substantially more degenerate, and that is expected.**
-The LUT density axis used to start at 870 kg/m³ and the interpolator clamps rather than
-extrapolates, so most of the sampled `rho_DL` range (820–900) was flat — `rho_DL` barely moved
-the spectrum, and a Jacobian that is mostly numerical noise is uncorrelated with anything.  Now
-that density genuinely acts (both through ν_air scattering and through the (1 − ν_air)
-absorption scaling), it pushes the spectrum in much the same direction brine volume does.
+**Posterior correlation** is what actually governs a retrieval — all four fitted parameters,
+the measurement noise, and the forward-model error:
 
-The practical consequence is for *retrieval*, not for forward accuracy: joint retrievals of
-`rho_DL` and `brine_volume_fraction` from a single spectrum should be read as constraining a
-combination of the two, and the marginal uncertainty on either alone will be wide.  Reporting
-them as independently identified parameters is not supported.  Reparameterising onto the
-along-ridge and across-ridge combinations is logged as an open item in `ROADMAP.md`.
+| Quantity | Mean | Min | Max |
+|---|---|---|---|
+| \|posterior corr(Vb, rho_DL)\| | **0.31** | 0.07 | 0.77 |
+| Marginal σ inflation, 1/√(1−r²) | **1.10×** | 1.00× | 1.56× |
+| Averaging kernel, `rho_DL` | 0.94 | 0.84 | 1.00 |
+| Averaging kernel, `brine_volume_fraction` | 0.70 | 0.33 | 0.96 |
+
+**The cosine overstates this pair badly.** Conditioning on the other parameters and a realistic
+error budget takes the typical collinearity from 0.73 down to 0.31, costing only 1.10× on the
+marginal σ. Both parameters stay measurement-determined; `rho_DL`'s averaging kernel never drops
+below 0.84, so it is not prior-dominated. The collinearity *did* rise with the 2026-11-05
+rebuild — before it, the LUT density axis started at 870 kg/m³ and the interpolator clamps
+rather than extrapolates, so most of the sampled `rho_DL` range was flat and its Jacobian was
+mostly numerical noise, which is uncorrelated with anything. That is expected, not a regression.
+
+Note how sampling-dependent this is: holding `solzen` fixed at 55° instead of sampling it raises
+the mean to 0.53. That sensitivity is itself the argument for reading the correlation per
+retrieval rather than quoting a constant.
+
+#### The dominant degeneracy is bubble radius / density
+
+Measuring every pair rather than only the one historically tracked changes the priority:
+
+| Pair | Mean \|r\| | Max \|r\| | Sign (+/−) | σ inflation mean | max |
+|---|---|---|---|---|---|
+| `sea_ice_bubble_radius` / `rho_DL` | **0.84** | **0.995** | **0 / 24** | **4.2×** | **9.8×** |
+| `sea_ice_bubble_radius` / `black_carbon` | 0.57 | 0.97 | 6 / 18 | 1.6× | 4.0× |
+| `black_carbon` / `rho_DL` | 0.49 | 0.97 | 17 / 7 | 1.6× | 4.1× |
+| `brine_volume_fraction` / `black_carbon` | 0.39 | 0.96 | 16 / 8 | 1.3× | 3.4× |
+| `brine_volume_fraction` / `rho_DL` | 0.31 | 0.77 | 17 / 7 | 1.1× | 1.6× |
+| `brine_volume_fraction` / `sea_ice_bubble_radius` | 0.29 | 0.88 | 13 / 11 | 1.1× | 2.1× |
+
+**`sea_ice_bubble_radius` / `rho_DL` is the real degeneracy in FYI_bare** — nearly 3× the mean
+correlation of the pair that was being tracked, costing 4.2× on the marginal σ typically and
+9.8× at worst, and *negative at every one of 24 base points*. It went unmeasured for as long as
+the audit only looked at `rho_DL` vs Vb.
+
+The mechanism is visible in `sea_ice_optics.py`: layer scattering is formed as
+`sca_coeff = sca_cff_vlm(bubble_radius) × ν_air`, and `ν_air` is set by density — two knobs on
+one product. They are not perfectly interchangeable: the asymmetry parameter depends on radius
+but not air fraction, absorption on air fraction but not radius, and the FYI_bare
+parameterisation additionally ties temperature to (Vb, `rho_DL`). That is why the correlation is
+0.84 rather than 0.999, and why spectra along a constant-`sca_coeff` curve still differ visibly
+in the VIS.
+
+#### Why only one of these is worth reparameterising
+
+For granular ice the codebase already handles exactly this pattern: `rds` and `rho` are
+degenerate, and the constrained combination is retrieved instead — see `RetrievalResult.ssa`,
+whose docstring notes "different (rds, rho) pairs with the same SSA produce nearly identical
+spectra". The bubbly-ice analogue has no such treatment.
+
+Whether a rotation can help depends on whether the correlation keeps its sign:
+
+- `sea_ice_bubble_radius` / `rho_DL` is negative at **all 24** base points. A reparameterisation
+  is viable, and is logged as an open item in `ROADMAP.md` — it needs a retrain, so it is not
+  done here.
+- `brine_volume_fraction` / `rho_DL` **changes sign** (17 positive, 7 negative, spanning −0.60 to
+  +0.77). No global linear rotation can decorrelate a relationship that reverses; it would trade
+  a small state-dependent correlation for a fixed one that is wrong over much of the domain. A
+  retrain on rotated coordinates is therefore **not** planned for this pair.
+
+#### What to do instead
+
+Read the correlation for the retrieval in front of you rather than assuming a constant:
+
+```python
+fit = result.all_fits["FYI_bare"]
+fit.parameter_correlation()[("brine_volume_fraction", "rho_DL")]   # e.g. -0.31
+fit.degenerate_parameters(threshold=0.8)
+# [('sea_ice_bubble_radius', 'rho_DL', -0.993)]
+```
+
+Both require `method="oe"`. Where `|r|` is high, report the pair as a jointly constrained
+combination and widen the marginal bars by 1/√(1−r²); where it is low, the two are separately
+informative.
 
 ### PCA component counts
 
