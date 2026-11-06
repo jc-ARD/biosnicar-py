@@ -50,6 +50,28 @@ Added
 Fixed
 ~~~~~
 
+- **Three examples were broken by parameterisation changes that shipped
+  without them.**  ``07_inversion_spectral`` and ``14_sea_ice_emulator``
+  still passed ``snow_depth`` to FYI_snow, which takes ``tau_snow`` (depth is
+  the derived product ``tau * r``); ``14`` and ``15_sea_ice_inversion`` omitted
+  FYI_pond's now-retrievable ``sea_ice_bubble_radius`` and MYI_bare's
+  ``rho_DL``; and ``14`` formatted ``training_score`` as a float for
+  ``open_water``, which is an analytical model with no training score.
+
+  Two silent defects in the same files, found alongside: ``14``'s
+  "all surface types" figure had an ``if/elif`` chain covering five of seven
+  emulators, so ``young_ice`` and ``open_water`` plotted the previous
+  iteration's spectrum under their own labels — the chain now ends in a
+  ``raise``.  And ``07``'s snow section drew its truth uniformly over the full
+  ``tau`` range, which is almost always optically opaque — the regime where
+  depth is *not* retrievable — contradicting the caption above it; it now
+  states a thin (8 cm) pack.
+
+  Examples are not covered by the test suite, which is why a retrain and a
+  reparameterisation both passed CI while leaving them broken.  Note they
+  need ``MPLBACKEND=Agg`` to run unattended: ``PLOT = True`` is hard-coded and
+  ``plt.show()`` blocks on a GUI backend.
+
 - **The per-pixel loop retrieval path dropped the averaging kernel.**
   ``_result_to_record`` omitted ``averaging_kernel_diag`` while the
   vectorised batch path carried it, so whether a scene result retained
