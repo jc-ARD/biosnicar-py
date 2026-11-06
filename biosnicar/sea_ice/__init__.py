@@ -54,9 +54,19 @@ from biosnicar.sea_ice.illumination_context import (
     solar_zenith_angle,
     illumination_context,
 )
+from biosnicar.sea_ice.parameterisation import (
+    specific_surface_area,
+    radius_from_ssa,
+    topology_for_layer_type,
+    ssa_density_sensitivity,
+)
 
 __all__ = [
     "blend_pond_fraction",
+    "specific_surface_area",
+    "radius_from_ssa",
+    "topology_for_layer_type",
+    "ssa_density_sensitivity",
     "retrieve_sea_ice",
     "retrieve_sea_ice_batch",
     "SeaIceRetrievalResult",

@@ -88,6 +88,48 @@ Changed
   **Retrieval, classification and field-validation numbers in ROADMAP.md
   predate this change and still need regenerating.**
 
+- **``run_model`` accepts the optical parameterisation as an alternative to
+  the physical one.**  ``ssa=`` in place of ``rds``/``sea_ice_bubble_radius``,
+  and ``brine_volume_fraction=`` in place of ``sea_ice_temperature``.  Either
+  set is accepted per layer; supplying both for the same layer raises rather
+  than applying a silent precedence rule, matching the mutually-exclusive
+  style of ``compute_brine_volume(porosity=... | bulk_density_kg_m3=...)``.
+
+  The rationale is the degeneracy work above: radius and density are
+  individually degenerate and the spectrum constrains their combination,
+  while temperature acts on the optics only through brine volume.  Both
+  parameterisations give identical spectra (verified to 1e-7 across the 480
+  bands; the residual is the brine-volume root-find tolerance, equivalent to
+  1.2e-5 degC).
+
+  **SSA has two conventions and the layer type selects between them.**
+  Granular layers (``layer_type=0``, snow and the SSL) use the standard
+  snow-science form ``3/(r*rho_ice)``, independent of bulk density.  Bubbly
+  layers (1, 2, 4) use ``3*(1 - rho/917)/(r*rho)``.  They differ by ~2x at a
+  snow density of 300 kg/m3, and the absolute values differ by two orders of
+  magnitude between snow (~10 m2/kg) and dense sea ice (~0.5 m2/kg), so the
+  conversion refuses to guess the topology.  ``layer_type`` 3, 5 and 6 have
+  no single inclusion radius and raise.
+
+  New module ``biosnicar.sea_ice.parameterisation`` exports
+  ``specific_surface_area``, ``radius_from_ssa``, ``topology_for_layer_type``
+  and ``ssa_density_sensitivity`` (the ``1/phi`` = 9-30x error amplification
+  at sea-ice densities), replacing the formula previously duplicated across
+  three call sites.
+
+Fixed
+~~~~~
+- **``LUT.get`` truncated the radius instead of rounding it.**
+  ``idx = self._radius_to_idx[int(radius)]`` turns a radius of
+  799.9999999999999 — which is what an SSA conversion or any other float
+  arithmetic can produce for 800 — into the **799 um** entry, silently
+  selecting different optical properties.  Found because the two
+  parameterisations above disagreed by 2.2e-4 in albedo when they should have
+  been identical; the temperature path accounted for only 3e-9 of it.  Now
+  ``int(round(radius))``, which fixes float noise while still raising
+  KeyError for genuinely off-grid radii.  The hexagonal-column lookup
+  (``side``/``length``) had the same issue and is fixed the same way.
+
 - **``RetrievalResult.ssa`` now works for sea-ice retrievals, and its
   uncertainty uses the posterior covariance.**  Two bugs, one policy.
 
