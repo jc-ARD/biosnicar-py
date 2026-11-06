@@ -20,6 +20,7 @@ def test_mcmc_single_type_posterior():
 
     emu = Emulator.load(POND_FILE)
     truth = dict(pond_depth=0.25, sea_ice_temperature=-4.0,
+                 sea_ice_bubble_radius=200.0,
                  black_carbon=100.0, solzen=60, direct=1)
     # Observation from the FORWARD MODEL, never the emulator — residuals
     # include real emulator approximation error (no train/test recycling).
@@ -31,7 +32,11 @@ def test_mcmc_single_type_posterior():
         observed=obs,
         emulators={"FYI_pond": emu},
         solzen=60, direct=1,
-        fixed_params={"sea_ice_temperature": -4.0, "black_carbon": 100.0},
+        # sea_ice_bubble_radius (pond-floor coarseness) is pinned too, so
+        # this stays a single-free-parameter MCMC as the assertion below
+        # requires.
+        fixed_params={"sea_ice_temperature": -4.0, "black_carbon": 100.0,
+                      "sea_ice_bubble_radius": 200.0},
         method="mcmc",
         mcmc_walkers=16, mcmc_steps=300, mcmc_burn=100,
         obs_uncertainty=np.full(480, 0.005),

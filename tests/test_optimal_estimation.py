@@ -184,6 +184,7 @@ class TestOEIntegration:
     def _pond_obs(self):
         from biosnicar.drivers.run_model import run_model
         truth = dict(pond_depth=0.25, sea_ice_temperature=-4.0,
+                     sea_ice_bubble_radius=200.0,
                      black_carbon=100.0, solzen=60, direct=1)
         a = np.asarray(run_model(
             **SEA_ICE_EMULATOR_CONFIGS["FYI_pond"]["transform_fn"](truth)).albedo)
@@ -195,7 +196,9 @@ class TestOEIntegration:
         emu = load_sea_ice_emulators(["FYI_pond"])["FYI_pond"]
         r = retrieve(observed=self._pond_obs(),
                      parameters=["pond_depth", "sea_ice_temperature", "black_carbon"],
-                     emulator=emu, fixed_params={"solzen": 60, "direct": 1},
+                     emulator=emu,
+                     fixed_params={"solzen": 60, "direct": 1,
+                                   "sea_ice_bubble_radius": 200.0},
                      obs_uncertainty=np.full(480, 0.005), method="oe")
         assert r.method == "oe"
         assert abs(r.best_fit["pond_depth"] - 0.25) < 0.03
@@ -231,6 +234,7 @@ class TestOEIntegration:
         common = dict(observed=obs, parameters=["pond_depth", "black_carbon"],
                       emulator=emu,
                       fixed_params={"sea_ice_temperature": -4.0,
+                                    "sea_ice_bubble_radius": 200.0,
                                     "solzen": 60, "direct": 1},
                       obs_uncertainty=np.full(480, 0.005))
         oe = retrieve(method="oe", **common)
@@ -246,7 +250,7 @@ class TestOEIntegration:
         emu = load_sea_ice_emulators(["FYI_pond"])["FYI_pond"]
         obs = self._pond_obs()
         free = ["pond_depth", "sea_ice_temperature", "black_carbon"]
-        fixed = {"solzen": 60, "direct": 1}
+        fixed = {"solzen": 60, "direct": 1, "sea_ice_bubble_radius": 200.0}
         hs = retrieve(observed=obs, parameters=free, emulator=emu,
                       fixed_params=fixed, obs_uncertainty=np.full(480, 0.005),
                       method="oe")
@@ -296,6 +300,7 @@ class TestA3PriorProvenance:
     def _pond_obs(self):
         from biosnicar.drivers.run_model import run_model
         truth = dict(pond_depth=0.25, sea_ice_temperature=-4.0,
+                     sea_ice_bubble_radius=200.0,
                      black_carbon=100.0, solzen=60, direct=1)
         a = np.asarray(run_model(
             **SEA_ICE_EMULATOR_CONFIGS["FYI_pond"]["transform_fn"](truth)).albedo)

@@ -82,7 +82,7 @@ Use this when you already know the surface type (e.g. from a classification mask
 from biosnicar.emulator import Emulator
 from biosnicar.inverse.optimize import retrieve
 
-emu_pond = Emulator.load("data/emulators/sea_ice_FYI_pond_5param.npz")
+emu_pond = Emulator.load("data/emulators/sea_ice_FYI_pond_6param.npz")
 
 result = retrieve(
     observed=observed,
@@ -838,7 +838,7 @@ result = retrieve(
 result = retrieve(
     observed=spectrum,
     parameters=["pond_depth"],
-    emulator=Emulator.load("data/emulators/sea_ice_FYI_pond_5param.npz"),
+    emulator=Emulator.load("data/emulators/sea_ice_FYI_pond_6param.npz"),
     fixed_params={
         "sea_ice_temperature": -5.0,
         "black_carbon": 0.0,

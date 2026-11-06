@@ -209,8 +209,26 @@ def _transform_young_ice(p):
 
 
 def _transform_fyi_pond(p):
-    """Melt pond on FYI: liquid water layer over DL + IL."""
+    """Melt pond on FYI: liquid water layer over DL + IL.
+
+    The floor's bubble radius is retrieved rather than fixed.  It was
+    hard-coded at 200 um — a winter-ice value — which left the emulator unable
+    to produce a pond darker than BBA 0.144, while 21% of the Morassutti
+    observations are darker than that at *any* parameter setting.  Those
+    spectra were consequently won by MYI_bare and FYI_bare, which do reach
+    down to ~0.11.
+
+    Coarseness is the right knob, and it is a real variable: melt-season pond
+    floors are deteriorated ice with large voids, not winter ice.  Over
+    200-2000 um the floor's BBA moves 0.178 -> 0.066, a factor of 2.7, so
+    fixing it at any single value is a strong assumption.  The alternatives
+    reach the dark end only through physically indefensible settings — black
+    carbon at 12000-25000 ppb (against a ~2000 ng/g literature maximum, and
+    1000 ppb is already an effective-LAP proxy), or a floor density of
+    916 kg/m3, which is bubble-free pure ice.
+    """
     T = p["sea_ice_temperature"]
+    bbl = p["sea_ice_bubble_radius"]
     return dict(
         layer_type=[5, 4, 4],
         dz=[p["pond_depth"], 0.05, 1.40],
@@ -218,7 +236,7 @@ def _transform_fyi_pond(p):
         rho=[1000, 850, 910],
         sea_ice_salinity=[None, 8, 6],
         sea_ice_temperature=[None, T, T],
-        sea_ice_bubble_radius=[None, 200, 500],
+        sea_ice_bubble_radius=[None, bbl, min(2000.0, bbl * 2.5)],
         black_carbon=[0, p["black_carbon"], 0],
         solzen=p["solzen"],
         direct=p["direct"],
@@ -335,13 +353,17 @@ SEA_ICE_EMULATOR_CONFIGS = {
         "params": {
             "pond_depth":             (0.02,  0.60),
             "sea_ice_temperature":    (-10.0, -2.0),
+            # Newly retrieved — see _transform_fyi_pond.  Fixed at 200 um the
+            # emulator bottomed out at BBA 0.144 and could not represent 21%
+            # of the Morassutti ponds at any setting.
+            "sea_ice_bubble_radius":  (200.0, 2000.0),
             "black_carbon":           (0.0,   3000.0),
             "solzen":                 (20,    80),
             "direct":                 (0,     1),
         },
         "transform_fn":  _transform_fyi_pond,
-        "n_samples":     10000,
-        "emulator_file": str(_DATA_DIR / "sea_ice_FYI_pond_5param.npz"),
+        "n_samples":     12000,
+        "emulator_file": str(_DATA_DIR / "sea_ice_FYI_pond_6param.npz"),
     },
     "young_ice": {
         "description": "Young ice — grease ice, nilas, grey ice (0.5–30 cm)",

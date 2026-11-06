@@ -89,7 +89,7 @@ Changed
   predate this change and still need regenerating.**
 
 - **Field validation re-measured after the physics work.**  Snow and bare ice
-  are unchanged; melt ponds regressed and the cause is not yet settled.
+  are unchanged; melt ponds regressed, were diagnosed, and are fixed below.
 
   Unchanged — SHEBA (Grenfell & Light 2007)::
 
@@ -98,9 +98,9 @@ Changed
 
   Regressed — Morassutti (1995) melt ponds::
 
-      classification (504 records)   77%  ->  62%
-      classification (120-record block)   ->  51%
-      depth within +/-25%            ~22% ->  15%
+      classification (504 records)   77%  ->  62%  (-> 74.6% after the fix)
+      classification (120-record block)   ->  51%  (-> 63%)
+      depth within +/-25%            ~22% ->  15%  (-> 23.8%)
 
   Three explanations ruled out.  It is **not** model flexibility from
   MYI_bare's new density parameter: the OE path, whose Laplace evidence
@@ -110,11 +110,38 @@ Changed
   ``pond_depth`` or ``black_carbon``.  FYI_pond simply cannot fit those
   spectra.
 
-  The likely cause is the pond floor calibration (BC = 1000 ppb, rho = 895),
-  fitted against Morassutti under the old forward model and already flagged
-  as stale in ``docs/sea_ice.md``.  Recalibrating it changes a shipped preset,
-  so it is logged rather than done here.  **The old 77% / 22% figures should
-  not be quoted.**
+- **Melt-pond regression diagnosed and fixed: the pond floor's bubble radius
+  was hard-coded at 200 um.**  Not a calibration drift, which is where I
+  looked first.
+
+  Fixed at 200 um — a winter-ice value — the emulator bottomed out at
+  BBA 0.144, while **21% of the Morassutti observations are darker than that
+  at any parameter setting**.  Those spectra went to MYI_bare and FYI_bare,
+  which reach down to ~0.11.  The other two knobs could only reach the dark
+  end through physically indefensible settings: black carbon at
+  12000-25000 ppb against a ~2000 ng/g literature maximum (and 1000 ppb is
+  already an effective-LAP proxy), or a floor density of 916 kg/m3, which is
+  bubble-free pure ice.  Coarseness was the remaining candidate and the
+  physically right one — melt-season pond floors are deteriorated ice with
+  large voids, and over 200-2000 um the floor's BBA moves 0.178 -> 0.066, a
+  factor of 2.7.  Fixing it at any single value was a strong assumption.
+
+  ``sea_ice_bubble_radius`` is now retrieved for FYI_pond over (200, 2000),
+  making it a 6-parameter emulator written to
+  ``sea_ice_FYI_pond_6param.npz``::
+
+      reach (darkest BBA)      0.144  ->  0.067
+      unreachable observations  107/504 -> 16/504
+      classification (504)       62%   ->  74.6%   (77% before the physics work)
+      depth within +/-25%        15%   ->  23.8%   (~22% before)
+
+  Depth retrieval now exceeds the pre-existing baseline.  Snow and bare ice
+  are untouched — SHEBA spring snow 6/7, summer bare ice 16/16, S2 7/7 and
+  16/16, L8 7/7 and 15/16, all identical.
+
+  Note for anyone chasing this later: the BC = 1000 ppb / rho = 895 figures in
+  ``docs/sea_ice.md`` are for the *preset*, not this emulator, which samples
+  BC freely and uses rho = 850.  That preset sweep is still stale.
 
 - **A fourth frozen parameter region, this time in the transforms.**
   ``_transform_fyi_bare`` and ``_transform_fyi_summer`` set the interior

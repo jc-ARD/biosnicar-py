@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build the five sea ice surface-type emulators.
+"""Build the six sea ice surface-type emulators.
 
 Trains one MLP emulator per sea ice surface type and saves each to
 ``data/emulators/``.  Total training time is approximately 45–60 minutes
@@ -7,7 +7,7 @@ on a modern laptop (depends on CPU core count and n_samples).
 
 Usage::
 
-    python scripts/build_sea_ice_emulators.py              # build all five
+    python scripts/build_sea_ice_emulators.py              # build all six
     python scripts/build_sea_ice_emulators.py FYI_bare     # build one only
     python scripts/build_sea_ice_emulators.py --fast       # 2000 samples each (for testing)
 
@@ -17,7 +17,7 @@ Emulators built
   sea_ice_FYI_snow_tau_6param.npz Snow-covered first-year ice (tau_snow)
   sea_ice_FYI_summer_6param.npz  Melt-season bare ice (with SSL)
   sea_ice_MYI_bare_6param.npz    Bare multiyear ice
-  sea_ice_FYI_pond_5param.npz    Melt pond on first-year ice
+  sea_ice_FYI_pond_6param.npz    Melt pond on first-year ice
 """
 
 import argparse
