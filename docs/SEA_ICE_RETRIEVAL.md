@@ -289,11 +289,12 @@ state from a spectrum but reports only what a few bands can support). Speed is
 comparable to or faster than L-BFGS-B per pixel. Worked demonstration:
 `examples/17_optimal_estimation.py`.
 
-> **Honest status — the posteriors are not yet calibrated.** (1) The
-> measurement covariance currently contains instrument noise only; the
-> forward-model-error term — which makes the *uncertainties* (not the point
-> estimates) trustworthy — is pending empirical calibration against field
-> residuals (roadmap A7). (2) The class probabilities inherit sensitivity to
+> **Honest status — the posteriors are not yet calibrated.** (1) In spectral
+> mode the measurement covariance now includes the field-calibrated
+> forward-model error by default (`model_error="auto"`, roadmap A7), but that
+> term is calibrated in the VIS only; beyond 1000 nm it is a per-band diagonal
+> and the SWIR evidence is still over-counted. In band mode S_e is instrument
+> noise only. (2) The class probabilities inherit sensitivity to
 > the default weak-prior widths (σ = full parameter range): the Laplace
 > evidence's Occam term depends on those prior volumes, so `class_probabilities`
 > should be read as a well-ordered ranking, not calibrated frequencies, until
@@ -310,14 +311,19 @@ comparable to or faster than L-BFGS-B per pixel. Worked demonstration:
 >   (2026-07-15, `oe_swir_classification_experiment.py`; `sea_ice_validation.md`
 >   §12) — default 12/12 in both windows; OE 7/12 VIS-only, 2/12 with SWIR,
 >   failures at p≈1.00. The instrument-only S_e over-counts correlated
->   spectral evidence ~30×. Mitigations: `model_error=True` (repairs VIS-only
->   to 92%), or a 400–1000 nm `wavelength_mask`, or use the default method.
+>   spectral evidence ~30×. That is a wrong covariance rather than a
+>   cautious one, so since 2026-11-12 spectral OE uses the field-calibrated
+>   `model_error` **by default** (`model_error="auto"`; it repairs VIS-only to
+>   92%). Pass `model_error=None` to reproduce the instrument-only numbers
+>   above. The SWIR remains unrepaired — restrict to 400–1000 nm with
+>   `wavelength_mask`, or classify with the default method.
 > * **Satellite bands (≤ ~9): sound.** The band-mode experiment (2026-07-17,
 >   `oe_bandmode_classification_experiment.py`) — on Sentinel-2's 9 VIS-NIR
 >   bands OE classifies summer bare ice 15/16 (beating the default 13/16),
 >   spring 7/7, at honest confidences (median 0.82; worst miss 0.73). Few
 >   SRF-integrated bands don't trigger the over-counting. `model_error` is not
->   used (and is refused) in band mode.
+>   used in band mode: the `"auto"` default resolves to off there, and an
+>   explicit `model_error=True` is refused.
 >
 > In all modes OE is the right tool for **parameter posteriors / DFS /
 > averaging kernels** on a known or default-classified surface type.

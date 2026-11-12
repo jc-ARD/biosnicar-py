@@ -209,6 +209,31 @@ class SeaIceRetrievalResult:
         return {p: v for p, v in self.parameters.items()
                 if akd.get(p, float("nan")) >= threshold}
 
+    def _winner_fit(self):
+        return self.all_fits.get(self.surface_type)
+
+    def parameter_correlation(self) -> Dict:
+        """Posterior correlation of the winning fit, ``{(p_i, p_j): r}``.
+
+        Empty unless ``method="oe"``.  See
+        :meth:`biosnicar.inverse.result.RetrievalResult.parameter_correlation`.
+        """
+        fit = self._winner_fit()
+        return fit.parameter_correlation() if fit is not None else {}
+
+    def degenerate_parameters(self, threshold: float = 0.8):
+        """``[(p_i, p_j, r), ...]`` of the winning fit with ``|r| >= threshold``."""
+        fit = self._winner_fit()
+        return fit.degenerate_parameters(threshold) if fit is not None else []
+
+    def constrained_combinations(self):
+        """Principal axes of the winning fit's posterior — the parameter
+        combinations the spectrum determined, best first.  See
+        :meth:`biosnicar.inverse.result.RetrievalResult.constrained_combinations`.
+        """
+        fit = self._winner_fit()
+        return fit.constrained_combinations() if fit is not None else []
+
     def quality_flag_description(self) -> Dict[str, bool]:
         """Unpack the quality bitmask into ``{flag_name: bool}``."""
         from biosnicar.sea_ice.quality_flags import describe_quality_flags
@@ -271,6 +296,9 @@ class SeaIceRetrievalResult:
             self.parameters, self.uncertainty, self.averaging_kernel_diag,
             name_width=28,
         ))
+        fit = self._winner_fit()
+        if fit is not None:
+            lines.extend(fit._degeneracy_lines())
         lines.append("  Cost per surface type:")
         ranked = sorted(self.cost_per_type.items(), key=lambda kv: kv[1])
         for stype, cost in ranked:
@@ -376,6 +404,25 @@ def _classification_cost(fit, observed, mask_name, platform,
     return cost, rms
 
 
+def _resolve_model_error(model_error, method, platform):
+    """Resolve the ``model_error="auto"`` default.
+
+    Spectral optimal estimation gets the field-calibrated forward-model error
+    covariance; every other path gets ``None`` (non-OE methods have no S_e to
+    add it to, and band mode has no calibrated budget).  Anything the caller
+    passed explicitly is returned untouched, so an explicit ``True`` in band
+    mode still raises downstream rather than being silently dropped.
+    """
+    if isinstance(model_error, str):
+        if model_error != "auto":
+            raise ValueError(
+                f"model_error={model_error!r}; expected 'auto', None, True "
+                "or a ModelErrorCovariance."
+            )
+        return True if (method == "oe" and platform is None) else None
+    return model_error
+
+
 # ── retrieve_sea_ice ─────────────────────────────────────────────────────────
 
 def retrieve_sea_ice(
@@ -396,7 +443,7 @@ def retrieve_sea_ice(
     known_month=None,
     use_priors=True,
     flag_prior_influence=False,
-    model_error=None,
+    model_error="auto",
     class_priors=None,
     prior_sources=None,
     mcmc_walkers=32,
@@ -482,7 +529,7 @@ def retrieve_sea_ice(
         classification are **spectrum-only** (an explicit *regularization* dict
         you pass is still honoured; only the metadata-derived priors are
         dropped).  Use this to see what the spectrum alone constrains.
-    model_error : None, True, or ModelErrorCovariance
+    model_error : "auto", None, True, or ModelErrorCovariance
         A7 forward-model error term for ``method="oe"``, spectral mode only.
         ``True`` loads the shipped field-calibrated covariance
         (``biosnicar.inverse.model_error``, SHEBA+Smith correct-model
@@ -490,9 +537,17 @@ def retrieve_sea_ice(
         :class:`~biosnicar.inverse.model_error.ModelErrorCovariance`.
         Adds the empirical low-rank residual covariance to S_e so spectral
         evidence is not over-counted (field residuals have ~2 effective DOF
-        over 60 VIS bands, not 60). Default None = instrument-noise-only
-        (the historical behaviour, known to yield overconfident evidence —
-        see docs/sea_ice_validation.md §12).
+        over 60 VIS bands, not 60).
+
+        ``"auto"`` (default) resolves to ``True`` for spectral OE and to
+        ``None`` everywhere else.  An instrument-noise-only S_e treats every
+        one of several hundred correlated bands as independent evidence,
+        which is a wrong covariance, not a conservative one — it is what
+        produced posterior class probabilities of ~1.00 on wrong classes
+        (docs/sea_ice_validation.md §12).  Band mode is untouched: there the
+        error budget is atmospheric correction (roadmap B-MS1), no
+        calibration of it exists, and an explicit ``model_error`` raises.
+        Pass ``None`` for the old instrument-noise-only behaviour.
     class_priors : dict or None
         Caller-supplied per-surface-type **class log-priors** (relative,
         0 = neutral, negative = disfavoured), composed with the spectral
@@ -531,6 +586,7 @@ def retrieve_sea_ice(
     )
 
     observed = np.asarray(observed, dtype=float)
+    model_error = _resolve_model_error(model_error, method, platform)
 
     # Non-finite handling: resampled field spectra legitimately carry NaN
     # outside instrument coverage — fold them into the wavelength mask so
@@ -978,6 +1034,13 @@ def _run_vectorized_fleet(flat, emulators, max_iter, kwargs):
     band_mode = platform is not None
     obs_band_names = kwargs.get("observed_band_names")
     obs_unc = kwargs.get("obs_uncertainty")
+    # Default per-band uncertainty from the platform SNR table, exactly as
+    # retrieve_sea_ice does.  Without it this path fell through to the flat
+    # 0.02 default in _emulator_setup while the loop path used the SNR table
+    # — a different S_e, hence different evidences and class probabilities.
+    if obs_unc is None and band_mode and obs_band_names is not None:
+        from biosnicar.sea_ice.sensor_config import default_obs_uncertainty
+        obs_unc = default_obs_uncertainty(platform, obs_band_names)
     wavelength_mask = kwargs.get("wavelength_mask")
     use_priors = kwargs.get("use_priors", True)
     known_month = kwargs.get("known_month")
@@ -1050,7 +1113,9 @@ def _run_vectorized_fleet(flat, emulators, max_iter, kwargs):
         recs = vectorized_oe_fleet(
             flat[valid], emulators, emu_regs, sf, obs_unc_v,
             wavelength_mask, platform, obs_band_names,
-            kwargs.get("model_error"), prior_set.class_log_prior,
+            _resolve_model_error(kwargs.get("model_error", "auto"), "oe",
+                                 platform),
+            prior_set.class_log_prior,
             _SURFACE_TYPE_DESCRIPTIONS, max_iter=max_iter,
         )
     except ValueError:

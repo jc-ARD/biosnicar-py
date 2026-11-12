@@ -191,13 +191,11 @@ def vectorized_oe_fleet(observed, emulators, emu_regs, shared_fixed,
     observed = np.asarray(observed, dtype=float)
     N = observed.shape[0]
 
-    if platform is not None:
-        flx = next(iter(emulators.values())).flx_slr
-        W = _band_weight_matrix(platform, observed_band_names, flx)
+    band_mode = platform is not None
+    if band_mode:
         sel = np.ones(480, dtype=bool)          # unused in band mode
         Y = observed
     else:
-        W = None
         sel = (np.ones(480, dtype=bool) if wavelength_mask is None
                else np.asarray(wavelength_mask, dtype=bool))
         Y = np.nan_to_num(observed[:, sel])
@@ -211,6 +209,15 @@ def vectorized_oe_fleet(observed, emulators, emu_regs, shared_fixed,
         params = [p for p in emu.param_names if p not in shared_fixed]
         emu_fixed = {k: v for k, v in shared_fixed.items()
                      if k in emu.param_names or k in ("solzen", "direct")}
+        # Band convolution is flux-weighted, and each emulator carries its
+        # own training flux (they differ: MYI_bare's is not FYI_bare's).  The
+        # loop path convolves every candidate with that emulator's flx_slr;
+        # sharing the first emulator's W across the fleet here was the
+        # band-mode vectorised/loop divergence (class probabilities off by
+        # ~2e-2 on nine Sentinel-2 bands).  _band_weight_matrix caches per
+        # flux, so the fleet still builds each distinct W once.
+        W = (_band_weight_matrix(platform, observed_band_names, emu.flx_slr)
+             if band_mode else None)
         setup = _emulator_setup(emu, params, emu_fixed, emu_regs[name],
                                 obs_uncertainty, sel, model_error, W)
         batch = optimal_estimation_batch(

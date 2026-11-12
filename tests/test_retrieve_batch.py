@@ -80,36 +80,22 @@ def test_vectorized_matches_loop_band_mode(fleet, scene_obs):
     vec_types = [str(v) for v in ds["surface_type"].values]
     loop_types = [r.surface_type for r in loop]
 
-    # The two engines do NOT agree to machine precision in band mode: with only
-    # nine Sentinel-2 bands the OE is weakly constrained and the per-class
-    # posteriors differ materially.  Measured 2026-11-05: up to 9.8e-2 in
-    # confidence before the sea-ice air-content corrections, ~2e-2 after.
-    # Full-spectral mode agrees to 2e-3 (test_vectorized_matches_loop).
-    #
-    # Asserting exact class agreement here tests luck, not correctness: it
-    # holds only while both engines fall the same side of a near-tie.  It
-    # passed before those corrections because both engines were confidently
-    # *wrong* on the same three pixels.  Assert the meaningful part instead —
-    # confident pixels must agree — and tolerate disagreement only where the
-    # decision was genuinely marginal.  The underlying divergence is tracked in
-    # ROADMAP.md and should be fixed, not tolerated indefinitely.
-    _MARGINAL = 0.60
-
-    for i, (v, l) in enumerate(zip(vec_types, loop_types)):
-        if v == l:
-            continue
-        conf = float(loop[i].confidence)
-        assert conf < _MARGINAL, (
-            f"pixel {i}: engines disagree ({v} vs {l}) on a CONFIDENT "
-            f"retrieval (loop confidence {conf:.3f}).  That is a real "
-            f"vectorised/loop divergence, not a near-tie."
-        )
-
-    n_disagree = sum(v != l for v, l in zip(vec_types, loop_types))
-    assert n_disagree <= 1, (
-        f"{n_disagree} of {len(Y)} pixels disagree between engines; only "
-        "marginal near-ties are expected to differ."
-    )
+    # The engines used to disagree here by up to 9.8e-2 in class probability,
+    # and this test tolerated it as "weakly constrained near-ties".  It was
+    # two bugs in the vectorised path, both fixed: it skipped the platform
+    # SNR default for obs_uncertainty (flat 0.02 instead of the per-band
+    # table, so a different S_e), and it convolved every candidate with the
+    # *first* emulator's solar flux instead of each emulator's own.  With the
+    # same S_e and the same band operator the two engines solve the same
+    # problem, so hold band mode to the spectral-mode tolerance.
+    assert vec_types == loop_types
+    for i, r in enumerate(loop):
+        assert float(ds["confidence"].values[i]) == pytest.approx(
+            r.confidence, abs=2e-3)
+        for name, p_loop in r.class_probabilities.items():
+            assert float(ds[f"prob_{name}"].values[i]) == pytest.approx(
+                p_loop, abs=2e-3), (i, name)
+        assert float(ds["dfs"].values[i]) == pytest.approx(r.dfs, abs=5e-3)
 
 
 # Chunking cannot change the *mathematics* — pixels are independent — but it
@@ -184,13 +170,48 @@ def test_vectorized_parallel_per_pixel_geometry(fleet, scene_obs):
     stay aligned — parallel result identical to single-process."""
     from biosnicar.sea_ice.retrieve import retrieve_sea_ice_batch
     n = len(scene_obs)
+    # model_error=None: this test is about slicing alignment, and needs a
+    # well-conditioned problem to see it at float32 resolution.  Under the
+    # default field covariance one of these pixels sits on a degenerate
+    # ridge where round-off picks between neighbouring minima — covered by
+    # test_chunking_agrees_within_posterior_under_default_covariance.
+    kw = dict(solzen=np.linspace(50, 70, n), direct=(np.arange(n) % 2).astype(int),
+              known_month=7, method="oe", model_error=None)
+    single = retrieve_sea_ice_batch(scene_obs, emulators=fleet, engine="vectorized",
+                                    vectorized_parallel=False, **kw).to_xarray()
+    par = retrieve_sea_ice_batch(scene_obs, emulators=fleet, engine="vectorized",
+                                 vectorized_parallel=True, n_jobs=3, **kw).to_xarray()
+    _assert_scene_identical(par, single)
+
+
+def test_chunking_agrees_within_posterior_under_default_covariance(fleet, scene_obs):
+    """Chunking cannot change the mathematics, but it changes the shapes
+    handed to BLAS, and so the round-off.  Where the posterior is a narrow
+    degenerate ridge (bubble radius / density, |r| ~ 0.98) the damped
+    Gauss-Newton path is sensitive to that round-off and can stop at a
+    neighbouring point of the ridge: measured 0.24% in cost and ~1% in the
+    parameters on one MYI_bare pixel, far inside its own error bars.
+
+    So the honest invariant under the default (field-calibrated, strongly
+    correlated) S_e is statistical, not bitwise: same class, and every
+    parameter within a small fraction of its posterior sigma.
+    """
+    from biosnicar.sea_ice.retrieve import retrieve_sea_ice_batch
+    n = len(scene_obs)
     kw = dict(solzen=np.linspace(50, 70, n), direct=(np.arange(n) % 2).astype(int),
               known_month=7, method="oe")
     single = retrieve_sea_ice_batch(scene_obs, emulators=fleet, engine="vectorized",
                                     vectorized_parallel=False, **kw).to_xarray()
     par = retrieve_sea_ice_batch(scene_obs, emulators=fleet, engine="vectorized",
                                  vectorized_parallel=True, n_jobs=3, **kw).to_xarray()
-    _assert_scene_identical(par, single)
+    assert list(par["surface_type"].values) == list(single["surface_type"].values)
+    for name in single.data_vars:
+        if not name.startswith("param_"):
+            continue
+        unc = single["unc_" + name[len("param_"):]].values
+        a, b = par[name].values, single[name].values
+        ok = np.isfinite(a) & np.isfinite(b) & np.isfinite(unc)
+        assert (np.abs(a - b)[ok] <= 0.25 * unc[ok] + 1e-9).all(), name
 
 
 def test_fleet_reloadable_guard():

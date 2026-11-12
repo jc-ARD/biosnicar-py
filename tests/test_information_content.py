@@ -233,10 +233,17 @@ class TestAgainstARealRetrieval:
     def _retrieve(self):
         from biosnicar.sea_ice.emulator_configs import load_sea_ice_emulators
         from biosnicar.sea_ice.retrieve import retrieve_sea_ice
+        # model_error=True: the field-calibrated S_e.  With instrument noise
+        # alone every one of the 480 bands counts as independent evidence,
+        # and the small visible signal temperature does have (through the
+        # brine volume of the pond floor, amplified since the pond-surface
+        # interface fix by light recycling under the water surface) is
+        # over-counted into an averaging kernel of ~0.6.  Under the honest
+        # covariance it is ~0.2.
         return retrieve_sea_ice(
             observed=self._pond_obs(),
             emulators=load_sea_ice_emulators(), solzen=60, direct=1,
-            known_month=7, method="oe", obs_uncertainty=np.full(480, 0.005))
+            known_month=7, method="oe", model_error=True)
 
     def test_separates_measured_from_prior_dominated(self):
         """Pond depth is measured — water absorption is unmistakable — while
@@ -285,3 +292,110 @@ class TestAgainstARealRetrieval:
         # and the weak-prior value is the less trustworthy of the two
         assert abs(weak.best_fit["sea_ice_temperature"] - (-4.0)) > \
             abs(strong.parameters["sea_ice_temperature"] - (-4.0))
+
+
+# ── Degenerate pairs: report the combination, not the components ──────────
+
+class TestConstrainedCombinations:
+    @staticmethod
+    def _result(cov, names=("a", "b", "c")):
+        from biosnicar.inverse.result import RetrievalResult
+        n = len(names)
+        return RetrievalResult(
+            best_fit={p: 1.0 for p in names}, cost=0.0,
+            uncertainty={p: float(np.sqrt(cov[i][i])) for i, p in enumerate(names)},
+            predicted_albedo=np.zeros(480), observed=np.zeros(480),
+            converged=True, method="oe", n_function_evals=0,
+            posterior_covariance={(names[i], names[j]): float(cov[i][j])
+                                  for i in range(n) for j in range(n)},
+        )
+
+    def test_empty_without_a_posterior(self):
+        from biosnicar.inverse.result import RetrievalResult
+        r = RetrievalResult(best_fit={"a": 1.0}, cost=0.0, uncertainty={},
+                            predicted_albedo=np.zeros(480),
+                            observed=np.zeros(480), converged=True,
+                            method="L-BFGS-B", n_function_evals=0)
+        assert r.constrained_combinations() == []
+        assert r._degeneracy_lines() == []
+
+    def test_independent_parameters_have_unit_sigma(self):
+        r = self._result(np.diag([4.0, 9.0, 0.25]))
+        assert [c["sigma"] for c in r.constrained_combinations()] == \
+            pytest.approx([1.0, 1.0, 1.0])
+        assert r._degeneracy_lines() == []
+
+    def test_a_degenerate_pair_gives_sqrt_one_minus_r(self):
+        rho, sa, sb = -0.98, 2.0, 50.0
+        cov = np.array([[sa * sa, rho * sa * sb, 0.0],
+                        [rho * sa * sb, sb * sb, 0.0],
+                        [0.0, 0.0, 1.0]])
+        combos = self._result(cov).constrained_combinations()
+        best, worst = combos[0], combos[-1]
+        assert best["sigma"] == pytest.approx(np.sqrt(1 - abs(rho)))
+        assert worst["sigma"] == pytest.approx(np.sqrt(1 + abs(rho)))
+        # Negatively correlated pair: the constrained combination is the sum
+        # of the normalised parameters, the free direction their difference.
+        assert best["weights"]["a"] == pytest.approx(best["weights"]["b"])
+        assert worst["weights"]["a"] == pytest.approx(-worst["weights"]["b"])
+        assert abs(best["weights"]["c"]) < 1e-9
+
+    def test_variances_sum_to_the_number_of_parameters(self):
+        rng = np.random.default_rng(0)
+        A = rng.normal(size=(3, 3))
+        combos = self._result(A @ A.T + 0.1 * np.eye(3)).constrained_combinations()
+        assert sum(c["variance"] for c in combos) == pytest.approx(3.0)
+        assert [c["sigma"] for c in combos] == sorted(c["sigma"] for c in combos)
+
+    def test_summary_names_the_pair(self):
+        cov = np.array([[1.0, 0.95, 0.0], [0.95, 1.0, 0.0], [0.0, 0.0, 1.0]])
+        text = self._result(cov).summary()
+        assert "Degenerate pairs" in text and "a / b" in text and "+0.95" in text
+
+
+@pytest.mark.skipif(not _BUILT, reason="pre-built sea ice emulators not found")
+class TestSpectralOEDefaultsToFieldCovariance:
+    """model_error="auto": spectral OE uses the calibrated S_e, nothing else
+    changes."""
+
+    def test_resolution_rule(self):
+        from biosnicar.sea_ice.retrieve import _resolve_model_error as f
+        assert f("auto", "oe", None) is True
+        assert f("auto", "oe", "sentinel2") is None
+        assert f("auto", "L-BFGS-B", None) is None
+        assert f(None, "oe", None) is None
+        assert f(True, "oe", "sentinel2") is True      # explicit: left to raise
+        with pytest.raises(ValueError, match="model_error"):
+            f("yes", "oe", None)
+
+    def test_default_equals_explicit_true_and_differs_from_none(self):
+        from biosnicar.sea_ice.emulator_configs import load_sea_ice_emulators
+        from biosnicar.sea_ice.retrieve import retrieve_sea_ice
+        fleet = load_sea_ice_emulators(["FYI_pond", "FYI_bare"])
+        obs = TestAgainstARealRetrieval()._pond_obs()
+        kw = dict(observed=obs, emulators=fleet, solzen=60, direct=1,
+                  known_month=7, method="oe")
+        default = retrieve_sea_ice(**kw)
+        explicit = retrieve_sea_ice(model_error=True, **kw)
+        off = retrieve_sea_ice(model_error=None, **kw)
+        assert default.parameters == explicit.parameters
+        assert default.uncertainty == explicit.uncertainty
+        # Honest covariance: fewer independent pieces of evidence.
+        assert default.dfs < off.dfs
+
+    def test_band_mode_default_is_unchanged(self):
+        from biosnicar.bands import to_platform
+        from biosnicar.sea_ice.emulator_configs import load_sea_ice_emulators
+        from biosnicar.sea_ice.retrieve import retrieve_sea_ice
+        fleet = load_sea_ice_emulators(["FYI_pond", "FYI_bare"])
+        obs = TestAgainstARealRetrieval()._pond_obs()
+        bands = ["B2", "B3", "B4", "B8"]
+        br = to_platform(obs, "sentinel2", flx_slr=fleet["FYI_pond"].flx_slr)
+        y = [getattr(br, b) for b in bands]
+        kw = dict(observed=y, emulators=fleet, platform="sentinel2",
+                  observed_band_names=bands, solzen=60, direct=1,
+                  known_month=7, method="oe")
+        assert retrieve_sea_ice(**kw).parameters == \
+            retrieve_sea_ice(model_error=None, **kw).parameters
+        with pytest.raises(ValueError, match="spectral"):
+            retrieve_sea_ice(model_error=True, **kw)

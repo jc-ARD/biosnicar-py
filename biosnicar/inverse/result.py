@@ -192,6 +192,71 @@ class RetrievalResult:
                 out.append((a, b, r))
         return sorted(out, key=lambda t: -abs(t[2]))
 
+    def constrained_combinations(self):
+        """Principal axes of the posterior — what the measurement actually
+        constrained, when it is a combination rather than a parameter.
+
+        Returns a list of ``{"weights": {param: w}, "variance": lam,
+        "sigma": sqrt(lam)}``, sorted from best- to worst-determined.  Empty
+        unless ``method="oe"``.
+
+        Each entry is an eigenvector of the posterior *correlation* matrix,
+        i.e. a unit-length combination of the parameters measured in units
+        of their own marginal 1-sigma::
+
+            c = sum_i  w_i * (x_i - x_hat_i) / sigma_i
+
+        and ``sigma`` is the posterior standard deviation of ``c``.  If the
+        parameters were independently determined every ``sigma`` would be 1.
+        A value well below 1 is a combination the spectrum pins down far
+        better than the marginal error bars suggest; a value above 1 is the
+        direction the retrieval is free to slide along.  For a single
+        degenerate pair with correlation ``r`` the two values are
+        ``sqrt(1 - |r|)`` and ``sqrt(1 + |r|)`` — at r = -0.98 the
+        constrained combination is known 7x better than either component.
+
+        This is the general form of what :attr:`ssa` does for the bubble
+        radius / density pair, and it needs no retraining: rotating an
+        emulator's inputs onto these axes would re-express the same
+        posterior, not add information to it.  The axes are local — the
+        posterior is linearised at the solution — so they describe this
+        retrieval, not the emulator.
+        """
+        corr = self.parameter_correlation()
+        if not corr:
+            return []
+        names = [p for p in self.best_fit if (p, p) in corr]
+        C = np.array([[corr[(a, b)] for b in names] for a in names])
+        lam, vec = np.linalg.eigh(0.5 * (C + C.T))
+        out = []
+        for k in np.argsort(lam):
+            w = vec[:, k]
+            # Fix the arbitrary eigenvector sign: largest weight positive.
+            if w[np.argmax(np.abs(w))] < 0:
+                w = -w
+            v = float(max(lam[k], 0.0))
+            out.append({
+                "weights": {p: float(w[i]) for i, p in enumerate(names)},
+                "variance": v,
+                "sigma": float(np.sqrt(v)),
+            })
+        return out
+
+    def _degeneracy_lines(self, threshold: float = 0.8):
+        """Summary lines naming degenerate pairs; empty when there are none."""
+        pairs = self.degenerate_parameters(threshold)
+        if not pairs:
+            return []
+        lines = [
+            f"  Degenerate pairs (posterior |r| >= {threshold:g}) — the "
+            "spectrum fixes a combination,",
+            "  not the components; each marginal sigma is inflated as shown:",
+        ]
+        for a, b, r in pairs:
+            infl = 1.0 / np.sqrt(max(1.0 - r * r, 1e-12))
+            lines.append(f"    {a} / {b}  r = {r:+.2f}  ({infl:.1f}x)")
+        return lines
+
     # ── Information content: measurement or prior? ──────────────────────
 
     def information_content(self) -> Dict[str, float]:
@@ -383,6 +448,7 @@ class RetrievalResult:
             self.best_fit, self.uncertainty, self.averaging_kernel_diag,
             name_width=25,
         ))
+        lines.extend(self._degeneracy_lines())
         if self.ssa is not None:
             lines.append("  Derived quantities:")
             lines.append(
