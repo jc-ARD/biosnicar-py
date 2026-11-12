@@ -15,6 +15,49 @@ def _get_fsds_data():
     return _fsds_data
 
 
+# Irradiance-file stubs, indexed by the ``incoming`` atmosphere code (0-6).
+# Mirrors PATHS.ILLUMINATION_FILE_STUBS in inputs.yaml.
+DEFAULT_ILLUMINATION_STUBS = (
+    "swnb_480bnd_mlw", "swnb_480bnd_mls", "swnb_480bnd_saw",
+    "swnb_480bnd_sas", "swnb_480bnd_smm", "swnb_480bnd_hmn",
+    "swnb_480bnd_trp",
+)
+
+
+def solar_flux(solzen, direct, incoming=0, stubs=None):
+    """Spectral downwelling solar flux (480 bands) for an illumination state.
+
+    This is the flux the forward model itself uses, exposed so that anything
+    weighting a spectrum by sunlight — broadband albedo, satellite band
+    convolution — can use the flux of the illumination it is actually
+    describing.
+
+    Parameters
+    ----------
+    solzen : float
+        Solar zenith angle in degrees.  Rounded to the nearest integer: the
+        archive is tabulated per degree, 0-89.  Ignored for diffuse sky.
+    direct : int
+        1 for clear-sky direct beam, 0 for overcast/diffuse.
+    incoming : int
+        Atmosphere profile, 0-6 (see ``run_model``).
+    stubs : sequence of str, optional
+        Irradiance-file stubs indexed by *incoming*.
+    """
+    if incoming < 0 or incoming > 6:
+        raise ValueError("Irradiance type out of range - between 0 and 6 only")
+    stubs = DEFAULT_ILLUMINATION_STUBS if stubs is None else stubs
+    if direct:
+        # Zero-padded integer degrees: a float solzen (50.0) must not leak
+        # into the key ("SZA50.0" -> KeyError).
+        key = stubs[incoming] + "_clr_" + f"SZA{int(np.rint(solzen)):02d}"
+    else:
+        key = stubs[incoming] + "_cld"
+    flx_slr = _get_fsds_data()[key].copy()
+    flx_slr[flx_slr <= 0] = 1e-30
+    return flx_slr
+
+
 class Illumination:
     """Properties of incoming irradiance.
 
@@ -63,23 +106,8 @@ class Illumination:
         # update mu_not from solzen
         self.mu_not = np.cos(math.radians(np.rint(self.solzen)))
 
-        # calculate irradiance from file
-        cloud_stub = "_cld"
-        coszen_stub = ""
-
-        if self.direct:
-            cloud_stub = "_clr_"
-            # Build the flux-LUT key from the same rounded integer SZA used for
-            # mu_not above; the archive is keyed by zero-padded integer degrees
-            # (SZA00..SZA89), so a float solzen (e.g. 50.0) must not leak into
-            # the key string (it would yield "SZA50.0" -> KeyError).
-            coszen_stub = f"SZA{int(np.rint(self.solzen)):02d}"
-
-        key = self.stubs[self.incoming] + cloud_stub + coszen_stub
-        fsds = _get_fsds_data()
-        flx_slr = fsds[key].copy()
-
-        flx_slr[flx_slr <= 0] = 1e-30
+        flx_slr = solar_flux(self.solzen, self.direct, self.incoming,
+                             stubs=self.stubs)
         self.flx_slr = flx_slr
         out = flx_slr / (self.mu_not * np.pi)
 

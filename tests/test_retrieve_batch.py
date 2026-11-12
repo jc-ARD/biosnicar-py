@@ -67,7 +67,7 @@ def test_vectorized_matches_loop_band_mode(fleet, scene_obs):
     from biosnicar.bands import to_platform
     from biosnicar.sea_ice.retrieve import retrieve_sea_ice_batch
     bands = ["B1", "B2", "B3", "B4", "B5", "B6", "B7", "B8", "B8A"]
-    flx = fleet["FYI_pond"].flx_slr
+    flx = fleet["FYI_pond"].solar_flux(60, 1)
     Y = np.array([[getattr(to_platform(o, "sentinel2", flx_slr=flx), b)
                    for b in bands] for o in scene_obs])
     kw = dict(platform="sentinel2", observed_band_names=bands,

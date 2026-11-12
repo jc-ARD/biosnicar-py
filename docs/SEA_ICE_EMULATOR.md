@@ -45,7 +45,7 @@ out = run_emulator(
     black_carbon=0.0, rho_DL=850.0, solzen=60, direct=1,
 )
 print(out.BBA)
-out.to_platform("sentinel2")   # works — flx_slr is stored in the emulator
+out.to_platform("sentinel2")   # works — weighted by the flux of the retrieval's solzen/direct
 ```
 
 ### retrieve_sea_ice() — automatic classification
@@ -684,7 +684,7 @@ Wrapper returning an `Outputs` object identical in interface to `run_model()` ou
 | `BBA` | float | Broadband albedo (flux-weighted) |
 | `BBAVIS` | float | Visible broadband albedo |
 | `BBANIR` | float | NIR broadband albedo |
-| `flx_slr` | ndarray (480,) | Solar flux (from emulator build) |
+| `flx_slr` | ndarray (480,) | Solar flux of the retrieval's illumination (`solzen`, `direct`) |
 | `heat_rt` | None | Not available from emulator |
 | `absorbed_flux_per_layer` | None | Not available from emulator |
 | `to_platform(name)` | method | Convolve to satellite bands |
@@ -732,7 +732,7 @@ Returns: `SeaIceRetrievalResult`
 | `observed` | ndarray | Input observations |
 | `cost` | float | Chi-squared at best-fit point |
 | `converged` | bool | Winning optimiser convergence flag |
-| `flx_slr` | ndarray (480,) or None | Solar flux from winning emulator |
+| `flx_slr` | ndarray (480,) or None | Solar flux of the retrieval's illumination (`solzen`, `direct`) |
 | `cost_per_type` | dict | `{surface_type: chi_squared}` for all emulators |
 | `all_fits` | dict | `{surface_type: RetrievalResult}` for all emulators |
 | `to_outputs()` | method | Wrap predicted_albedo as an `Outputs` object |
@@ -1055,7 +1055,7 @@ Each emulator is stored as a self-contained `.npz` (compressed numpy archive). Y
 | `pca_mean` | (480,) | Mean spectrum (PCA centre) |
 | `input_min` | (n_params,) | Per-parameter training minimum |
 | `input_max` | (n_params,) | Per-parameter training maximum |
-| `flx_slr` | (480,) | Solar flux stored at build time |
+| `flx_slr` | (480,) | Solar flux of the first training sample (legacy; `Emulator.solar_flux(solzen, direct)` is what is used) |
 | `metadata` | scalar | JSON string — param names, bounds, transform_fn name, build timestamp, architecture |
 
 For the (256,256,128,64) architecture (FYI_bare, MYI_bare), the weight shapes are adjusted accordingly: `weights_0` is (n_params, 256), `weights_1` is (256, 256), `weights_2` is (256, 128), `weights_3` is (128, 64), and `weights_4` is (64, n_pca) — five weight matrices in total.

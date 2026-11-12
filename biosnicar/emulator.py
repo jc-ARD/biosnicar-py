@@ -159,8 +159,10 @@ class VerificationResult:
         self.mae_per_point = np.mean(diff, axis=1)
         self.max_err_per_point = np.max(diff, axis=1)
 
-        bba_emu = np.sum(flx_slr * emulator_albedos, axis=1) / np.sum(flx_slr)
-        bba_ref = np.sum(flx_slr * reference_albedos, axis=1) / np.sum(flx_slr)
+        # flx_slr is (480,) or one row per benchmark point, (N, 480).
+        flx = np.atleast_2d(np.asarray(flx_slr, dtype=float))
+        bba_emu = np.sum(flx * emulator_albedos, axis=1) / np.sum(flx, axis=1)
+        bba_ref = np.sum(flx * reference_albedos, axis=1) / np.sum(flx, axis=1)
         self.bba_err_per_point = np.abs(bba_emu - bba_ref)
 
         # Aggregate errors (only over physical points)
@@ -202,6 +204,22 @@ class VerificationResult:
             f"VerificationResult(n={self.n_points}, mae={self.mae:.6f}, "
             f"r2={self.r2:.6f})"
         )
+
+
+def _build_incoming(input_file, fixed_overrides):
+    """Atmosphere-profile code (0-6) used for an emulator's training runs."""
+    if "incoming" in fixed_overrides:
+        return int(fixed_overrides["incoming"])
+    try:
+        from pathlib import Path
+
+        from biosnicar.utils.load_inputs import load_inputs
+
+        if input_file == "default":
+            input_file = str(Path(__file__).resolve().parent / "inputs.yaml")
+        return int(load_inputs(input_file)["RTM"]["INCOMING"])
+    except Exception:  # noqa: BLE001 — metadata only; fall back to default
+        return 0
 
 
 class Emulator:
@@ -280,8 +298,46 @@ class Emulator:
 
     @property
     def flx_slr(self):
-        """480-element solar flux spectrum stored at build time."""
+        """Solar flux spectrum of the **first training sample**.
+
+        Kept for backward compatibility and as the fallback of
+        :meth:`solar_flux`.  When ``solzen`` or ``direct`` is an emulator
+        parameter this is the flux of whatever illumination that one sample
+        happened to draw — an arbitrary sun angle, or an overcast sky — and
+        it differs from one emulator to the next.  Do not weight a spectrum
+        with it; use :meth:`solar_flux` with the geometry you mean.
+        """
         return self._flx_slr
+
+    def solar_flux(self, solzen=None, direct=None):
+        """Solar flux spectrum (480,) for an illumination geometry.
+
+        The emulator predicts *albedo*, which does not depend on the flux
+        spectrum; but turning that albedo into a broadband value or a
+        satellite band does, and the weights must be those of the
+        illumination being described.  Between an overcast sky and a clear
+        one at SZA 80 the broadband albedo of one pond spectrum differs by
+        0.07.
+
+        ``solzen`` / ``direct`` default to the values the emulator was built
+        with when they are not emulator parameters.  If the geometry is still
+        not determined, the stored :attr:`flx_slr` is returned.
+        """
+        from biosnicar.classes.illumination import solar_flux as _solar_flux
+
+        meta = self._metadata or {}
+        fixed = meta.get("fixed_overrides", {}) or {}
+        if solzen is None and "solzen" not in self._param_names:
+            solzen = fixed.get("solzen")
+        if direct is None and "direct" not in self._param_names:
+            direct = fixed.get("direct")
+        if solzen is None or direct is None:
+            return self._flx_slr
+        incoming = int(meta.get("incoming", fixed.get("incoming", 0)) or 0)
+        return _solar_flux(
+            float(np.clip(solzen, 0.0, 89.0)), int(round(float(direct))),
+            incoming,
+        )
 
     # ── Build ─────────────────────────────────────────────────────────
 
@@ -502,6 +558,9 @@ class Emulator:
             "transform_fn": getattr(transform_fn, "__name__", None),
             "hidden_layer_sizes": list(hidden_layer_sizes),
             "pca_components_requested": _jsonable(pca_components),
+            # Atmosphere profile of the training runs, so solar_flux() can
+            # reproduce the flux for any geometry.
+            "incoming": _build_incoming(input_file, fixed_overrides),
         }
 
         return emu
@@ -707,7 +766,10 @@ class Emulator:
             benchmark_params=benchmark_params,
             emulator_albedos=emu_albedos,
             reference_albedos=ref_albedos,
-            flx_slr=self._flx_slr,
+            flx_slr=np.array([
+                self.solar_flux(p.get("solzen"), p.get("direct"))
+                for p in benchmark_params
+            ]),
             unphysical_indices=unphysical_indices,
             physical_mask=physical_mask,
         )

@@ -142,6 +142,18 @@ class OpenWaterModel:
             self._flx_slr = flx
         return self._flx_slr
 
+    def solar_flux(self, solzen=None, direct=None):
+        """Solar flux (480,) for an illumination geometry — the same contract
+        as :meth:`biosnicar.emulator.Emulator.solar_flux`.  Falls back to the
+        representative :attr:`flx_slr` when the geometry is not given."""
+        if solzen is None:
+            return self.flx_slr
+        from biosnicar.classes.illumination import solar_flux as _solar_flux
+        return _solar_flux(
+            float(np.clip(solzen, 0.0, 89.0)),
+            1 if direct is None else int(round(float(direct))),
+        )
+
     # ── Forward model ───────────────────────────────────────────────────
 
     def _fresnel_direct_rough(self, solzen, wind_speed_ms):
@@ -184,7 +196,10 @@ class OpenWaterModel:
         from biosnicar.bands import to_platform
 
         albedo = self.predict(**kwargs)
-        band_result = to_platform(albedo, platform, flx_slr=self.flx_slr)
+        band_result = to_platform(
+            albedo, platform,
+            flx_slr=self.solar_flux(kwargs.get("solzen"), kwargs.get("direct")),
+        )
         return np.array([getattr(band_result, b) for b in band_names])
 
     def __repr__(self):

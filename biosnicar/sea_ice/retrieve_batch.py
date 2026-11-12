@@ -80,8 +80,51 @@ def _band_weight_matrix(platform, band_names, flx_slr):
     return W
 
 
+def _band_operator(emu, platform, band_names, shared_fixed, n_pixels):
+    """Batched band convolution ``(N, 480) -> (N, k)`` for one emulator.
+
+    The convolution is flux-weighted, and the flux is that of each pixel's
+    own illumination (``emu.solar_flux(solzen, direct)``) — the same rule the
+    per-pixel path applies through ``optimize.retrieve``.  With scalar
+    geometry this is one matrix; with per-pixel ``solzen`` / ``direct``
+    arrays it is one matrix per distinct (integer-degree solzen, direct)
+    pair, applied to the pixels that share it.
+    """
+    solar_flux = getattr(emu, "solar_flux", None)
+    sz, dr = shared_fixed.get("solzen"), shared_fixed.get("direct")
+
+    def _per_pixel(v):
+        return isinstance(v, np.ndarray) and v.shape[:1] == (n_pixels,)
+
+    if solar_flux is None or sz is None or not (_per_pixel(sz) or _per_pixel(dr)):
+        flux = emu.flx_slr if solar_flux is None else solar_flux(sz, dr)
+        W = _band_weight_matrix(platform, band_names, flux)
+        return lambda alb: alb @ W
+
+    geo = np.stack([
+        np.rint(np.clip(np.broadcast_to(np.asarray(sz, float), (n_pixels,)),
+                        0.0, 89.0)),
+        np.rint(np.broadcast_to(
+            np.asarray(1 if dr is None else dr, float), (n_pixels,))),
+    ], axis=1)
+    uniq, inverse = np.unique(geo, axis=0, return_inverse=True)
+    inverse = np.asarray(inverse).reshape(-1)
+    mats = [_band_weight_matrix(platform, band_names,
+                                solar_flux(float(g[0]), int(g[1])))
+            for g in uniq]
+
+    def apply(alb):
+        out = np.empty((alb.shape[0], len(band_names)))
+        for k, W in enumerate(mats):
+            rows = inverse == k
+            out[rows] = alb[rows] @ W
+        return out
+
+    return apply
+
+
 def _emulator_setup(emu, retrieve_params, emu_fixed, emu_reg, obs_uncertainty,
-                    sel, model_error, W):
+                    sel, model_error, band_op=None, n_bands=None):
     """Pixel-independent OE inputs for one emulator (mirrors optimize._run_oe).
 
     Returns a dict with the parameter list, log mask, opt-space bounds/x0,
@@ -122,14 +165,14 @@ def _emulator_setup(emu, retrieve_params, emu_fixed, emu_reg, obs_uncertainty,
     S_a = sig_a ** 2
 
     # S_e: instrument noise (+ model error in spectral mode).
-    m = int(sel.sum()) if W is None else W.shape[1]
+    m = int(sel.sum()) if band_op is None else int(n_bands)
     if obs_uncertainty is not None:
         sig_e = np.asarray(obs_uncertainty, dtype=float)
-        sig_e = sig_e[sel] if (W is None and sig_e.size == sel.size) else sig_e
+        sig_e = sig_e[sel] if (band_op is None and sig_e.size == sel.size) else sig_e
     else:
         sig_e = np.full(m, 0.02)
     if model_error is not None:
-        if W is not None:
+        if band_op is not None:
             raise ValueError("model_error is spectral-mode only (band-mode S_e "
                              "is the atmospheric-correction budget, B-MS1).")
         from biosnicar.inverse.model_error import ModelErrorCovariance
@@ -160,7 +203,7 @@ def _emulator_setup(emu, retrieve_params, emu_fixed, emu_reg, obs_uncertainty,
         for k, pos in enumerate(free_pos):
             pts[:, pos] = Xlin[:, k]
         alb = _predict_batch(emu, pts, all_names, fixed_extra)   # (N, 480)
-        return alb @ W if W is not None else alb[:, sel]
+        return band_op(alb) if band_op is not None else alb[:, sel]
 
     return dict(params=params, log_mask=log_mask, opt_bounds=opt_bounds,
                 opt_x0=opt_x0, x_a=x_a, S_a=S_a, S_e=S_e, forward=forward)
@@ -209,17 +252,19 @@ def vectorized_oe_fleet(observed, emulators, emu_regs, shared_fixed,
         params = [p for p in emu.param_names if p not in shared_fixed]
         emu_fixed = {k: v for k, v in shared_fixed.items()
                      if k in emu.param_names or k in ("solzen", "direct")}
-        # Band convolution is flux-weighted, and each emulator carries its
-        # own training flux (they differ: MYI_bare's is not FYI_bare's).  The
-        # loop path convolves every candidate with that emulator's flx_slr;
-        # sharing the first emulator's W across the fleet here was the
-        # band-mode vectorised/loop divergence (class probabilities off by
-        # ~2e-2 on nine Sentinel-2 bands).  _band_weight_matrix caches per
-        # flux, so the fleet still builds each distinct W once.
-        W = (_band_weight_matrix(platform, observed_band_names, emu.flx_slr)
-             if band_mode else None)
-        setup = _emulator_setup(emu, params, emu_fixed, emu_regs[name],
-                                obs_uncertainty, sel, model_error, W)
+        # Band convolution is flux-weighted by the flux of each pixel's own
+        # illumination — see _band_operator.  (It used to take the first
+        # emulator's stored flux for the whole fleet, then each emulator's
+        # own stored flux; both were the flux of an arbitrary training
+        # sample.)  _band_weight_matrix caches per flux, so the fleet builds
+        # each distinct matrix once.
+        band_op = (_band_operator(emu, platform, observed_band_names,
+                                  shared_fixed, N) if band_mode else None)
+        setup = _emulator_setup(
+            emu, params, emu_fixed, emu_regs[name], obs_uncertainty, sel,
+            model_error, band_op=band_op,
+            n_bands=len(observed_band_names) if band_mode else None,
+        )
         batch = optimal_estimation_batch(
             setup["forward"], Y, setup["x_a"], setup["S_a"], setup["S_e"],
             bounds=setup["opt_bounds"], x0=setup["opt_x0"], max_iter=max_iter,

@@ -300,7 +300,23 @@ def retrieve(
     x0_vec = np.array([x0_dict[p] for p in parameters])
 
     # --- Build cost function ---
-    flx_slr = getattr(emulator, "flx_slr", None) if emulator else None
+    # Solar flux for band convolution and for the result's broadband albedo:
+    # that of the illumination being retrieved, not of whichever training
+    # sample the emulator stored.  Constant when solzen/direct are fixed;
+    # re-evaluated per candidate state when either is itself retrieved.
+    _solar_flux = getattr(emulator, "solar_flux", None) if emulator else None
+    _fixed_geo = fixed_params or {}
+
+    def flux_for(param_dict):
+        if _solar_flux is None:
+            return getattr(emulator, "flx_slr", None) if emulator else None
+        return _solar_flux(
+            param_dict.get("solzen", _fixed_geo.get("solzen")),
+            param_dict.get("direct", _fixed_geo.get("direct")),
+        )
+
+    flx_slr = flux_for({})
+    _geometry_free = any(p in ("solzen", "direct") for p in parameters)
 
     if platform is not None:
         # Band mode
@@ -311,9 +327,11 @@ def retrieve(
             )
 
         def cost_fn(params):
+            flux = (flux_for(dict(zip(parameters, params)))
+                    if _geometry_free else flx_slr)
             return band_cost(
                 params, parameters, observed, observed_band_names,
-                forward_fn, flx_slr, platform,
+                forward_fn, flux, platform,
                 obs_uncertainty=obs_uncertainty,
                 regularization=regularization,
             )
@@ -395,6 +413,7 @@ def retrieve(
             obs_uncertainty, regularization, wavelength_mask,
             platform, observed_band_names, flx_slr,
             model_error=model_error,
+            flux_for=flux_for if _geometry_free else None,
         )
     else:
         result = _run_scipy_minimize(
@@ -402,8 +421,6 @@ def retrieve(
             opt_forward_fn, observed, method,
         )
 
-    # --- Attach solar flux for to_outputs() / to_platform() ---
-    result.flx_slr = flx_slr
 
     # --- Transform results back from log space ---
     # (OE returns a fully linear-space result already — skip the back-transform.)
@@ -425,6 +442,10 @@ def retrieve(
         # Re-predict with correct linear values
         result.predicted_albedo = forward_fn(**result.best_fit)
 
+    # --- Attach solar flux for to_outputs() / to_platform() ---
+    # (after the back-transform, so a retrieved solzen is in linear space)
+    result.flx_slr = flux_for(result.best_fit)
+
     # --- Populate derived quantities for SSA mode ---
     if use_ssa and "ssa" in result.best_fit:
         ssa_val = result.best_fit["ssa"]
@@ -441,7 +462,8 @@ def retrieve(
 
 def _run_oe(parameters, opt_forward_fn, opt_bounds, opt_x0, observed,
             obs_uncertainty, regularization, wavelength_mask,
-            platform, observed_band_names, flx_slr, model_error=None):
+            platform, observed_band_names, flx_slr, model_error=None,
+            flux_for=None):
     """Optimal-estimation retrieval, bridging the engine to the log-space and
     band-mode machinery of :func:`retrieve`.
 
@@ -462,7 +484,8 @@ def _run_oe(parameters, opt_forward_fn, opt_bounds, opt_x0, observed,
 
         def F(xvec):
             kw = dict(zip(parameters, xvec))
-            band = to_platform(opt_forward_fn(**kw), platform, flx_slr=flx_slr)
+            flux = flux_for(kw) if flux_for is not None else flx_slr
+            band = to_platform(opt_forward_fn(**kw), platform, flx_slr=flux)
             return np.array([getattr(band, b) for b in observed_band_names])
         y = np.asarray(observed, dtype=float)
         sel = np.ones(y.size, dtype=bool)
