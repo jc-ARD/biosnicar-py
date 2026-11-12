@@ -143,8 +143,12 @@ class TestSeaIceEmulatorPredict:
                   black_carbon=1200.0, solzen=60, direct=1)
         shallow = emu_fyi_pond.predict(pond_depth=0.05, **kw)
         deep    = emu_fyi_pond.predict(pond_depth=0.40, **kw)
-        # NIR (bands 50:) should be lower for deeper pond
-        assert float(np.mean(deep[50:])) < float(np.mean(shallow[50:]))
+        # 0.7-1.3 um: where water is absorbing but a shallow pond is not
+        # yet opaque, so depth controls the albedo.  Beyond ~1.3 um both
+        # ponds are opaque and return only the depth-independent specular
+        # reflection off the water surface, so averaging out to 5 um
+        # compares emulator noise, not physics.
+        assert float(np.mean(deep[50:110])) < float(np.mean(shallow[50:110]))
 
     def test_pond_predict_shape(self, emu_fyi_pond):
         pred = emu_fyi_pond.predict(

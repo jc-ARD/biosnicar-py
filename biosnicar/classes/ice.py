@@ -52,10 +52,14 @@ class Ice:
         self.nbr_lyr = len(self.dz)
         self.lwc = inputs["ICE"]["LWC"]
         self.lwc_pct_bbl = inputs["ICE"]["LWC_PCT_BBL"]
-        self.ref_idx_im_water = pd.read_csv(
+        _water_ri = pd.read_csv(
             os.path.join(_BASE, inputs["PATHS"]["RI_ICE"],
                          "refractive_index_water_273K_Rowe2020.csv")
-        ).k.values
+        )
+        self.ref_idx_im_water = _water_ri.k.values
+        # Real part, needed for the air-water Fresnel interface at the top of
+        # a melt pond (layer_type=5).
+        self.ref_idx_re_water = _water_ri.n.values
 
         # Sea-ice per-layer parameters (layer_type=2).
         # Defaults to None for each layer when not specified in config.
@@ -107,3 +111,48 @@ class Ice:
         self.fl_r_dif_a = fresnel_diffuse_file[str("R_dif_fa_ice_" + ref_idx_name)]
         self.fl_r_dif_b = fresnel_diffuse_file[str("R_dif_fb_ice_" + ref_idx_name)]
         self.op_dir = op_dir_stub
+        self.fl_r_dif_a_water, self.fl_r_dif_b_water = diffuse_fresnel(
+            self.ref_idx_re_water
+        )
+
+
+def diffuse_fresnel(n, n_gauss=256):
+    """Diffuse Fresnel reflectances of a smooth interface between air and a
+    medium of real refractive index *n*.
+
+    Returns ``(R_dif_a, R_dif_b)``: the reflectance for isotropic diffuse
+    flux arriving from above (air side) and from below (medium side).
+
+    ``R_dif_a`` is the flux-weighted hemispheric integral of the unpolarised
+    Fresnel reflectance, ``2 * integral R(mu) mu dmu`` (Briegleb & Light 2007,
+    Eq. 25), by Gauss-Legendre quadrature.
+
+    ``R_dif_b`` follows from it exactly rather than by a second quadrature:
+    radiance conservation across a refracting interface (the n^2 law) gives
+
+        1 - R_dif_b = (1 - R_dif_a) / n^2
+
+    which is what makes the two directions consistent with each other —
+    total internal reflection beyond the critical angle is contained in it.
+    For n = 1.31 this gives 0.063 / 0.455, the constants CICE uses.
+
+    Used for the air-water interface at the top of a melt pond.  The ice
+    interface still reads its precomputed tables (``fl_reflection_diffuse.npz``,
+    inherited from SNICAR-ADv4): their from-above values agree with this
+    function to 2e-7, but their from-below values sit ~0.02 *under* the n^2
+    relation.  That is a property of the inherited ice tables and is left
+    alone here because the glacier-ice benchmarks are pinned to them.
+    """
+    n = np.asarray(n, dtype=float)
+    out_a = np.full(n.shape, np.nan)
+    ok = n > 1.0
+    x, w = np.polynomial.legendre.leggauss(n_gauss)
+    mu = (0.5 * (x + 1.0))[:, None]
+    w = (0.5 * w)[:, None]
+    nn = n[ok][None, :]
+    mut = np.sqrt(1.0 - (1.0 - mu ** 2) / nn ** 2)
+    r_s = ((mu - nn * mut) / (mu + nn * mut)) ** 2
+    r_p = ((nn * mu - mut) / (nn * mu + mut)) ** 2
+    out_a[ok] = (0.5 * (r_s + r_p) * mu * w).sum(axis=0) / (mu * w).sum()
+    out_b = 1.0 - (1.0 - out_a) / n ** 2
+    return out_a, out_b

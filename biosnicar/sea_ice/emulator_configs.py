@@ -211,6 +211,9 @@ def _transform_young_ice(p):
 def _transform_fyi_pond(p):
     """Melt pond on FYI: liquid water layer over DL + IL.
 
+    The refractive boundary of this column is the pond surface (air->water),
+    not the ice floor — see ``_FRESNEL_TYPES`` in the adding-doubling solver.
+
     The floor's bubble radius is retrieved rather than fixed.  It was
     hard-coded at 200 um — a winter-ice value — which left the emulator unable
     to produce a pond darker than BBA 0.144, while 21% of the Morassutti
@@ -310,9 +313,16 @@ SEA_ICE_EMULATOR_CONFIGS = {
             # pinned by 9 retrievals with a mean averaging kernel of 0.87 —
             # the measurement pushing hard against it, not drifting there.
             # A forward-model scan put the optimum beyond 500 in half the
-            # pinned cases.  Matched to FYI_bare now that the LUT reaches
-            # 2000 um, so neither the bound nor the grid is the constraint.
-            "sea_ice_bubble_radius":  (50.0,  1000.0),
+            # pinned cases.  First raised to 1000, where 4 of 23 SHEBA
+            # retrievals still sat on it with an averaging kernel of 0.83 —
+            # so the bound, not the measurement, was setting the value.  Now
+            # the LUT's own ceiling (2000 um), matching MYI_bare and
+            # FYI_pond: mm-scale voids are what a drained summer layer
+            # holds, and no retrieval pins here any more.  This does not
+            # resolve the bubble-radius / black-carbon trade-off (posterior
+            # r ~ -0.98); it only stops a bound from hiding it.  Read the
+            # pair through RetrievalResult.constrained_combinations().
+            "sea_ice_bubble_radius":  (50.0,  2000.0),
             "black_carbon":           (0.0,   5000.0),
             "solzen":                 (20,    80),
             "direct":                 (0,     1),
@@ -362,7 +372,13 @@ SEA_ICE_EMULATOR_CONFIGS = {
             "direct":                 (0,     1),
         },
         "transform_fn":  _transform_fyi_pond,
-        "n_samples":     12000,
+        # Doubled, and a deeper network, since the pond-surface interface
+        # fix: the specular term off the water depends steeply on solar
+        # zenith for direct light and not at all for diffuse, which a
+        # (128, 128, 64) network on 12k samples resolved poorly at
+        # SZA > 60 (held-out RMSE 0.0044 -> 0.0032).
+        "n_samples":     24000,
+        "hidden_layer_sizes": (256, 256, 128, 64),
         "emulator_file": str(_DATA_DIR / "sea_ice_FYI_pond_6param.npz"),
     },
     "young_ice": {

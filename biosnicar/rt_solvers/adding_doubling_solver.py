@@ -441,19 +441,24 @@ def define_constants_arrays(tau, g, ssa, illumination, ice, model_config):
     nr = np.zeros(shape=480)
     mu0 = illumination.mu_not * np.ones(480)  # cos beam angle = incident beam
 
-    # ice-adjusted real refractive index
+    # Locate the refractive boundary first: the medium beneath it (ice, or
+    # water for a melt pond) sets the refracted beam angle below.
+    lyrfrsnl = _first_fresnel_layer(ice)
+    ifc_re, ifc_im, _, _ = _interface_optics(ice, lyrfrsnl)
+
+    # adjusted real refractive index of the medium beneath the interface
     temp1 = (
-        ice.ref_idx_re**2
-        - ice.ref_idx_im**2
+        ifc_re**2
+        - ifc_im**2
         + np.sin(np.arccos(illumination.mu_not)) ** 2
     )
     temp2 = (
-        ice.ref_idx_re**2
-        - ice.ref_idx_im**2
+        ifc_re**2
+        - ifc_im**2
         - np.sin(np.arccos(illumination.mu_not)) ** 2
     )
     nr = (np.sqrt(2) / 2) * (
-        temp1 + (temp2**2 + 4 * ice.ref_idx_re**2 * ice.ref_idx_im**2) ** 0.5
+        temp1 + (temp2**2 + 4 * ifc_re**2 * ifc_im**2) ** 0.5
     ) ** 0.5
 
     # . Eq. 20: Briegleb and Light 2007: adjusts beam angle
@@ -508,19 +513,6 @@ def define_constants_arrays(tau, g, ssa, illumination, ice, model_config):
     rupdir = np.zeros(shape=[model_config.nbr_wvl, ice.nbr_lyr + 1])
     rupdir[:, ice.nbr_lyr] = ice.sfc
 
-    # if there are non zeros in layer type, grab the index of the
-    # first fresnel layer and load in the precalculated diffuse fresnel
-    # reflection
-    # (precalculated as large no. of gaussian points required for convergence)
-    # layer_type=1: solid glacier ice with Fresnel surface
-    # layer_type=4: sea ice — also has an air-ice Fresnel interface at the top
-    fresnel_types = {1, 4}
-    fresnel_layers = [i for i, lt in enumerate(ice.layer_type) if lt in fresnel_types]
-    if fresnel_layers:
-        lyrfrsnl = fresnel_layers[0]
-    else:
-        lyrfrsnl = 9999999
-
     return (
         tau0,
         g0,
@@ -563,6 +555,61 @@ def define_constants_arrays(tau, g, ssa, illumination, ice, model_config):
         rupdif,
         rupdir,
     )
+
+
+# Layer types whose upper surface is a refractive boundary.
+#   1: solid glacier ice
+#   4: sea ice
+#   5: melt-pond water.  Without this the interface of a ponded column
+#      [5, 4, 4] landed on the ice *under* the pond and was computed as
+#      air->ice, as if the water above were absent.  The real boundaries are
+#      air->water at the pond surface (strong, n = 1.33) and water->ice at the
+#      pond floor (1.33 -> 1.31, a normal-incidence reflectance of ~6e-5,
+#      neglected).
+_FRESNEL_TYPES = frozenset({1, 4, 5})
+_NO_FRESNEL_LAYER = 9999999
+
+
+def _first_fresnel_layer(ice):
+    """Index of the uppermost refractive boundary, or a sentinel if none.
+
+    By default the boundary is the top of the first layer whose type is in
+    ``_FRESNEL_TYPES``.  ``ice.fresnel_layer`` (set through the
+    ``fresnel_layer`` override of ``run_model``) replaces that rule: an
+    integer puts the boundary on top of that layer whatever its type, and
+    ``None`` removes it.  The default placement is a modelling choice rather
+    than a fact — under a granular surface scattering layer it puts a smooth
+    interface *beneath* the grains — so it has to be possible to move it.
+    """
+    override = getattr(ice, "fresnel_layer", "auto")
+    if override is None:
+        return _NO_FRESNEL_LAYER
+    if override != "auto":
+        idx = int(override)
+        if not 0 <= idx < len(ice.layer_type):
+            raise ValueError(
+                f"fresnel_layer={override!r} is not a layer index of this "
+                f"{len(ice.layer_type)}-layer column."
+            )
+        return idx
+    for i, lt in enumerate(ice.layer_type):
+        if lt in _FRESNEL_TYPES:
+            return i
+    return _NO_FRESNEL_LAYER
+
+
+def _interface_optics(ice, lyrfrsnl):
+    """Optics of the medium beneath the refractive boundary.
+
+    Returns ``(n_re, n_im, R_dif_a, R_dif_b)``: the refractive index of that
+    medium and the precomputed diffuse Fresnel reflectances of its upper
+    surface from above and below.  Water when the boundary is the top of a
+    melt pond, ice otherwise.
+    """
+    if lyrfrsnl < len(ice.layer_type) and ice.layer_type[lyrfrsnl] == 5:
+        return (ice.ref_idx_re_water, ice.ref_idx_im_water,
+                ice.fl_r_dif_a_water, ice.fl_r_dif_b_water)
+    return ice.ref_idx_re, ice.ref_idx_im, ice.fl_r_dif_a, ice.fl_r_dif_b
 
 
 def calc_reflection_transmission_from_top(
@@ -804,7 +851,8 @@ def calc_correction_fresnel_layer(
         tdir: updated transmission of direct beam
     """
 
-    ref_indx = ice.ref_idx_re + 1j * ice.ref_idx_im
+    ifc_re, ifc_im, ifc_r_dif_a, ifc_r_dif_b = _interface_optics(ice, lyr)
+    ref_indx = ifc_re + 1j * ifc_im
     critical_angle = np.arcsin(ref_indx)
     nbr_wvl = model_config.nbr_wvl
     beam_angle = np.arccos(illumination.mu_not)
@@ -828,14 +876,23 @@ def calc_correction_fresnel_layer(
     wvl = 0.205 + np.arange(nbr_wvl) * 0.01
     in_reststrahlen = (wvl >= 2.5) & (wvl <= 4.0)
     tir = in_reststrahlen & (beam_angle >= critical_angle[:nbr_wvl].real)
+    if lyr < len(ice.layer_type) and ice.layer_type[lyr] == 5:
+        # Air -> water has no total reflection: water's real index never
+        # drops below 1.11 (at 2.8 um), whereas ice's dips under 1 near
+        # 3 um.  The complex-arcsin criterion would still fire here for
+        # SZA >~ 69 deg, because water's large k around 3 um pulls
+        # arcsin(n + ik).real below the beam angle, and would paint
+        # albedo = 1 across 2.9-3.2 um.  The Fresnel coefficients above
+        # already carry the absorbing-medium index (nr), so leave them.
+        tir[:] = False
     Rf_dir_a[tir] = 1.0
     Tf_dir_a[tir] = 0.0
 
     # --- Precalculated diffuse reflectivities/transmissivities ---
     # Eq. 25 Briegleb & Light 2007
-    Rf_dif_a = ice.fl_r_dif_a[:nbr_wvl]
+    Rf_dif_a = ifc_r_dif_a[:nbr_wvl]
     Tf_dif_a = 1 - Rf_dif_a
-    Rf_dif_b = ice.fl_r_dif_b[:nbr_wvl]
+    Rf_dif_b = ifc_r_dif_b[:nbr_wvl]
     Tf_dif_b = 1 - Rf_dif_b
 
     # --- Update layer properties for Fresnel interface ---
