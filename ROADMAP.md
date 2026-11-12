@@ -48,8 +48,8 @@ the numbers do not generalise as far as they first appear.
 
 | | |
 |---|---|
-| **Validated, spring/cold Arctic, VIS–NIR** | Re-measured 2026-11-06 after the physics fixes and fleet retrain. SHEBA spring snow 6/7 full-spectrum, 7/7 on S2 and L8 bands; summer bare ice 16/16 full-spectrum, 16/16 S2, 15/16 L8. **Unchanged by the rebuild** — these held exactly. FYI_bare emulator held-out spectral R² 0.9987 |
-| **Melt ponds — recovered** | Re-measured 2026-11-06. Morassutti classification **74.6%** (504 records) and depth within ±25% **23.8%**, against 77% / ~22% before the physics work and 62% / 15% immediately after it. Depth retrieval now exceeds the old baseline. The cause was not calibration drift: the pond floor's bubble radius was hard-coded at 200 µm, a winter-ice value, which left the emulator unable to produce a pond darker than BBA 0.144 while 21% of the observations are darker than that at *any* parameter setting. Floor coarseness is now retrieved (200–2000 µm) and the reach extends to 0.067, leaving 16/504 unreachable. Depth is still only usable for deep ponds |
+| **In-sample, spring/cold Arctic, VIS–NIR** | Re-measured 2026-11-12. SHEBA spring snow 6/7 full-spectrum, 7/7 on S2 and L8 bands; summer bare ice 16/16 full-spectrum, 16/16 S2, 16/16 L8. SHEBA is a **development** set (see the corpus freeze below): priors, masks and bounds were set against it, so these say the model *can* be made to fit, not that it generalises |
+| **Melt ponds (in-sample)** | Re-measured 2026-11-12 after the pond-surface interface fix. Morassutti classification **88.5%** (446/504; 74.6% before) and depth within ±25% **22.6%** (23.8% before). The classification gain was not sought: it is a side effect of giving the pond a water surface, which the old model lacked entirely. Depth is unchanged and still only usable for deep ponds (81% within ±25% beyond 50 cm, 5–17% below 20 cm) — the new audit shows why: pond depth and floor coarseness are now the most degenerate pair in that emulator (mean \|r\| 0.84) |
 | **Synthetic metrics** | Inverse-crime numbers — the same forward model generates and inverts. Treat as plumbing checks, not performance |
 | **Untested** | Non-Arctic surfaces; open water and young ice against real spectra (synthetic only); scene-scale retrieval *accuracy* (throughput is solved — see Phase 3); atmospheric/TOA coupling; BRDF and angular effects; confidence calibration; drone and hyperspectral-satellite modalities |
 
@@ -61,7 +61,39 @@ not Frankenstein & Garner — see the SMRT cross-check below, which is where tha
 mismatch matters.
 
 Still deferred in the physics: **no liquid-water content in the melting-surface
-forward models**, which is precisely the regime where the hold-out degrades.
+forward models**. See `D2` under Phase 0 below — the fast wet-grain
+representation in the code has the wrong sign in the near-infrared, so this
+needs a coated-sphere lookup table rather than a parameter added to an
+emulator.
+
+### How to read the field numbers
+
+Every field dataset here has uncertain inputs: solar zenith is inferred from
+date or ship position, direct/diffuse from sky notes, labels are season-inferred
+or coarse field comments, and the structure of the ice was not measured. With
+five or six free parameters, several of them degenerate, a forward model can be
+made to fit most of these spectra whether or not it is right — the SSL
+experiment below fits six structurally different columns to within 0.001 of
+each other. So the rule for this roadmap is: **decide physics on physical and
+mathematical correctness; use the field data to expose a wrong model, never to
+choose between defensible ones or to tune a bound.** Agreement is weak
+evidence. The numbers in the table above are reported on that footing.
+
+### Corpus freeze (`V1`, done 2026-11-12)
+
+`tests/validation_data/corpus_manifest.json` assigns each dataset one role and
+hashes every data file; `corpus.require_role` refuses to tune or calibrate on a
+test set, and the suite fails if a frozen file changes.
+
+| Dataset | Role |
+|---|---|
+| SHEBA (Grenfell & Light 2007), Morassutti (1995), Macfarlane (2022) | development — in-sample |
+| Smith (2021) MOSAiC | calibration — feeds the model-error covariance |
+| Istomina (2016) IceArc | **test — frozen, evaluate only** |
+
+One campaign of 121 coarsely-labelled spectra is a thin test set. It is what
+exists. A second independent campaign remains the most valuable thing this
+project could acquire.
 
 ### Cross-check against SMRT (2026-11-05)
 
@@ -228,17 +260,19 @@ the old physics and should be regenerated before being quoted again.
 
 | | |
 |---|---|
-| **SSL morphology** | The SSL is modelled as granular (`layer_type=0`, grains in air). Weathering-crust structure is arguably better described as bulk ice with large interconnected voids — coral or karst rather than a grain pile — which is what `layer_type` 1/2 already provide for glacier ice. Worth testing whether a voids-in-ice SSL fits better, and whether the Fresnel interface belongs at the SSL top (a crust is a solid ice surface; a grain pile is not). Caveat: `bubbly_air.npz` is spherical-inclusion Mie, so it would get the topology right and the morphology wrong |
-| **Melt-pond Fresnel** | Pond columns are `[5,4,4]`, so the Fresnel interface lands on the ice *under* the pond and is computed as air→ice, ignoring the water above. It should be a strong interface at the pond top (air→water) and almost none at the pond bottom (water→ice, 1.33→1.31). Suppressing it moves pond BBA by ~0.06–0.07, ~30% relative. There is no way to disable it for sea ice — `fresnel_types = {1, 4}` with no type-2 analogue for type 4 |
-| **No brine outside types 4/6** | Granular and bubbly-ice layers carry no salinity, so genuinely saline weathered ice has no correct representation. Drained crust is largely desalinated, so this is probably tolerable — but it is a silent assumption |
+| **SSL morphology** | **Tested 2026-11-12; the spectra cannot decide it.** `scripts/experiments/ssl_morphology_experiment.py` fits the 16 SHEBA summer spectra with grains-in-air and voids-in-ice surface layers, each with the interface below, on top, or absent — six structures, five free parameters each. Mean RMSE spans 0.0057–0.0067 across all six; the shipped structure is nominally lowest and has the best worst case, but the spread is under 0.001 and below measurement noise. So VIS albedo carries no usable information on SSL topology or interface placement, and the choice has to rest on structural evidence (micro-CT), not on fit. `run_model(fresnel_layer=...)` now makes the placement an explicit, switchable assumption. One thing every variant agreed on: the fitted layer is ~1.2–1.5 cm thick, against the 5 cm the FYI_summer emulator fixes |
+| ~~**Melt-pond Fresnel**~~ | **Fixed 2026-11-12.** The refractive boundary of a ponded column is now the pond surface, air→water with water's refractive index and exact diffuse reflectances; the water→ice step at the floor (1.33→1.31, ~6×10⁻⁵) is neglected. The old placement gave a pond no surface reflection at all — NIR albedo exactly zero where the water is opaque. BBA moves about −0.01 at SZA 50°, +0.06 at SZA 70°. FYI_pond retrained (held-out R² 0.9993). See `docs/sea_ice.md` |
+| **Inherited ice diffuse-Fresnel table is ~0.02 low from below** | Found while doing the above. `fl_reflection_diffuse.npz` (SNICAR-ADv4) matches an exact calculation to 2×10⁻⁷ for diffuse light from above, but its from-below column violates the `n²` radiance relation: 0.427 against 0.451 at 0.7 µm (CICE uses 0.455 for n = 1.31). Applying the exact value lowers albedo by 0.003–0.005 on sea-ice presets and glacier ice alike. **Not changed** — it would move the published glacier-ice benchmarks — and it is **on hold until confirmed with the SNICAR-ADv4 (MATLAB) authors** (decided 2026-11-12): how the table was generated is not known, so a deliberate convention cannot be ruled out. Do not change it before then |
+| **No brine outside types 4/6** | Still true, no longer silent: `sea_ice_salinity` on a granular or bubbly-ice layer now warns that the layer is computed as fresh ice (2026-11-12). A real representation of saline weathered ice or saline snow remains unbuilt |
 | **Layer-type discontinuity** | Granular and bubbly-ice layers respond to density with *opposite sign* (lower density is darker for grains, brighter for bubbles). Sweeping density across the regime boundary without switching layer type gives nonsense |
-| **Vectorised/loop divergence in band mode** | The two OE engines do not agree to machine precision with only nine Sentinel-2 bands: per-class confidences differ by up to 9.8e-2 before these corrections, ~2e-2 after. Full-spectral mode agrees to 2e-3. `test_vectorized_matches_loop_band_mode` previously asserted exact class agreement and passed only because both engines were confidently *wrong* on the same pixels; it now asserts that confident pixels agree and tolerates one marginal near-tie. The divergence itself should be fixed |
+| ~~**Vectorised/loop divergence in band mode**~~ | **Fixed 2026-11-12.** Not weak conditioning — two defects in the vectorised path. It skipped the per-band platform SNR default for `obs_uncertainty` (flat 0.02 instead, so a different `S_e`), and it convolved every candidate with the *first* emulator's solar flux rather than each emulator's own. The engines now agree to 2×10⁻³ in band mode as in spectral mode, and the test is strict again. `engine="vectorized"` band-mode results therefore change for callers that do not pass `obs_uncertainty` — they now get the SNR-table uncertainties the per-pixel path always used. (BioSNICAR is not currently served in IceNav, so no live integration is affected) |
+| **Each emulator carries an arbitrary solar flux** | Found while doing the above. `Emulator.flx_slr` is the flux of the *first training sample*, so band convolution is weighted by whatever solar zenith and sky that sample happened to draw, and it differs between emulators (MYI_bare's is not FYI_bare's). The flux should be that of the retrieval's own illumination. Second-order — it reweights within a band — but it is wrong in principle and it is why the fleet does not share one band operator |
 | ~~**MYI emulator holds density fixed**~~ | **Done 2026-11-06.** `rho_DL` is now sampled over (720, 900) kg/m³ — the Timco & Frederking range for MYI above the waterline — and the emulator is 6-parameter. Accuracy improved despite the extra dimension (vis-only RMSE 0.0069 → 0.0054). This also makes `RetrievalResult.ssa` available for MYI retrievals |
 | **Report SSA fleet-wide, not radius and density separately** | Policy decision: the individually degenerate pair should be reported as its combination, `SSA = 3(1-ρ/917)/(rρ)`. Justified from the code — ω is a function of SSA alone — and measured: holding SSA fixed removes **88% of NIR and 61% of VIS** spectral variation, and σ(SSA)/SSA beats σ_r/r in 22 of 24 states (0.44 vs 0.58). `RetrievalResult.ssa` now reaches sea-ice parameter names and propagates with the posterior covariance (3× tighter). `run_model` now accepts `ssa=` and `brine_volume_fraction=` as alternatives to the physical inputs (either set, never both for a layer), so the forward model is done. **Retrieval is blocked for the rest of the fleet**: 5 of 6 emulators hard-code density, so SSA is computable for 0 of 23 SHEBA spectra. Making it primary requires those emulators to sample density — a retrain each. Caveats: SSA amplifies density error by 1/φ ≈ 9–30× at sea-ice densities, and it addresses only the radius/density pair, not the other four degeneracies measured |
-| **`sea_ice_temperature` is reported but not retrieved** | **Half closed 2026-11-06 — the reporting half.** Averaging kernel **0.048** across 22 of 23 SHEBA spectra; the fleet sweep agrees (0.15 FYI_summer, 0.25 FYI_snow, 0.29 young_ice, 0.40 FYI_pond). Temperature acts only through brine volume and brine salinity, and those emulators are `vis_only`-masked where bubble scattering swamps brine absorption, so there is no VIS signal to retrieve. Of the three options — drop it, flag it, or extend into the SWIR — **flagging shipped** (see the row below); it is no longer presented as a measurement. Dropping it was rejected because the forward model still needs the value and a silently-absent parameter hides the gap rather than stating it. **The SWIR extension remains open and is blocked behind `A7`'s SWIR model-error term**, which is data-limited: retrieving in a band with no validated error covariance would move the defect rather than fix it |
+| **`sea_ice_temperature` is reported but not retrieved** | Unchanged in substance: averaging kernel 0.016 across 22 of 23 SHEBA spectra under the default covariance, flagged as not retrieved in every output. The SWIR extension stays blocked behind `A7`'s SWIR term, which is now understood to be a physics problem rather than a data-volume one (Phase 0). One nuance from the pond fix: under the pond surface, light recycling gives temperature a small real VIS signal through the floor's brine volume (0.006 albedo RMS per 3 °C); it is over-counted to an averaging kernel of ~0.6 by an instrument-only `S_e` and is ~0.2 under the calibrated one |
 | **Prior-dominated parameters were indistinguishable from measured ones** | **Closed 2026-11-06.** The averaging kernel was computed and stored but nothing consumed it by default, so `summary()`, `plot()` and the scene rasters gave every free parameter the same authority. `uncertainty` cannot substitute — a narrow prior and a sharp measurement both give a small σ. `biosnicar.inverse.information` now defines one threshold convention (measured ≥ 0.5, not retrieved < 0.1) shared by both result classes, both summaries, the plot and new `akd_<name>` scene rasters; `_result_to_record` no longer drops the kernel on the per-pixel loop path, which had made provenance depend on which engine ran. This matters beyond temperature: `ocean_albedo` (0.42 mean, 0.03 min), `brine_volume_fraction` (0.49) and `black_carbon` (0.62–0.97, minima near 0.01) sit in the same band. Caveat now documented: the kernel is relative to the prior supplied, not to truth — a wide prior inflates it for free, so read it with `AT_BOUNDS` and `parameter_correlation()` |
-| **Every emulator has a degeneracy, not just FYI_bare** | Worst pair per emulator spans mean \|r\| 0.49–0.89: FYI_bare `bubble_radius`/`rho_DL` 0.89, MYI_bare `bubble_radius`/`black_carbon` 0.85, young_ice `ice_thickness_cm`/`ocean_albedo` 0.85, FYI_pond `T`/`black_carbon` 0.79, FYI_summer `bubble_radius`/`black_carbon` 0.76, FYI_snow `tau_snow`/`black_carbon` 0.49. Three keep a stable sign (FYI_bare, FYI_summer, young_ice) and are reparameterisable; each needs its own retrain. FYI_snow is the proof the technique works — its already-reparameterised `tau_snow`/`snow_grain_radius` pair is now the *least* degenerate in the fleet. Measure with `scripts/audit_sea_ice_degeneracy.py` |
-| **24% of parameters land on a bound in real SHEBA retrievals** | 22/92, with 19/23 spectra carrying a \|r\| > 0.8 pair. Pin + high averaging kernel means the bound is binding; pin + low means a flat likelihood and a meaningless reported value. `FYI_summer`'s `sea_ice_bubble_radius` ceiling (500 µm) is half the sea-ice LUT's support and half FYI_bare's; a forward-model scan past it finds the optimum beyond 500 in 4 of 8 pinned cases but with marginal gain, so this is tidiness rather than an accuracy bug. Check with `tests/validation_data/parameter_identifiability_sheba.py` |
+| **Every emulator has a degeneracy, not just FYI_bare** | Re-audited 2026-11-12 (`scripts/audit_sea_ice_degeneracy.py`). Worst pair per emulator: MYI_bare `bubble_radius`/`rho_DL` 0.99, FYI_bare `bubble_radius`/`rho_DL` 0.95, FYI_pond `pond_depth`/`bubble_radius` 0.84 (new — light recycling under the pond surface couples depth to the floor), young_ice `ice_thickness_cm`/`ocean_albedo` 0.83, FYI_summer `ssl_grain_radius`/`bubble_radius` 0.60 synthetic but `bubble_radius`/`black_carbon` −0.98 on real SHEBA spectra, FYI_snow `tau_snow`/`black_carbon` 0.55. **Retraining on rotated coordinates was considered and not done**: a rotation re-expresses the same posterior and adds no information, and it would rename retrieved parameters. Instead `constrained_combinations()` returns the posterior's principal axes for any retrieval — the combination the spectrum fixed, in units of the marginal error bars (σ = √(1−\|r\|), 7× tighter at r = −0.98) — and `summary()` names every pair with \|r\| ≥ 0.8. Where a combination has a physical name it should be reported by name, as SSA is |
+| ~~**24% of parameters land on a bound in real SHEBA retrievals**~~ | **5/92 as of 2026-11-12, one of them a genuine rail.** Three things changed. `FYI_summer`'s bubble-radius ceiling went 1000 → 2000 µm (the LUT limit), where 4 retrievals had been pinned with averaging kernel 0.83 (23 → 19 pinned). Spectral OE then moved to the field-calibrated covariance by default, under which the over-counted evidence no longer drives parameters into walls (19 → 5). And the audit now separates bounds that are *meant* to bind — black carbon at zero is a physical floor; FYI_snow's `tau_snow` floor and −5 °C ceiling are class boundaries with FYI_summer — from rails: 4 of the 5 are the former. The one left is `ssl_grain_radius` at its 500 µm floor on one spectrum. No bound was moved to improve a score |
 | **`sea_ice_bubble_radius`/`rho_DL` — report SSA, do not report the components** | After the 2026-11-06 retrain the posterior correlation is **0.961 (FYI_bare) and 0.982 (MYI_bare)**, σ inflated 6–8× (20× worst), same sign at all 24 base points. It rose from 0.837 because fixing the LUT bubble clamping made radius genuinely active — a clamped parameter's Jacobian is noise, and noise correlates with nothing. At these values the components are not separately determined: a live MYI retrieval gives radius 589±327 µm (56%, 26% off truth) against **SSA 0.7220±0.031 (4.3%, 0.5% off truth)**. Reparameterising the emulator onto `(ssa, ρ)` was considered and **rejected**: that box is ill-posed (usable SSA span collapses to 6.4× vs 40× in radius; a full box demands 8 µm bubbles), and a rotation adds no information anyway. `RetrievalResult.ssa` already reports the combination with covariance. **Closed 2026-11-06** |
 | **`rho_DL`/brine-volume collinearity rose with the fixes** | Expected, not a regression: with the LUT clamping at 870 most of the sampled `rho_DL` range was inert, so its Jacobian was near-noise and looked uncorrelated. Measured properly it is minor — posterior correlation **0.31 mean / 0.77 max** (the Jacobian cosine, 0.73, overstates it badly), inflating marginal σ by only **1.10× typical, 1.56× worst**. Both parameters stay measurement-determined (`rho_DL` averaging kernel ≥ 0.84). **Reparameterising was considered and rejected**: the correlation changes sign across the parameter space (17 of 24 positive, 7 negative), so no global linear rotation can decorrelate it. Exposed per-retrieval instead via `RetrievalResult.parameter_correlation()` / `.degenerate_parameters()`. **Closed 2026-11-06** |
 
@@ -265,22 +299,52 @@ has bounded the inverse-crime overstatement.
 
 Remaining:
 
-- **Finish `A7` — the SWIR model-error term.** The VIS term generalises well
-  (held-out χ² 0.13). The SWIR does not, and the reason is now diagnosed and is
-  **physical rather than methodological**: SWIR forward-model error is strongly
-  regime-dependent, with calibration residual RMS ≈ 0.067 against held-out
-  ≈ 0.134, so a two-regime covariance is about 4× too tight for a third. The
-  gap-tolerant fit works — the domain reaches ~1995 nm with healthy low-rank
-  structure — so **this is data-limited, not blocked**. The shipped covariance
-  stays VIS-only (`domain_max_nm=1000`, per-band diagonal in the SWIR), and
-  `build_model_error_covariance.py --gap-tolerant` is the ready path to switch
-  the SWIR term on as soon as regime-spanning full-range residuals exist.
-- **`V1` — freeze the independent test corpus.** Stop tuning against test data.
-  No new data required; this is a discipline decision.
-- **The default-behaviour decision.** Should `method="oe"` default to
-  `model_error=True`? It widens uncertainties, which is honest, but it changes
-  `class_probabilities` for downstream consumers (IceNav). Coordinate before
-  flipping rather than after.
+- **`A7` SWIR model-error term — reframed: this is physics-limited, not
+  data-limited.** Correct-model SWIR residuals are 0.07 (Smith) to 0.12
+  (SHEBA) albedo RMS, against ~0.02 in the VIS. Residuals that large and that
+  regime-dependent are structural forward-model misfit, and a covariance
+  cannot stand in for missing physics: a low-rank SWIR term fitted on
+  SHEBA+Smith makes the frozen test set *worse* (SWIR-band reduced χ² 11.8
+  against 5.2 with the per-band diagonal alone; measured on the residual
+  library as it stood before the 2026-11-12 rebuild), and the inflation needed to
+  cover it (~4×) amounts to telling the retrieval to ignore the SWIR. So the
+  shipped covariance stays VIS-only by decision rather than for want of data,
+  and the SWIR term waits on the SWIR physics (`D2`, surface-layer
+  thickness), not on another campaign. The covariance itself was rebuilt
+  2026-11-12 from residuals of the current emulators — the previous artifact
+  had been fitted to a fleet since retrained twice — and holds out at reduced
+  χ² 3.7 mean / 2.4 median on Istomina (39.6 / 33.1 instrument-only).
+- **`D2` liquid water — needs a coated-sphere LUT.** A melting surface with no
+  liquid water is physically wrong, but the fast wet-grain model in the code
+  is not the fix. `layer_type=3` adds water as *separate spheres*, i.e. extra
+  scatterers, so water brightens the layer at every wavelength; water held on
+  grains should darken the NIR, which is what the coated-sphere model
+  (`water=`) gives (1.26 µm, 5% water, 1000 µm grains: dry 0.162, type 3
+  0.166, coated 0.157). The coated-sphere path is runtime Mie at ~24 s per
+  spectrum, so an emulator needs a (radius, water-fraction) LUT built first.
+  For scale, `scripts/experiments/melt_surface_lwc_experiment.py` shows that
+  even granting `layer_type=3`, free water content moves the Smith SWIR misfit
+  by 5.5% — the spectrum barely constrains it through that representation.
+  That is a statement about identifiability, not evidence that the surface
+  is dry.
+- **Surface-layer thickness in FYI_summer.** Every structure in the SSL
+  experiment wanted a 1.2–1.5 cm layer; the emulator fixes 5 cm. Thickness and
+  grain size trade off (as depth and grain size did for snow before
+  `tau_snow`), so the correct form is probably an optical-depth
+  parameterisation rather than a different constant. Needs a retrain and a
+  class-boundary check against FYI_snow.
+- ~~**`V1` — freeze the independent test corpus.**~~ Done; see above.
+- ~~**The default-behaviour decision.**~~ **Taken 2026-11-12:** spectral `method="oe"` now defaults to the calibrated covariance
+  (`model_error="auto"`). The coordination worry no longer applies:
+  BioSNICAR is not currently served in IceNav, and in any case `model_error`
+  is refused in band mode, so the default resolves to off there. On the
+  SHEBA SWIR experiment the default now gives 11/12 VIS-only and 8/12 with
+  SWIR; instrument-only gives 7/12 and 8/12.
+- **OE uncertainties on a degenerate ridge are noisy.** Seen while testing
+  the above: the finite-difference Jacobian of a ReLU emulator is piecewise
+  constant, so along a |r| ≈ 0.98 ridge a 1% move in the solution can change
+  a marginal σ by 2×. Point estimates are stable; error bars on degenerate
+  components are not. Another reason to report the constrained combination.
 
 **Gate:** OE per-class posteriors with provenance and DFS; inverse-crime
 degradation bounded; test corpus frozen.

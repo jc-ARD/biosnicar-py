@@ -619,3 +619,40 @@ bubble/brine front, which is where §6 of the program review concentrates.
 - Grenfell, T. C., and B. Light (2007). SHEBA Spectral Albedo. UCAR/NCAR EOL. doi:10.5065/D6765CQ1
 - Grenfell, T. C., and S. G. Warren (1999). Representation of a nonspherical ice particle by a collection of independent spheres. *J. Geophys. Res.*, 104(D24), 31697–31709.
 - Perovich, D. K., et al. (2002). Seasonal evolution of the albedo of multiyear Arctic sea ice. *J. Geophys. Res.*, 107(C10), 8044.
+
+## 14. Re-measurement after the pond-surface and OE-default changes (2026-11-12)
+
+Three changes moved numbers in this document: the melt-pond refractive
+boundary moved from the ice floor to the water surface (FYI_pond retrained),
+FYI_summer's bubble-radius ceiling went to the LUT limit of 2000 µm
+(retrained), and spectral `method="oe"` now uses the field-calibrated error
+covariance by default, itself rebuilt from residuals of the current fleet.
+
+| Block | Before | After |
+|---|---|---|
+| SHEBA spring snow, full spectrum / S2 / L8 | 6/7, 7/7, 7/7 | 6/7, 7/7, 7/7 |
+| SHEBA summer bare ice, full spectrum / S2 / L8 | 16/16, 16/16, 15/16 | 16/16, 16/16, 16/16 |
+| Morassutti pond classification (504) | 74.6% | 88.5% |
+| Morassutti pond depth within ±25% (504) | 23.8% | 22.6% |
+| SHEBA parameters at a bound, `method="oe"` | 23/92 | 5/92 (1 genuine rail) |
+| OE SWIR experiment, default method VIS / VIS+SWIR | 12/12, 9/12 | 12/12, 9/12 |
+| OE SWIR experiment, OE + model error VIS / VIS+SWIR | 12/12, 10/12 | 11/12, 8/12 |
+| Model-error held-out reduced χ² (Istomina), mean / median | 4.23 / 2.78 | 3.72 / 2.43 |
+
+Read these with the caveats that apply to every number here. SHEBA and
+Morassutti are development sets — in-sample. The inputs to each comparison
+(solar zenith, sky state, surface label, ice structure) are uncertain and the
+fitted parameters are degenerate, so a change of a spectrum or two in either
+direction is not evidence about the physics. None of the three changes was
+made to move a score: the pond interface and the covariance are corrections,
+and the bubble-radius ceiling removes a bound that was setting retrieved
+values. The pond classification gain in particular was not sought; pond depth,
+the quantity one would hope to improve, did not move.
+
+Two rows correct the record rather than report a change. The default method's
+VIS+SWIR result on the SHEBA SWIR experiment is 9/12, not the 12/12 quoted in
+§12 — it has been 9/12 since the 2026-11-06 retrain and §12 was not
+re-measured then. And OE with the model-error term drops from 12/12 to 11/12
+(VIS) and 10/12 to 8/12 (VIS+SWIR) under the rebuilt covariance, which is
+fitted to 32 correct-model rows where the previous one had 46.
+
