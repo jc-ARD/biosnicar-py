@@ -9,6 +9,7 @@ The seven surface types are:
     FYI_bare    — winter/spring bare first-year ice
     FYI_snow    — snow-covered first-year ice (tau_snow parameterisation)
     FYI_summer  — melt-season bare ice with Surface Scattering Layer
+                  (tau_ssl parameterisation)
     MYI_bare    — bare multiyear ice
     FYI_pond    — melt pond on first-year ice
     young_ice   — semi-transparent thin ice, 0.5–30 cm (layer_type=6)
@@ -837,6 +838,16 @@ def retrieve_sea_ice(
             winner_params["snow_depth"] = float(
                 np.clip(winner_params["tau_snow"] * grain * 1e-6, 0.003, 1.5)
             )
+    # SSL thickness likewise follows from (tau_ssl, ssl_grain_radius), at
+    # the reference density of the forward model.
+    if "tau_ssl" in winner_params:
+        grain = winner_params.get(
+            "ssl_grain_radius", shared_fixed.get("ssl_grain_radius")
+        )
+        if grain is not None:
+            from biosnicar.sea_ice.emulator_configs import ssl_thickness_m
+            winner_params["ssl_thickness"] = ssl_thickness_m(
+                winner_params["tau_ssl"], grain)
     # Young ice is retrieved in cm (log conditioning) — derive metres.
     if "ice_thickness_cm" in winner_params:
         winner_params["ice_thickness"] = winner_params["ice_thickness_cm"] / 100.0

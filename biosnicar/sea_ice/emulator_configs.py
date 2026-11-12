@@ -17,7 +17,8 @@ Surface types
 -------------
 ``FYI_bare``    Winter/spring bare first-year ice (DL + IL).
 ``FYI_snow``    Snow-covered first-year ice (snow + DL + IL).
-``FYI_summer``  Melt-season bare ice with Surface Scattering Layer (SSL + DL + IL).
+``FYI_summer``  Melt-season bare ice with Surface Scattering Layer (SSL + DL + IL);
+                SSL thickness enters as ``tau_ssl`` = thickness / grain radius.
 ``MYI_bare``    Bare multiyear ice (DL + IL, lower salinity, larger bubbles).
 ``FYI_pond``    Melt pond on FYI (pond water + DL + IL).
 ``open_water``  Ice-free ocean (analytical Fresnel + subsurface model — no
@@ -139,15 +140,56 @@ def _transform_fyi_snow(p):
     )
 
 
+# Bulk density at which ``tau_ssl`` is converted to a physical thickness.
+SSL_REFERENCE_DENSITY = 300.0
+
+
+def ssl_thickness_m(tau_ssl, ssl_grain_radius_um):
+    """Physical SSL thickness (m) implied by ``tau_ssl`` and the grain radius,
+    at :data:`SSL_REFERENCE_DENSITY`."""
+    return float(tau_ssl) * float(ssl_grain_radius_um) * 1e-6
+
+
 def _transform_fyi_summer(p):
-    """Summer bare FYI: SSL (granular) on top of DL + IL."""
+    """Summer bare FYI: SSL (granular) on top of DL + IL.
+
+    The surface scattering layer is parameterised by ``tau_ssl`` — its
+    thickness in units of the grain radius — together with
+    ``ssl_grain_radius``, and not by a thickness.  The layer used to be fixed
+    at 5 cm, which is an assumption about a quantity that ranges from
+    millimetres to ~10 cm and that the spectrum is sensitive to: at 500 um
+    grains the 400-1000 nm albedo runs 0.61 -> 0.82 as the layer goes from
+    0.5 mm to 5 cm.
+
+    Why this coordinate and not thickness itself:
+
+    * the scattering optical depth of a granular layer goes as
+      ``rho * dz / (rho_ice * r)``, so thickness and grain size trade off
+      against each other and the measurement constrains their ratio — the
+      same reason FYI_snow uses ``tau_snow``;
+    * the grain radius keeps an independent handle through the absorption
+      per scattering event, which is why it stays a parameter;
+    * bulk density is *exactly* interchangeable with thickness (only
+      ``rho * dz`` enters; verified to machine precision), so it is not a
+      third parameter.  ``tau_ssl`` is defined at
+      ``SSL_REFERENCE_DENSITY``; what the spectrum fixes is the mass path
+      per grain radius, and a denser layer of the same ``tau_ssl`` is
+      proportionally thinner.
+
+    No clipping is applied to the implied thickness, so every sampled state
+    is distinct: a clip would make ``tau_ssl`` inert over part of its range.
+    The price is that the box admits states no real SSL occupies (5 mm
+    grains at ``tau_ssl`` = 100 is half a metre); read the derived
+    ``ssl_thickness`` in the retrieval output.
+    """
     T   = p["sea_ice_temperature"]
     bbl = p["sea_ice_bubble_radius"]
+    r   = p["ssl_grain_radius"]
     return dict(
         layer_type=[0, 4, 4],
-        dz=[0.05, 0.05, 1.40],
-        rds=[_snap(p["ssl_grain_radius"]), 500, 500],
-        rho=[300, 850, 910],
+        dz=[ssl_thickness_m(p["tau_ssl"], r), 0.05, 1.40],
+        rds=[_snap(r), 500, 500],
+        rho=[SSL_REFERENCE_DENSITY, 850, 910],
         sea_ice_salinity=[None, 4, 2],
         sea_ice_temperature=[None, T, T],
         sea_ice_bubble_radius=[None, bbl, min(2000.0, bbl * 2.0)],
@@ -307,6 +349,13 @@ SEA_ICE_EMULATOR_CONFIGS = {
         "description": "Melt-season bare FYI with Surface Scattering Layer",
         "band_mask": "vis_only",
         "params": {
+            # SSL thickness / grain radius (dimensionless, both in um).
+            # 1 is a single grain's worth of layer — the bare-ice limit,
+            # where the response has flattened out — and 100 is the 5 cm
+            # of 500 um grains the fixed-thickness model topped out at.
+            # The response is still rising at 100, so the upper end is not
+            # a saturated direction.  See _transform_fyi_summer.
+            "tau_ssl":                (1.0,   100.0),
             "ssl_grain_radius":       (500.0, 5000.0),
             "sea_ice_temperature":    (-10.0, -2.0),
             # Raised from 500.  On the 23 SHEBA spectra the old ceiling was
@@ -328,8 +377,9 @@ SEA_ICE_EMULATOR_CONFIGS = {
             "direct":                 (0,     1),
         },
         "transform_fn":  _transform_fyi_summer,
-        "n_samples":     12000,
-        "emulator_file": str(_DATA_DIR / "sea_ice_FYI_summer_6param.npz"),
+        # 7 parameters now; doubled from 12k.
+        "n_samples":     24000,
+        "emulator_file": str(_DATA_DIR / "sea_ice_FYI_summer_tau_7param.npz"),
     },
     "MYI_bare": {
         "description": "Bare multiyear ice (lower salinity, larger bubbles)",

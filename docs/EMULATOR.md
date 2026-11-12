@@ -330,7 +330,7 @@ BioSNICAR includes five pre-built emulators for Arctic sea ice surface types, ex
 |---|---|---|
 | `FYI_bare` | `brine_volume_fraction`, `sea_ice_bubble_radius`, `black_carbon`, `rho_DL`, `solzen`, `direct` | Uses `brine_volume_fraction` instead of (T, S) — see below |
 | `FYI_snow` | `snow_depth`, `snow_grain_radius`, `sea_ice_temperature`, `black_carbon`, `solzen`, `direct` | Similar to glacier snow emulator |
-| `FYI_summer` | `ssl_grain_radius`, `sea_ice_temperature`, `sea_ice_bubble_radius`, `black_carbon`, `solzen`, `direct` | Includes Surface Scattering Layer (SSL) grain radius |
+| `FYI_summer` | `tau_ssl`, `ssl_grain_radius`, `sea_ice_temperature`, `sea_ice_bubble_radius`, `black_carbon`, `solzen`, `direct` | Includes Surface Scattering Layer (SSL) grain radius |
 | `MYI_bare` | `brine_volume_fraction`, `sea_ice_bubble_radius`, `black_carbon`, `solzen`, `direct` | Lower salinity MYI; same Vb reparameterisation |
 | `FYI_pond` | `pond_depth`, `sea_ice_temperature`, `sea_ice_bubble_radius`, `black_carbon`, `solzen`, `direct` | Pond depth is the primary parameter. `sea_ice_bubble_radius` is the *floor* coarseness — fixed at 200 µm the emulator could not reach 21% of observed ponds |
 

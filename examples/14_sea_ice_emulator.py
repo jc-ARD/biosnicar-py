@@ -210,7 +210,8 @@ if PLOT:
                             sea_ice_temperature=-15.0, black_carbon=0.0,
                             solzen=60, direct=1)
         elif name == "FYI_summer":
-            a = emu.predict(ssl_grain_radius=2000.0, sea_ice_temperature=-3.0,
+            a = emu.predict(tau_ssl=15.0, ssl_grain_radius=2000.0,
+                            sea_ice_temperature=-3.0,
                             sea_ice_bubble_radius=200.0, black_carbon=0.0,
                             solzen=60, direct=1)
         elif name == "MYI_bare":
@@ -274,7 +275,10 @@ if PLOT:
     emu_summer = emulators["FYI_summer"]
     summer_cmap = plt.cm.YlOrRd
     for i, ssl_r in enumerate(ssl_radii):
-        a = emu_summer.predict(ssl_grain_radius=float(ssl_r), sea_ice_temperature=-3.0,
+        # tau_ssl (thickness / grain radius) held fixed, so the sweep shows
+        # the grain-size effect alone rather than a thinning layer.
+        a = emu_summer.predict(tau_ssl=15.0, ssl_grain_radius=float(ssl_r),
+                               sea_ice_temperature=-3.0,
                                sea_ice_bubble_radius=200.0, black_carbon=0.0,
                                solzen=60, direct=1)
         ax.plot(WAVELENGTHS, a, color=summer_cmap(0.2 + 0.7 * i / (len(ssl_radii) - 1)),

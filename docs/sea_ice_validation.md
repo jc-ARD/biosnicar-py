@@ -656,3 +656,28 @@ re-measured then. And OE with the model-error term drops from 12/12 to 11/12
 (VIS) and 10/12 to 8/12 (VIS+SWIR) under the rebuilt covariance, which is
 fitted to 32 correct-model rows where the previous one had 46.
 
+## 15. FYI_summer surface layer by optical depth (2026-11-12)
+
+FYI_summer's surface scattering layer, previously a fixed 5 cm, is now
+parameterised by `tau_ssl` (thickness ÷ grain radius). The change was made on
+physical grounds — see `_transform_fyi_summer` — and these are its measured
+side effects, not its justification.
+
+| Block | Before | After |
+|---|---|---|
+| SHEBA spring snow, full / S2 / L8 | 6/7, 7/7, 7/7 | 6/7, 7/7, 7/7 |
+| SHEBA summer bare ice, full / S2 / L8 | 16/16, 16/16, 16/16 | 16/16, 16/16, 15/16 |
+| SHEBA winner-fit VIS RMS, median | 0.017 | 0.006 |
+| Smith VIS / full-range RMS, median | 0.017 / 0.027 | 0.008 / 0.017 |
+| Smith classified FYI_snow / snow-like | 2/44, 27/44 | 1/44, 34/44 |
+| OE SWIR experiment, default method VIS / VIS+SWIR | 12/12, 9/12 | 12/12, 12/12 |
+| OE SWIR experiment, OE + model error VIS / VIS+SWIR | 11/12, 8/12 | 9/12, 8/12 |
+| SHEBA parameters at a bound, spectral OE | 5/92 (1 genuine) | 21/103 (9 genuine) |
+| Model-error held-out reduced χ² (Istomina), mean / median | 3.72 / 2.43 | 7.37 / 5.00 |
+
+The fits tighten, as they must with one more free parameter. Two things got
+worse and are logged in `ROADMAP.md`: `ssl_grain_radius` now binds on its
+500 µm floor in 6 of 23 SHEBA retrievals, and the model-error covariance —
+calibrated on post-fit residuals that the more flexible model has halved —
+covers the frozen test set less well than before.
+

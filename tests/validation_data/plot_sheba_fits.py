@@ -49,6 +49,7 @@ _PARAM_FMT = {
     "snow_grain_radius":     ("r_grain", " µm", "{:.0f}"),
     "snow_depth":            ("d_snow*", " cm", "{:.1f}"),   # * derived
     "ssl_grain_radius":      ("r_SSL", " µm", "{:.0f}"),
+    "tau_ssl":               ("τ_SSL", "", "{:.1f}"),
     "sea_ice_temperature":   ("T_ice", " °C", "{:.1f}"),
     "sea_ice_bubble_radius": ("r_bbl", " µm", "{:.0f}"),
     "brine_volume_fraction": ("V_b", "", "{:.3f}"),

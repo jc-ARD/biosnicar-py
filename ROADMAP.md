@@ -327,12 +327,47 @@ Remaining:
   by 5.5% — the spectrum barely constrains it through that representation.
   That is a statement about identifiability, not evidence that the surface
   is dry.
-- **Surface-layer thickness in FYI_summer.** Every structure in the SSL
-  experiment wanted a 1.2–1.5 cm layer; the emulator fixes 5 cm. Thickness and
-  grain size trade off (as depth and grain size did for snow before
-  `tau_snow`), so the correct form is probably an optical-depth
-  parameterisation rather than a different constant. Needs a retrain and a
-  class-boundary check against FYI_snow.
+- ~~**Surface-layer thickness in FYI_summer.**~~ **Done 2026-11-12.** The SSL
+  was a fixed 5 cm. It is now parameterised by `tau_ssl` = thickness ÷ grain
+  radius (1–100, log-sampled), with `ssl_grain_radius` kept and thickness
+  reported as a derived quantity. The form follows from the optics rather
+  than from a fit: scattering optical depth goes as ρ·dz/(ρ_ice·r), so
+  thickness and grain size trade off and the spectrum constrains their ratio;
+  grain size keeps a separate handle through absorption per scattering event;
+  and density is *exactly* interchangeable with thickness (only ρ·dz enters,
+  verified to machine precision), so it is not a third parameter. No clip is
+  applied, so no part of the range is inert. FYI_summer is now 7-parameter
+  (held-out R² 0.9999). What moved, for the record and not as justification:
+
+  | | Before | After |
+  |---|---|---|
+  | SHEBA winner-fit VIS RMS, median | 0.017 | 0.006 |
+  | Smith VIS / full-range RMS, median | 0.017 / 0.027 | 0.008 / 0.017 |
+  | Smith classified FYI_summer or FYI_snow | 27/44 | 34/44 |
+  | SHEBA summer, full / S2 / L8 | 16/16, 16/16, 16/16 | 16/16, 16/16, 15/16 |
+  | SHEBA SWIR experiment, default method VIS+SWIR | 9/12 | 12/12 |
+  | SHEBA SWIR experiment, OE + model error, VIS | 11/12 | 9/12 |
+  | SHEBA parameters at a bound (spectral OE) | 5/92 | 21/103, 9 genuine |
+  | Model-error held-out reduced χ² (Istomina), mean / median | 3.7 / 2.4 | 7.4 / 5.0 |
+
+  Two of those rows are new problems, below.
+- **`ssl_grain_radius` now sits on its 500 µm floor in 6 of 23 SHEBA
+  retrievals** (averaging kernel 0.83, so the bound is setting the value).
+  With thickness free, the fits ask for a thin layer of finer grains. Whether
+  the floor should move is a physical question — what optical grain size a
+  real SSL has, and where FYI_summer ends and coarse snow begins — and has not
+  been settled by lowering it until the pins go away.
+- **The model-error covariance under-covers, and a better-fitting model makes
+  it worse.** It is calibrated on post-fit residuals of the winning model on
+  SHEBA and Smith. A more flexible FYI_summer halves those residuals, so the
+  fitted covariance tightens (effective DOF over the VIS 2.7 → 7.5) while the
+  frozen test set's misfit does not shrink — held-out reduced χ² rises from
+  3.7 to 7.4. This is the known weakness of calibrating `S_e` from in-sample
+  post-fit residuals (the optimiser absorbs misfit into the parameters), now
+  visible. The fix is methodological — calibrate on residuals of spectra not
+  used to develop the model, or inflate by the fitted degrees of freedom —
+  and it matters more than any single physics item for whether OE
+  uncertainties can be believed.
 - ~~**`V1` — freeze the independent test corpus.**~~ Done; see above.
 - ~~**The default-behaviour decision.**~~ **Taken 2026-11-12:** spectral `method="oe"` now defaults to the calibrated covariance
   (`model_error="auto"`). The coordination worry no longer applies:
