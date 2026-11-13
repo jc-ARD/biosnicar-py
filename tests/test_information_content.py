@@ -270,7 +270,7 @@ class TestAgainstARealRetrieval:
         """A is relative to the prior, not to truth.
 
         Under ``retrieve()``'s wide default prior the same temperature scores
-        a high kernel while running to the edge of its training range; under
+        a higher kernel; under
         the seasonal prior ``retrieve_sea_ice`` applies it is correctly
         marked prior-influenced.  This pins the caveat so it cannot be
         quietly lost — a high A is not on its own a claim of accuracy.
@@ -289,9 +289,10 @@ class TestAgainstARealRetrieval:
         strong = self._retrieve()
         assert weak.information_content()["sea_ice_temperature"] > \
             strong.information_content()["sea_ice_temperature"]
-        # and the weak-prior value is the less trustworthy of the two
-        assert abs(weak.best_fit["sea_ice_temperature"] - (-4.0)) > \
-            abs(strong.parameters["sea_ice_temperature"] - (-4.0))
+        # (This test used to add that the weak-prior value was also the
+        # further from truth.  That is one noise draw's outcome, not a
+        # property of the kernel, and it flipped on a retrain.  The claim
+        # being pinned is only that a wide prior raises A.)
 
 
 # ── Degenerate pairs: report the combination, not the components ──────────

@@ -357,7 +357,10 @@ SEA_ICE_EMULATOR_CONFIGS = {
             # a saturated direction.  See _transform_fyi_summer.
             "tau_ssl":                (1.0,   100.0),
             "ssl_grain_radius":       (500.0, 5000.0),
-            "sea_ice_temperature":    (-10.0, -2.0),
+            # Upper bound -1 degC (was -2, the old limit of the phase
+            # model).  Melting ice sits between -2 and 0 degC; -1 is the
+            # warm limit of the sea-ice LUT.
+            "sea_ice_temperature":    (-10.0, -1.0),
             # Raised from 500.  On the 23 SHEBA spectra the old ceiling was
             # pinned by 9 retrievals with a mean averaging kernel of 0.87 —
             # the measurement pushing hard against it, not drifting there.
@@ -412,7 +415,8 @@ SEA_ICE_EMULATOR_CONFIGS = {
         "band_mask": "vis_swir",
         "params": {
             "pond_depth":             (0.02,  0.60),
-            "sea_ice_temperature":    (-10.0, -2.0),
+            # Ice under a melt pond is at or near its melting point.
+            "sea_ice_temperature":    (-10.0, -1.0),
             # Newly retrieved — see _transform_fyi_pond.  Fixed at 200 um the
             # emulator bottomed out at BBA 0.144 and could not represent 21%
             # of the Morassutti ponds at any setting.

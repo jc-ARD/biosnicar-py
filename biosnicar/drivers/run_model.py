@@ -127,7 +127,7 @@ def run_model(
 
             - **layer_type** — 0=granular snow/ice, 1=solid glacier ice
               (Fresnel), 2=solid ice (no Fresnel), 3=mixed water/ice
-              spheres, **4=sea ice** (brine inclusions, Maxwell-Garnett),
+              spheres, **4=sea ice** (brine and salt inclusions, air bubbles),
               **5=melt pond** (liquid water, set rho=1000 kg/m³)
             - **dz** — layer thickness (m)
             - **rho** — bulk density (kg/m³)
@@ -155,7 +155,7 @@ def run_model(
 
             - **sea_ice_salinity** (*float | list*) — bulk salinity (psu)
             - **sea_ice_temperature** (*float | list*) — temperature (°C,
-              must be in [−44, −2])
+              must be in [−44, 0]; the optics LUT spans −30 to −1)
             - **sea_ice_bubble_radius** (*float | list*) — effective air-
               bubble radius (µm, typically 100–1000)
 
@@ -254,6 +254,8 @@ def run_model(
         overrides = _resolve_parameterisations(overrides)
         _apply_overrides(overrides, ice, illumination, impurities, input_file)
 
+    _set_lower_boundary(ice)
+
     if validate:
         validate_inputs(ice, illumination, impurities)
 
@@ -292,6 +294,22 @@ def run_model(
         plot_albedo(plot_config, model_config, outputs.albedo)
 
     return outputs
+
+
+def _set_lower_boundary(ice):
+    """Put ocean, not glacier ice, under a sea-ice column.
+
+    ``ice.sfc`` — the reflectance of whatever lies beneath the bottom layer —
+    comes from the YAML config and defaults to a measured blue glacier-ice
+    spectrum (16% at 450 nm), which is the right thing under a glacier
+    weathering crust and the wrong thing under floating ice.  When the bottom
+    layer is sea ice the boundary is the ocean's subsurface reflectance.
+    The effect is small for thick ice (under 0.001 in broadband albedo at
+    1.5 m) and grows as the ice thins (0.002 at 30 cm).
+    """
+    if ice.layer_type and ice.layer_type[-1] == 4:
+        from biosnicar.sea_ice.open_water import ocean_subsurface_reflectance
+        ice.sfc = ocean_subsurface_reflectance()
 
 
 def _run_young_ice(ice, illumination):

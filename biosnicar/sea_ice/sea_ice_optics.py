@@ -2,19 +2,37 @@
 
 Physics pipeline
 ----------------
-1. Brine volume fraction ν_b via Cox & Weeks (1983), from the layer's
-   temperature, salinity *and bulk density*.
-2. Brine complex RI via `brine_optics.compute_brine_rfidx`.
+1. Brine volume fraction ν_b and gas volume fraction ν_air from the layer's
+   temperature, salinity and bulk density — Cox & Weeks (1983) below -2 °C,
+   Leppäranta & Manninen (1988) from -2 to 0 °C.  Two halves of one density
+   balance, so they are mutually consistent by construction.
+2. Brine complex RI at the liquidus salinity of the same phase model
+   (`brine_optics.compute_brine_rfidx`).
 3. Pure-ice complex RI from the Picard 2016 variant in rfidx_ice.npz.
-4. Effective ice+brine RI via Maxwell-Garnett mixing.
-5. Absorption coefficient from imaginary part of effective RI.
-6. Scattering from air bubbles: gas volume fraction ν_air via the Cox & Weeks
-   gas equation — the other half of the step-1 density balance, so ν_b and
-   ν_air are mutually consistent by construction.  Scattering coefficients
-   from the bubbly_air LUT (pre-computed for air bubbles in pure ice — valid
-   MVP approximation; the effective-medium correction to bubble scattering is
-   < 3% for ν_b < 0.15 and is deferred to a future version).
-7. Combined (τ, ω, g) per metre of sea ice thickness.
+4. Effective ice+brine RI by the symmetric Bruggeman rule, valid at any
+   brine fraction.
+5. Absorption coefficient from the imaginary part of the effective RI,
+   weighted by the condensed-phase fraction (air does not absorb).
+6. Scattering, the sum of four independent populations:
+     - air bubbles, from the bubbly_air LUT × ν_air;
+     - brine inclusions (pockets and tubes) in the ice;
+     - mirabilite crystals in the brine, below -8.2 °C;
+     - hydrohalite crystals in the brine, below -22.9 °C.
+   The last three follow Light, Maykut & Grenfell (2004) — see
+   :mod:`biosnicar.sea_ice.inclusion_scattering`.
+7. Combined (τ, ω, g) per metre; g is the scattering-weighted mean of the
+   populations' asymmetry parameters.
+
+Why the brine terms matter
+--------------------------
+Brine inclusions scatter strongly but almost entirely forward (g ≈ 0.99), so
+what counts is the similarity parameter s = σ(1 − g).  For interior
+first-year ice at -15 °C and 4.7 ppt they contribute s ≈ 3 m⁻¹.  Air bubbles
+of 300 µm at 1% porosity contribute about 7 m⁻¹, and at the 7% porosity of a
+drained layer about 50.  So in drained, bubbly ice the bubbles dominate and
+this term is a correction; in dense interior ice it is comparable to the
+bubbles, and leaving it out forces the retrieved bubble radius to stand in
+for it.
 
 Approximations documented here
 -------------------------------
@@ -22,10 +40,12 @@ Approximations documented here
   calculation would re-run Mie for bubbles in the ice+brine effective medium.
   For typical sea ice conditions (ν_b < 0.15, moderate bubble sizes) the
   error in scattering efficiency is < 5%.
-- Brine RI corrections are calibrated on seawater near 35 psu and
-  extrapolated to brine salinities up to ~200 psu.  See brine_optics.py.
-- Gas (air) inside brine pockets is neglected; sea ice gas pockets are much
-  smaller than air bubbles and contribute negligible scattering.
+- Bubbles are the layer's whole gas volume.  Light et al. distinguish
+  bubbles inside brine inclusions, which grow as the ice warms and escape
+  above a critical size, from bubbles in the ice matrix; that distinction is
+  not made here, where the gas volume comes from the bulk density.
+- The four scattering populations are independent and add.
+- Gas (air) inside brine pockets is neglected as a separate scatterer.
 - Bubble scattering is taken linear in ν_air (single-bubble LUT × volume
   fraction), i.e. bubbles scatter independently.  At the LUT's 700 kg/m³ floor
   the layer is ~21.5% air; inter-bubble clearance there is still many
@@ -33,13 +53,16 @@ Approximations documented here
   above ~15% air.  Beyond ~30–35% air (ρ ≈ 600–640 kg/m³) the gas percolates
   and the bubbles-in-a-continuous-matrix topology itself fails — such ice
   belongs in ``layer_type=0`` (grains in air), not here.
+- The inclusion microstructure is that of interior first-year ice and is
+  applied to all ice; above a brine fraction of 0.5 it is held fixed.
 
 References
 ----------
-Cox & Weeks (1983) — brine volume.
-Rowe et al. (2020) — water RI base.
+Cox & Weeks (1983); Leppäranta & Manninen (1988) — brine and gas volume.
+Light, Maykut & Grenfell (2004) — brine-inclusion and salt-crystal scattering.
+Maykut & Light (1995); Quan & Fry (1995) — brine refractive index.
+Rowe et al. (2020) — water absorption.
 Picard et al. (2016) — ice complex RI (variant 'Pic16').
-Light et al. (2004) — sea ice radiative transfer benchmark.
 """
 
 from typing import Tuple
@@ -51,6 +74,7 @@ from biosnicar.optical_properties.op_lookup import get_lut
 from biosnicar.sea_ice.brine_volume import compute_brine_volume, compute_gas_volume
 from biosnicar.sea_ice.brine_optics import compute_brine_rfidx
 from biosnicar.sea_ice.effective_medium import effective_ri_ice_brine
+from biosnicar.sea_ice.inclusion_scattering import inclusion_scattering
 
 _DATA_DIR = biosnicar.DATA_DIR
 _RFIDX_PATH = _DATA_DIR / "OP_data" / "480band" / "rfidx_ice.npz"
@@ -113,7 +137,7 @@ def compute_sea_ice_optics(
     Args:
         thickness_m: Layer thickness in metres (> 0).
         salinity_psu: Bulk salinity in psu (0–15 typical).
-        temperature_C: Temperature in °C (−44 to −2).
+        temperature_C: Temperature in °C (−44 to 0).
         density_kg_m3: Bulk sea-ice density in kg/m³.  Cold interior ice sits
             at 870–920; weathered, drained and gas-rich ice can fall to
             700–850 (Timco & Frederking 1996 report 720–940 for sea ice as a
@@ -159,8 +183,8 @@ def compute_sea_ice_optics(
     # --- 3. Pure-ice complex RI ---
     ri_ice = _load_ice_ri(ri_variant)
 
-    # --- 4. Effective ice+brine RI via Maxwell-Garnett ---
-    # Maxwell-Garnett mixes a *two-phase* condensed medium, so it needs the
+    # --- 4. Effective ice+brine RI (symmetric Bruggeman rule) ---
+    # The rule mixes a *two-phase* condensed medium, so it needs the
     # brine fraction OF THAT MEDIUM, not of the whole layer.  nu_b is a
     # fraction of total volume, so divide out the air to get the brine
     # concentration within the ice+brine phase.
@@ -174,8 +198,8 @@ def compute_sea_ice_optics(
     # (1 - nu_air) of the layer is that phase, and air does not absorb, so the
     # layer's absorption per metre is reduced in proportion.
     #
-    # Air is deliberately NOT mixed into the effective medium: Maxwell-Garnett
-    # assumes inclusions small compared to the wavelength, and the bubbles are
+    # Air is deliberately NOT mixed into the effective medium: effective-medium
+    # rules assume inclusions small compared to the wavelength, and the bubbles are
     # 100–1000 µm against 0.2–5 µm light.  That is why they are treated as
     # discrete Mie scatterers (step 7).  For large non-absorbing inclusions the
     # correct treatment of absorption is path-length volume weighting, which is
@@ -200,7 +224,18 @@ def compute_sea_ice_optics(
     sca_cff_vlm = bubbly_lut.get(r_lut, "sca_cff_vlm")   # m^-1 per unit ν_air
     g_bubble = bubbly_lut.get(r_lut, "asm_prm")
 
-    sca_coeff = sca_cff_vlm * nu_air   # m^-1
+    sca_bubble = sca_cff_vlm * nu_air   # m^-1
+
+    # --- 7b. Scattering from brine inclusions and precipitated salts ---
+    populations = inclusion_scattering(
+        salinity_psu, temperature_C, rho_si, nu_b,
+        np.real(ri_ice), np.real(ri_brine), WAVELENGTHS,
+    )
+    sca_coeff = sca_bubble.copy()
+    sca_g = sca_bubble * g_bubble
+    for sigma_i, g_i in populations.values():
+        sca_coeff = sca_coeff + sigma_i
+        sca_g = sca_g + sigma_i * g_i
 
     # --- 8. Total extinction and derived quantities ---
     ext_coeff = abs_coeff + sca_coeff   # m^-1
@@ -208,8 +243,9 @@ def compute_sea_ice_optics(
     # ssa: scattering / extinction
     with np.errstate(invalid="ignore", divide="ignore"):
         ssa = np.where(ext_coeff > 0, sca_coeff / ext_coeff, 0.0)
-
-    g = g_bubble   # asymmetry parameter (from bubble Mie; ice absorption ~0 asymmetry)
+        # Scattering-weighted asymmetry parameter of the four populations
+        # (Light et al. 2004, Eq. 6).
+        g = np.where(sca_coeff > 0, sca_g / sca_coeff, g_bubble)
 
     # --- 9. Optical depth: τ = ext_coeff × thickness ---
     tau = ext_coeff * thickness_m

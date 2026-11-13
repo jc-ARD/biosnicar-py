@@ -681,3 +681,33 @@ worse and are logged in `ROADMAP.md`: `ssl_grain_radius` now binds on its
 calibrated on post-fit residuals that the more flexible model has halved —
 covers the frozen test set less well than before.
 
+## 16. Brine-inclusion scattering and the melt-season phase model (2026-11-13)
+
+The sea-ice optics gained scattering by brine inclusions and precipitated
+salts, a phase model that runs to 0 °C with one consistent liquidus, a
+corrected brine refractive index, and an ocean lower boundary. The LUT and all
+six emulators were rebuilt. As before, these are measured side effects of a
+physics change, not its justification; "before" is the state of §15.
+
+| Block | Before | After |
+|---|---|---|
+| Emulator held-out spectral R², worst of six | 0.9979 | 0.9981 |
+| SHEBA spring snow, full / S2 / L8 | 6/7, 7/7, 7/7 | 6/7, 7/7, 7/7 |
+| SHEBA summer bare ice, full / S2 / L8 | 16/16, 16/16, 15/16 | 16/16, 16/16, 15/16 |
+| Morassutti pond classification (504) | 88.5% (§14) | 90.5% |
+| Morassutti pond depth within ±25% (504) | 22.6% (§14) | 18.8% |
+| Smith VIS / full-range RMS, median | 0.008 / 0.017 | 0.008 / 0.016 |
+| Smith classified FYI_snow / snow-like | 1/44, 34/44 | 1/44, 35/44 |
+| OE SWIR experiment, default method VIS / VIS+SWIR | 12/12, 12/12 | 12/12, 12/12 |
+| OE SWIR experiment, OE + model error VIS / VIS+SWIR | 9/12, 8/12 | 9/12, 8/12 |
+| SHEBA parameters at a bound, spectral OE | 21/103 (9 genuine) | 15/104 (6 genuine) |
+| Model-error held-out reduced χ² (Istomina), mean / median | 7.37 / 5.00 | 6.63 / 4.38 |
+
+Little moves, which is the expected result: brine scattering is a correction
+of a few percent where bubbles are plentiful, and the field spectra here are
+dominated by surface layers. The pond figures were last measured in full at
+§14, so their change spans the §15 reparameterisation as well. Pond depth has
+fallen from 23.8% to 18.8% over three changes while pond classification rose
+from 74.6% to 90.5%; depth and floor coarseness are the most degenerate pair
+in that emulator (mean |r| 0.81).
+

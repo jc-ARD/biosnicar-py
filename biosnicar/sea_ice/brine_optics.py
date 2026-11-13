@@ -3,18 +3,11 @@
 Physics
 -------
 Brine in sea ice pockets is at the **liquidus** (phase-equilibrium) salinity,
-determined by temperature alone.  We use ``brine_salinity_at_temp(T)`` from
-``brine_volume.py``, derived from the Frankenstein & Garner (1967) brine-volume
-relation by salt mass balance (see that module for the full derivation and
-citation):
-
-    S_brine(-10 °C) ≈ 150 psu               (Frankenstein & Garner 1967, derived)
-
-At T = -10 °C this gives S_brine ≈ 150 psu — roughly 19× the typical bulk ice
-salinity of 8 psu.  Using the bulk salinity in RI calculations (as in v0.1)
-underestimates the brine-ice optical contrast by an order of magnitude.  (The
-earlier linear law S_b ≈ -18.7·T gave 187 psu here — ~25 % high; the true
-liquidus is strongly sub-linear.)
+determined by temperature alone: ``brine_salinity_at_temp(T)`` from
+``brine_volume.py``, which is the liquidus of the same Cox & Weeks phase
+model that gives the brine volume (about 37 psu at -2 °C, 143 at -10 °C, 228
+at -22.9 °C).  Using the bulk ice salinity instead (as in v0.1)
+underestimates the brine-ice optical contrast by an order of magnitude.
 
 The corrected implementation computes brine RI at the liquidus salinity,
 then applies Maxwell-Garnett mixing at the appropriate brine volume fraction
@@ -25,15 +18,14 @@ Method
 Starting point: pure liquid water RI at 0 °C from Rowe et al. (2020),
 on the BioSNICAR 480-band grid (0.205–4.995 µm).
 
-Real part (refractive index):
-  400–700 nm:  Full Quan & Fry (1995) formula for the salt contribution
-               at the liquidus brine salinity.  Calibrated for T ∈ [0, 30 °C]
-               and S ∈ [0, 40 psu]; extrapolated to sub-zero T and high S.
-               The formula gives the TOTAL n including water; we subtract the
-               pure-water value to isolate the salt contribution, then add it
-               to the Rowe2020 water RI (which is more accurate at 0 °C).
-  >700 nm:     Salt contribution fixed at its 700-nm value from Q&F; water RI
-               from Rowe2020.  (Salt ions contribute only weakly to NIR real RI.)
+Real part (refractive index) — see ``_brine_real_index``:
+  400–700 nm:  The Quan & Fry (1995) formula at the liquidus brine salinity
+               and the actual temperature, plus a high-salinity term anchored
+               to the brine measurements of Maykut & Light (1995).  Agrees
+               with their 589 nm values at both ends of their range: 1.341
+               at -2 °C and 1.397 at -32 °C.
+  elsewhere:   The tabulated water index, offset to join the formula at the
+               edge of its window.
 
 Imaginary part (absorption index k):
   0–400 nm:    Additional ionic UV absorption (Cl⁻ electronic band) decaying
@@ -51,10 +43,10 @@ Known limitations
 - Quan & Fry (1995) calibrated to S ≤ 40 psu; extrapolated to 40–500 psu
   (typical brine range).  Error in real-part correction estimated < 10% based
   on the Lorentz-Lorenz mixing-rule comparison.
-- Liquidus salinity is the Frankenstein & Garner (1967) brine-volume relation
-  inverted by salt mass balance (see brine_volume.py); a *derived* liquidus,
-  not a direct fit to Assur (1958) phase data, and least reliable near the
-  -22.9 °C eutectic where it saturates at ~233 psu.
+- The high-salinity term rests on two measured points (the ends of Maykut &
+  Light's range); its shape between them is assumed quadratic.  Frisvad
+  (2009, *Applied Optics* 48, 2149) gives an empirical formula fitted to the
+  full data set and would be the better source.
 - Imaginary-part ionic correction is an order-of-magnitude estimate.
 - A rigorous treatment requires direct laboratory measurement of brine RI
   at sub-zero temperatures and high salinities (e.g. Friedlander et al. 2022).
@@ -64,6 +56,8 @@ References
 Rowe, P. M. et al. (2020). *J. Geophys. Res.*, 125, e2019JD031822.
 Quan, X. & Fry, E. S. (1995). *Applied Optics*, 34, 3477.
 Pegau, W. S., Gray, D. & Zaneveld, J. R. V. (1997). *Limnol. Oceanogr.*, 42(3).
+Maykut, G. A. & Light, B. (1995). Refractive-index measurements in freezing
+    sea-ice and sodium chloride brines. *Applied Optics*, 34(6), 950-961.
 """
 
 from typing import Optional
@@ -83,8 +77,10 @@ _LUT_PATH   = _DATA_DIR / "OP_data" / "brine_rfidx.npz"
 WAVELENGTHS    = np.arange(0.205, 4.999, 0.01)
 WAVELENGTHS_NM = WAVELENGTHS * 1000.0   # nm, for Quan & Fry
 
-# LUT temperature grid
-_T_GRID = np.array([-2, -5, -10, -15, -20, -25, -30], dtype=float)   # °C
+# LUT temperature grid.  Reaches 0 °C (pure water) now that the phase model
+# does, with nodes at the liquidus kinks (-2, -8.2, -22.9 °C).
+_T_GRID = np.array([0, -0.5, -1, -2, -3.5, -5, -8.2, -10, -15, -20, -22.9,
+                    -25, -30], dtype=float)   # °C
 
 # Quan & Fry (1995) coefficients — real part
 _QF = dict(n0=1.31405, n1=1.779e-4, n2=-1.05e-6, n3=1.6e-8,
@@ -194,6 +190,52 @@ def _load_water_ri():
     return df["n"].values.astype(float), df["k"].values.astype(float)
 
 
+# Maykut & Light (1995) measured the 589 nm index of freezing sea-ice brine:
+# 1.341 at -2 °C (35 ppt) and 1.397 at -32 °C (240 ppt).  Quan & Fry (1995),
+# evaluated at the liquidus salinity and the actual temperature, gives 1.3413
+# at the warm end — exact — and 1.3915 at the cold end, 0.0055 low, which is
+# unsurprising for a formula fitted to S <= 40 ppt at T >= 0 °C.  This term
+# closes that gap: zero at 35 ppt, 0.0055 at 240 ppt, quadratic between.
+_ML95_S0 = 35.0
+_ML95_COEFF = 0.0055 / (240.0 - _ML95_S0) ** 2
+
+
+def _brine_real_index(S_brine: float, T_C: float, wvl_um: np.ndarray,
+                      n_re_water: np.ndarray) -> np.ndarray:
+    """Real refractive index of brine of salinity *S_brine* at *T_C*.
+
+    400-700 nm: the Quan & Fry (1995) formula itself, at the brine salinity
+    and temperature, plus the Maykut & Light (1995) high-salinity term.
+    Outside that window: the tabulated water index carried along with the
+    same offset the formula has at the window's edge, so the spectrum is
+    continuous.
+
+    The tabulated water index (Rowe et al. 2020) is *not* used as the
+    baseline inside the window, as it once was.  Its real part is 0.003 low
+    at 589 nm and 0.005 low at 700 nm against Quan & Fry's pure-water value
+    (1.3340 at 589 nm and 0 °C, the accepted figure), and since the quantity
+    that matters optically is the few-percent contrast between brine and
+    ice, that error removed about a tenth of it.
+    """
+    wvl_um = np.asarray(wvl_um, dtype=float)
+    S = float(S_brine)
+    extra = _ML95_COEFF * max(S - _ML95_S0, 0.0) ** 2
+
+    lo, hi = 0.40, 0.70
+    n = _qf_real(S, T_C, np.clip(wvl_um, lo, hi) * 1000.0) + extra
+
+    def _offset(edge):
+        i = int(np.argmin(np.abs(wvl_um - edge)))
+        return float(n[i] - n_re_water[i])
+
+    below, above = wvl_um < lo, wvl_um > hi
+    if below.any():
+        n = np.where(below, n_re_water + _offset(lo), n)
+    if above.any():
+        n = np.where(above, n_re_water + _offset(hi), n)
+    return n
+
+
 def _compute_brine_ri(temperature_C: float,
                       n_re_water: np.ndarray,
                       n_im_water: np.ndarray) -> tuple:
@@ -202,7 +244,7 @@ def _compute_brine_ri(temperature_C: float,
     # Brine is at the phase-boundary (liquidus) salinity, capped at eutectic
     S_b = min(float(brine_salinity_at_temp(T)), _S_BRINE_CAP)
 
-    n_re = n_re_water + _salt_delta_re(S_b, T, WAVELENGTHS)
+    n_re = _brine_real_index(S_b, T, WAVELENGTHS, n_re_water)
     n_im = n_im_water + _salt_delta_im(S_b, T, n_im_water, WAVELENGTHS)
 
     n_re = np.maximum(n_re, 1.0)
@@ -321,7 +363,7 @@ def compute_brine_rfidx(
         n_re_wvl = f_re(wavelengths_um)
         n_im_wvl = np.maximum(f_im(wavelengths_um), 0.0)
         S_b = min(float(brine_salinity_at_temp(T)), _S_BRINE_CAP)
-        n_re = n_re_wvl + _salt_delta_re(S_b, T, wavelengths_um)
+        n_re = _brine_real_index(S_b, T, wavelengths_um, n_re_wvl)
         n_im = np.maximum(
             n_im_wvl + _salt_delta_im(S_b, T, n_im_wvl, wavelengths_um), 0.0
         )

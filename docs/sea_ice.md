@@ -15,7 +15,7 @@ BioSNICAR uses a `layer_type` integer per layer to select the optical-property m
 | 1 | Solid bubbly glacier ice + Fresnel air-ice surface | **Yes** |
 | 2 | Solid bubbly glacier ice, no Fresnel correction | No |
 | 3 | Granular water/ice sphere mixture (slush) | No |
-| **4** | **Sea ice — brine inclusions via Maxwell-Garnett** | **Yes** |
+| **4** | **Sea ice — brine and salt inclusions, air bubbles** | **Yes** |
 | **5** | **Melt pond — liquid water layer (near-pure absorption)** | **Yes** (air–water, n ≈ 1.33) |
 | **6** | **Young ice — semi-transparent thin slab over ocean (boundary condition, bypasses the τ/ω/g pipeline)** | **Yes** |
 
@@ -31,7 +31,7 @@ Sea ice (`layer_type=4`) is closest to type 1 in structure — solid bulk ice wi
 
 ### Does
 - Computes spectral albedo (480 bands, 0.205–4.995 µm) for sea-ice columns with optional snow cover.
-- Models brine inclusions via the liquidus brine salinity and Maxwell-Garnett effective medium.
+- Models brine through one phase model (Cox & Weeks / Leppäranta & Manninen) from −30 to 0 °C: its volume, its liquidus salinity, its absorption, and its scattering as pockets and tubes; plus the salts that precipitate from it in cold ice.
 - Models melt ponds as liquid water layers (layer_type=5) with realistic water absorption.
 - Accepts per-layer physical inputs: thickness, temperature, salinity, density, bubble radius, pond depth.
 - Provides five pre-configured presets: three winter sea-ice types plus two melt pond depths.
@@ -58,63 +58,81 @@ Sea ice (`layer_type=4`) is closest to type 1 in structure — solid bulk ice wi
 
 Sea ice forms from seawater and retains dissolved salt as **brine inclusions**: pockets of liquid concentrated seawater that remain liquid even at temperatures well below 0 °C. These inclusions affect the ice's complex refractive index and therefore its spectral albedo. First-year ice (FYI) typically contains 4–12 psu of bulk salinity, while multiyear ice (MYI) has been desalinated by summer brine drainage and contains only 1–3 psu.
 
-### Cox & Weeks (1983) brine volume
+### Phase model: brine volume, gas volume, brine salinity, precipitated salts
 
-The fraction of the ice that is liquid brine (**brine volume fraction ν_b**) depends on bulk salinity S (psu) and temperature T (°C):
-
-```
-For −22.9 ≤ T ≤ −2 °C:
-  F1(T) = −4.732 − 22.45T − 0.6397T² − 0.01074T³
-  F2(T) = 0.08903 − 0.01763T − 5.330×10⁻⁴T² − 8.801×10⁻⁶T³
-  ρ_i   = 0.917 − 1.403×10⁻⁴T    (pure ice density, g/cm³)
-  ν_b   = (S × ρ_i) / (F1 − ρ_i × S × F2)
-```
-
-At T = −10 °C and S = 8 psu, ν_b ≈ 0.045 (4.5% of the ice is liquid brine). At T = −2 °C, ν_b can reach 25% or more.
-
-### Brine refractive index — liquidus constraint
-
-A critical physical insight: brine inside sea ice is not at the bulk ice salinity. It is at the **liquidus (phase-equilibrium) salinity** determined by temperature alone. We obtain it by inverting the **Frankenstein & Garner (1967)** brine-volume relation `Vb = 10⁻³·S·(−49.185/T + 0.532)` (valid −0.5 to −22.9 °C) through salt mass balance — all the salt resides in the brine, so the bulk salinity cancels and S_b depends on temperature only:
+The fraction of the ice that is liquid brine (**brine volume fraction ν_b**) depends on bulk salinity S (psu), temperature T (°C) and bulk density ρ_si (g/cm³):
 
 ```
-S_brine(T)  from  ρ_ice = S_b·ρ_b·10⁻³·(−49.185/T + 0.532)   [Frankenstein & Garner 1967, derived]
-            ≈ 36 psu at −2 °C, ≈ 150 psu at −10 °C
-            held at the ~233 psu NaCl·2H₂O eutectic below −22.9 °C
+ν_b   = S × ρ_si / F1(T)
+ν_air = 1 − ρ_si/ρ_i + ρ_si × S × F2(T)/F1(T)        ρ_i = 0.917 − 1.403×10⁻⁴T
+
+−22.9 ≤ T ≤ −2 °C   F1 = −4.732 − 22.45T − 0.6397T² − 0.01074T³          (Cox & Weeks 1983)
+                    F2 = 0.08903 − 0.01763T − 5.330×10⁻⁴T² − 8.801×10⁻⁶T³
+−30 ≤ T < −22.9 °C  F1 = 9899 + 1309T + 55.27T² + 0.7160T³               (Cox & Weeks 1983)
+                    F2 = 8.547 + 1.089T + 4.518×10⁻²T² + 5.819×10⁻⁴T³
+−2 < T ≤ 0 °C       F1 = −0.041221 − 18.407T + 0.58402T² + 0.21454T³     (Leppäranta & Manninen 1988)
+                    F2 = 0.090312 − 0.016111T + 1.2291×10⁻⁴T² + 1.3603×10⁻⁴T³
 ```
 
-This is a *derived* liquidus (honest caveat: it inverts a brine-*volume* fit using a linear brine-density model ρ_b = 1000 + 0.8·S_b kg m⁻³, rather than fitting Assur (1958) phase data directly as Notz & Worster (2009) do; it is least reliable near the eutectic, where it is capped). It replaced the earlier linear "warm-ice" law `S_b ≈ −18.7·T` (Notz et al. 2005), which overestimates brine salinity by ~30 % at −10 °C (187 vs 150 psu).
+At T = −10 °C and S = 8 psu, ν_b ≈ 0.045. The **melt season is covered**: at −1 °C ice of 5 psu is 24% brine, and as F1 → 0 the ice reaches its melting point (−0.27 °C at 5 psu; −1.86 °C at 34 psu, the freezing point of sea water) and is returned as fully melted. The model used to refuse anything above −2 °C. The Leppäranta & Manninen coefficients were checked against SMRT v1.7.3.
 
-At T = −10 °C this gives S_brine ≈ 150 psu — roughly 19× the typical bulk ice salinity of 8 psu. The v0.1 implementation mistakenly used the bulk salinity (8 psu) in the RI formula, making the brine-ice optical contrast an order of magnitude too small; corrected in v0.2, and the liquidus refined from linear to the F&G-derived form in v0.4.
+**Brine salinity is the same phase model, not a second one.** Brine sits at the liquidus, so its salinity depends on temperature alone; and it is tied to the brine volume by conservation of salt, `S·ρ_si = S_b·ρ_b·ν_b·(1 + k)`, with k the precipitated salt per unit of salt still dissolved. Since ν_b = S·ρ_si/F1, the Cox & Weeks F1 *is* the liquidus: `F1 = ρ_b·S_b·(1 + k)`, with `ρ_b = 1 + 0.0008·S_b`.
 
-**Real part** — Quan & Fry (1995) full wavelength-dependent formula applied at the liquidus salinity S_brine (which self-caps at the ~233 psu eutectic):
+- **Above −8.2 °C** nothing has precipitated, and S_b is obtained from F1 by solving that quadratic. Brine volume and brine salinity then conserve salt identically (a test asserts it to 10⁻⁹).
+- **−22.9 to −8.2 °C**: Assur's phase data, `S_b = 57.041 − 9.929T − 0.16204T² − 0.002396T³` (Cox & Weeks 1975).
+- **Below −22.9 °C**: `S_b = 206.24 − 1.8907T − 0.060868T² − 0.0010247T³` (Cox & Weeks 1986), shifted by 0.7% to join.
+
+That gives 37 psu at −2 °C, 87 at −5, 143 at −10, 228 at −22.9 and 234 at −30. It replaces a liquidus derived from the Frankenstein & Garner (1967) brine-volume relation, which disagreed with the Cox & Weeks volume it was used alongside by 1.7% at −2 °C rising to 13.9% at −22.9 °C.
+
+**Precipitated salts.** Mirabilite (Na₂SO₄·10H₂O) forms below −8.2 °C and hydrohalite (NaCl·2H₂O) below −22.9 °C. Hydrohalite mass is the sodium chloride that leaves the brine as the cold-branch brine volume collapses, computed from the same fits (about 60% of the salt by −30 °C). Mirabilite mass is a saturating interpolation anchored to one literature value — 9×10⁻⁴ kg per kg of 4.7 ppt ice at −15 °C — and capped by the sulphate available; it is the weakest link in the phase model and matters least optically.
+
+### Brine refractive index
+
+**Real part.** In 400–700 nm the Quan & Fry (1995) formula is evaluated at the liquidus salinity and the actual temperature:
 
 ```
 n(S_b, T, λ) = n₀ + (n₁ + n₂T + n₃T²)·S_b + n₄T²
-             + (n₅ + n₆·S_b + n₇·T)/λ + n₈/λ² + n₉/λ³
+             + (n₅ + n₆·S_b + n₇·T)/λ + n₈/λ² + n₉/λ³          (λ in nm)
 ```
 
-where λ is in nm. Formula covers 400–700 nm; salt contribution fixed at the 700-nm value in NIR (weakly wavelength-dependent beyond the visible). At T = −10 °C (S_brine ≈ 150 psu) this gives Δn_re ≈ +0.03 vs the v0.1 value of +0.002 — an order-of-magnitude increase.
+plus a high-salinity term anchored to the measurements of Maykut & Light (1995), who found 1.341 at −2 °C and 1.397 at −32 °C at 589 nm. Quan & Fry alone reproduces the warm value exactly and is 0.0055 low at the cold end — it was fitted to S ≤ 40 ppt above 0 °C — and the extra term closes that. Outside 400–700 nm the tabulated water index is carried along with the formula's offset at the window edge.
 
-**Imaginary part** — NaCl has **no absorption above 400 nm**. The v0.1 multiplicative correction was physically wrong and has been removed. The corrected implementation adds only:
-1. A small UV ionic contribution (Cl⁻ electronic band, decaying to essentially zero by 0.4 µm)
-2. A temperature correction in the visible from Pegau et al. (1997)
+The tabulated water index (Rowe et al. 2020) is no longer the baseline inside the window. Its real part is 0.003 low at 589 nm and 0.005 low at 700 nm against the accepted pure-water value, and because what matters optically is the 2–6% contrast between brine and ice, that error had removed about a tenth of it. The same file still supplies the water index for the melt-pond surface, where the effect is negligible (reflectance 2.02% against 2.05%).
 
-In NIR (> 700 nm), k_brine ≈ k_water — the dominant O-H overtone absorption bands of water are nearly independent of dissolved salt concentration.
+The brine-in-ice relative index is now 1.024 at −2 °C and 1.065 at −30 °C, as in Light et al. (2004, Fig. 7a).
 
-**Net effect**: the corrected brine RI has substantially larger real-part contrast with pure ice (driving slightly more absorption in the effective medium), but no spurious visible absorption. FYI BBA changes from ~0.56 (v0.1) to ~0.51 (v0.2), which is more physically consistent with SHEBA observations.
+**Imaginary part.** NaCl has no absorption above 400 nm. Only a small UV ionic contribution (Cl⁻ band, zero by 0.4 µm) is added to the water absorption; in the NIR k_brine ≈ k_water.
 
-### Maxwell-Garnett effective medium
+### Effective medium — absorption
 
-The combined ice+brine medium is modelled as pure ice (host) containing spherical brine inclusions at volume fraction ν_b. The effective complex permittivity is:
+Ice and brine are mixed with the **symmetric Bruggeman rule**, which treats neither phase as the host and holds at any brine fraction:
 
 ```
-ε_eff = ε_ice × [ε_brine(1 + 2ν_b) + 2ε_ice(1 − ν_b)] /
-                [ε_brine(1 − ν_b) + ε_ice(2 + ν_b)]
+(1 − f)(ε_ice − ε)/(ε_ice + 2ε) + f(ε_brine − ε)/(ε_brine + 2ε) = 0
 ```
 
-The effective refractive index n_eff + ik_eff is obtained via √ε_eff. The increased imaginary part (absorption) from the brine inclusions directly reduces the single-scattering albedo relative to pure ice.
+It replaced Maxwell-Garnett with ice as host, which is only valid for dilute inclusions (f < ~0.3) and was being applied to melting ice beyond that. The numbers barely move — the two rules agree to 0.04% in the imaginary index across the whole range, because ice and brine differ by only ~5% in permittivity — so this is a matter of using the rule that is valid, not of changing the answer. The layer's absorption coefficient is `4π·k_eff/λ × (1 − ν_air)`.
 
-*Known limitation*: Maxwell-Garnett is most accurate for dilute inclusions (ν_b < 0.3). For sea ice near the melting point (ν_b > 0.3), the Bruggeman symmetric mixing formula would be more appropriate — this is deferred to a future version.
+### Scattering by brine inclusions and precipitated salts
+
+Air bubbles are not the only scatterers. Brine sits in pockets and tubes with a refractive index 2–6% above the ice around them, and salts crystallise out of it in cold ice. These follow the structural-optical model of **Light, Maykut & Grenfell (2004)**, built from simultaneous microstructure and optical measurements on first-year ice between −33 and −1 °C (`biosnicar.sea_ice.inclusion_scattering`).
+
+Every scatterer is reduced to *equivalent spheres* with the same total volume and surface area. For such a collection the cross-sectional area per unit volume is `ψ = A/4`, the equivalent radius is `3V/A`, and `σ = Q_sca·ψ`, with `Q_sca` and `g` from Mie theory for an optically soft sphere at the relative index of the scatterer in its surroundings.
+
+- **Brine inclusions.** The reference microstructure is the measured −15 °C size distribution, `N(l) = 0.28·l⁻¹·⁹⁶` per mm³ per mm of inclusion length, with aspect ratio `10.3·l⁰·⁶⁷`; pockets (< 0.5 mm) are prolate ellipsoids and tubes are cylinders. More salt extends the distribution to longer tubes; a change of temperature scales every inclusion's volume with the bulk brine volume (pockets keep their shape, tubes keep their length); above −14 °C inclusions merge. The implementation reproduces the published figures: 24 inclusions per mm³, ψ = 28 and 82 m⁻¹ for pockets and tubes (published 30 and 80), and σ = 290 m⁻¹ at −15 °C for their 4.7 ppt sample (published 280).
+- **Mirabilite and hydrohalite.** Cubes of 10 µm and 4.5 µm edge inside the brine, `ψ = 1.5·V/a`.
+
+Brine inclusions scatter strongly but almost entirely forward (g ≈ 0.98–0.997), so what matters is the similarity parameter `s = σ(1 − g)`. For interior first-year ice at −15 °C and 4.7 ppt they contribute s ≈ 3 m⁻¹; 300 µm bubbles contribute about 7 m⁻¹ at 1% porosity and about 50 at the 7% of a drained layer. So in bubbly, drained ice this is a correction, and in dense interior ice it is comparable to the bubbles. Preset broadband albedos rise by 0.003–0.007. For Light et al.'s sample the layer now gives s = 10.5 m⁻¹ and g = 0.979, against their measured 8.7–9.3 and 0.978–0.982 (the gas in that comparison is ours, not theirs).
+
+Known limits:
+
+- **Cold ice is under-scattered.** Below −22.9 °C Light et al. match their observations with 4.5 µm hydrohalite crystals under `Q_sca = 2`. Crystals that small have a small phase shift and Mie theory gives them `Q_sca` nearer 1, so this model produces about a third of the hydrohalite scattering theirs does (s ≈ 3 against ≈ 9 m⁻¹ at −30 °C). The crystal size and refractive index (1.416 assumed; not well determined in the literature) are jointly uncertain. This regime is reached only under a snow cover in the shipped emulators.
+- **One microstructure for all ice.** The distribution was measured on interior first-year ice of 4.7 and 15 ppt and is applied to everything, including multi-year ice. Above a brine fraction of 0.5 the geometry is held fixed, since the ice is then the inclusion.
+- **Gas is not split** into bubbles inside brine inclusions, which grow on warming and escape, and bubbles in the ice matrix. The gas volume comes from the bulk density and all of it scatters as bubbles of the retrieved radius.
+
+### Lower boundary
+
+A sea-ice column sits on the ocean: when the bottom layer is sea ice the boundary reflectance is the ocean's subsurface irradiance reflectance (2–4% in the blue, black beyond the red). It used to be the default for glacier columns, a measured blue glacier-ice spectrum (16% at 450 nm). The effect is 0.002 in broadband albedo for 30 cm of ice and under 0.001 at 1.5 m.
 
 ### Air bubble scattering
 
@@ -188,10 +206,11 @@ non-zero only in the blue/green. Typical BBA: 0.02 at SZA 20°, 0.06–0.07 at
 
 | Approximation | Effect | When it matters |
 |---|---|---|
-| Liquidus S_b(T) from F&G (1967) brine volume, salt-balance inverted | Few-psu accuracy −2 to −15 °C; saturates at the ~233 psu eutectic below ≈−18 °C | Very cold ice |
-| Q&F (1995) real-part formula extrapolated above 40 psu | ~10% error in Δn_re at S_b > 100 psu | T < −5 °C |
+| Brine real index anchored to two measured points (Maykut & Light 1995) | Shape between −2 and −32 °C assumed | Intermediate temperatures |
+| Mirabilite mass interpolated from one literature value | Mirabilite contributes < 5% of the similarity parameter | −8 to −23 °C |
+| Hydrohalite scattering under-predicted | About a third of the published model's below −22.9 °C | Very cold ice |
+| One inclusion microstructure for all ice | Measured on interior first-year ice only | Multi-year ice, brine fraction > 0.5 |
 | Air bubble scattering uses pure-ice LUT | < 5% error in scattering | All conditions |
-| Maxwell-Garnett for spherical inclusions only | < 5% for ν_b < 0.15 | Near-melting ice (T > −3 °C) |
 | Snow layer treated as fresh water | Overestimates snow albedo for salty snow | Snow on FYI |
 | Single T and S per layer | Ignores vertical gradients | Thick layers |
 

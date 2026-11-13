@@ -21,7 +21,7 @@ Each layer in the column is assigned a `layer_type` integer that selects the opt
 | 1 | Solid bubbly glacier ice — bulk ice + air/water inclusions | **Yes** | `bubbly_air.npz`, `rfidx_ice.npz` |
 | 2 | Solid bubbly glacier ice — identical to type 1 optically | No | Same as type 1 |
 | 3 | Granular water/ice sphere mixture | No | `luts/ice_sphere_*.npz`, `luts/water_sphere.npz` |
-| 4 | Sea ice — brine inclusions via Maxwell-Garnett | **Yes** | `luts/sea_ice.npz`, `brine_rfidx.npz` |
+| 4 | Sea ice — brine and salt inclusions, air bubbles | **Yes** | `luts/sea_ice.npz`, `brine_rfidx.npz` |
 
 #### Types 1 and 2 in detail
 
@@ -76,42 +76,54 @@ With no density supplied the function falls back to the gas-free form
 the gas fraction (1–9% across the shipped presets). Verified against SMRT
 v1.7.3: the porosity form agrees to 0.033%, the bulk-density form exactly.
 
-Air content enters the optics twice more. The Maxwell-Garnett mix (step 3) is a
-*two-phase* ice+brine medium, so it takes the brine fraction of that condensed
-phase, `ν_b/(1-ν_air)`, not of the whole layer. And the layer's absorption is
-scaled by `(1 - ν_air)`, since only that fraction is condensed phase and air
-does not absorb — matching what layer types 1/2/3 achieve by working in mass
-absorption coefficients. Air is **not** mixed into the effective medium:
-Maxwell-Garnett assumes sub-wavelength inclusions, while the bubbles are
-100–1000 µm against 0.2–5 µm light, which is why they are discrete Mie
-scatterers instead.
+The melt season (−2 < T ≤ 0 °C) uses the Leppäranta & Manninen (1988)
+coefficients in the same equations; as F1 → 0 the ice reaches its melting
+point and is returned as all brine.
+
+Air content enters the optics twice more. The effective-medium mix (step 3) is
+a *two-phase* ice+brine medium, so it takes the brine fraction of that
+condensed phase, `ν_b/(1-ν_air)`, not of the whole layer. And the layer's
+absorption is scaled by `(1 - ν_air)`, since only that fraction is condensed
+phase and air does not absorb — matching what layer types 1/2/3 achieve by
+working in mass absorption coefficients. Air is **not** mixed into the
+effective medium: such rules assume sub-wavelength inclusions, while the
+bubbles are 100–1000 µm against 0.2–5 µm light, which is why they are discrete
+Mie scatterers instead.
 
 **Step 2 — Brine refractive index at the liquidus salinity**.  
-Brine inside sea ice pockets is at the **liquidus** (phase-equilibrium) salinity determined by temperature:
+Brine inside sea ice is at the **liquidus** (phase-equilibrium) salinity, a
+function of temperature alone, and it comes from the same phase model as the
+brine volume: `F1(T) = ρ_b·S_b·(1 + k)` is the statement that salt is
+conserved, so above −8.2 °C (no precipitate, k = 0) S_b is solved from F1
+directly, and below it Assur's phase data are used (Cox & Weeks 1975, 1986).
+S_b ≈ 37 psu at −2 °C, 143 at −10 °C, 228 at −22.9 °C. The real index is the
+Quan & Fry (1995) formula at S_b and T in 400–700 nm plus a high-salinity term
+anchored to the brine measurements of Maykut & Light (1995); k_brine ≈ k_water
+above 0.4 µm.
+
+**Step 3 — Effective medium (absorption)**.  
+ε_brine and ε_ice are mixed with the symmetric Bruggeman rule, valid at any
+brine fraction:
 
 ```
-S_brine(T) = salt-mass-balance inversion of the Frankenstein & Garner (1967)
-             brine-volume relation; ≈150 psu at −10 °C; held at the
-             ~233 psu NaCl·2H₂O eutectic below −22.9 °C
+(1 − f)(ε_ice − ε)/(ε_ice + 2ε) + f(ε_brine − ε)/(ε_brine + 2ε) = 0
 ```
 
-The brine liquidus salinity is **derived from the Frankenstein & Garner (1967)** brine-volume relation `Vb = 10⁻³·S·(−49.185/T + 0.532)` by salt mass balance (see `biosnicar/sea_ice/brine_volume.py` for the derivation). This replaced the earlier linear law `S_b ≈ −18.7·T`, which overestimates brine salinity by ~30 % at −10 °C (187 vs ~150 psu). At T = −10 °C, S_brine ≈ 150 psu — far above typical bulk ice salinity (6–12 psu). Using bulk salinity in RI calculations (as in v0.1) underestimates the brine-ice optical contrast by an order of magnitude.
+Absorption comes from the imaginary part of n_eff = √ε_eff.
 
-The brine real refractive index is computed using the full Quan & Fry (1995) wavelength-dependent formula at S_brine and T, applied to the 400–700 nm range with the salt contribution held fixed at its 700-nm value beyond the visible. Brine has no significant absorption above 400 nm (NaCl does not absorb in visible/NIR); k_brine ≈ k_water for λ > 0.4 µm.
+**Step 4 — Scattering**.  
+Four independent populations add: air bubbles (`bubbly_air.npz` × ν_air);
+brine pockets and tubes in the ice; mirabilite crystals in the brine below
+−8.2 °C; hydrohalite crystals below −22.9 °C. The last three follow the
+structural-optical model of Light, Maykut & Grenfell (2004), using equivalent
+spheres and a soft-sphere Mie table (`luts/soft_sphere_mie.npz`). The layer's
+asymmetry parameter is the scattering-weighted mean.
 
-**Step 3 — Maxwell-Garnett effective medium**.  
-ε_brine and ε_ice are mixed at volume fraction ν_b:
-
-```
-ε_eff = ε_ice × [ε_brine(1 + 2ν_b) + 2ε_ice(1 − ν_b)] /
-                [ε_brine(1 − ν_b)  + ε_ice(2 + ν_b)]
-```
-
-Absorption comes from the imaginary part of n_eff = √ε_eff. Scattering comes from air bubbles via the `bubbly_air.npz` LUT. Results are pre-computed to `data/OP_data/480band/luts/sea_ice.npz` over T (7) × S (6) × density (8) × bubble_radius (11) = 3696 grid points. The density axis spans 700–920 kg/m³ and the bubble-radius axis 50–2000 µm (log-spaced). Both must cover every value the model is asked for, because the interpolator *clamps* rather than extrapolates — anything outside is silently replaced by the nearest edge, making the parameter inert over that range. Both axes have been caught doing exactly that: density below 870, and bubble radius below 100 or above 1000. Brine RI is also pre-computed to `data/OP_data/brine_rfidx.npz` over the 7-point temperature grid only (T dimension only; S is no longer needed since S_brine is determined by T).
+Results are pre-computed to `data/OP_data/480band/luts/sea_ice.npz` over T (14) × S (6) × density (8) × bubble_radius (11) = 7392 grid points. Temperature nodes sit on the points where the physics changes slope (−2, −8.2, −14, −22.9 °C) and run from −1 to −30 °C. The density axis spans 700–920 kg/m³ and the bubble-radius axis 50–2000 µm (log-spaced). Every axis must cover every value the model is asked for, because the interpolator *clamps* rather than extrapolates — anything outside is silently replaced by the nearest edge, making the parameter inert over that range. Brine RI is also pre-computed to `data/OP_data/brine_rfidx.npz` over temperature only (S is not needed since S_brine is determined by T).
 
 Sea ice requires the **adding-doubling solver** (default). The Toon solver does not handle the Fresnel interface correctly.
 
-Known approximations: Q&F (1995) extrapolated to S_brine > 40 psu; liquidus *derived* from F&G (1967) brine volume (not a direct Assur fit), least reliable near the −22.9 °C eutectic; Maxwell-Garnett valid for ν_b < 0.3; bubble scattering uses pure-ice LUT (< 5% error). See [docs/sea_ice.md](sea_ice.md) for detail.
+Known approximations: brine index anchored to two measured points; mirabilite mass interpolated; hydrohalite scattering under-predicted below −22.9 °C; one inclusion microstructure (interior first-year ice) for all ice; bubble scattering uses the pure-ice LUT (< 5% error). See [docs/sea_ice.md](sea_ice.md) for detail.
 
 ### 1.3 Melt ponds (layer_type = 5)
 
