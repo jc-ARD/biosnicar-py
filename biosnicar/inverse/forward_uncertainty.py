@@ -227,9 +227,9 @@ FACTORS = (
         "diffuse_sky_fraction", "physics", "diffuse_fraction_scale",
         "multiplicative", 1.3,
         "Diffuse fraction of a clear sky (biosnicar.sky): aerosol optical "
-        "depth 0.02-0.15 moves it by about this much at 500 nm, and light "
-        "reflected back down over a bright surface, which the default model "
-        "leaves out, adds up to 30% in the blue.",
+        "depth 0.02-0.15 moves it by about this much at 500 nm, and the "
+        "albedo of the surroundings (assumed 0.8; anything from open water "
+        "to fresh snow) moves it by up to 25% in the blue.",
         "Tomasi et al. 2015 (Earth-Sci. Rev. 140:108); Hansen & Travis 1974",
     ),
 )

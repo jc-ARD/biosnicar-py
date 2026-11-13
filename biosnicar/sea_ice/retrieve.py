@@ -449,6 +449,7 @@ def retrieve_sea_ice(
     flag_prior_influence=False,
     model_error="auto",
     diffuse_fraction="clear_sky",
+    regional_albedo=0.8,
     class_priors=None,
     prior_sources=None,
     mcmc_walkers=32,
@@ -565,6 +566,11 @@ def retrieve_sea_ice(
         blended by it, which is exact.  Pass a measured fraction where one
         exists.  ``None`` treats a clear sky as a pure direct beam (the
         behaviour before 2026-11).  Ignored when ``direct=0``.
+    regional_albedo : float, 480-band array, or None
+        Albedo of the surroundings assumed by ``"clear_sky"``: light the
+        surface reflects is partly scattered back down and adds to the
+        diffuse part.  Default 0.8, snow-covered ice.  Use a low value, or
+        ``None``, for a scene that is mostly open water or ponds.
     class_priors : dict or None
         Caller-supplied per-surface-type **class log-priors** (relative,
         0 = neutral, negative = disfavoured), composed with the spectral
@@ -640,7 +646,7 @@ def retrieve_sea_ice(
     # A clear sky is a beam plus scattered light: blend each emulator's
     # direct and diffuse predictions (exact — see biosnicar.sky).
     from biosnicar.sky import mixed_sky_fleet
-    emulators = mixed_sky_fleet(emulators, diffuse_fraction)
+    emulators = mixed_sky_fleet(emulators, diffuse_fraction, regional_albedo)
 
     # Snapshot the candidate fleet before any prior-driven exclusion, so the
     # spectrum-only shadow pass (flag_prior_influence) sees the full fleet.
@@ -1064,7 +1070,8 @@ def _run_vectorized_fleet(flat, emulators, max_iter, kwargs):
 
     from biosnicar.sky import mixed_sky_fleet
     emulators = mixed_sky_fleet(
-        emulators, kwargs.get("diffuse_fraction", "clear_sky"))
+        emulators, kwargs.get("diffuse_fraction", "clear_sky"),
+        kwargs.get("regional_albedo", 0.8))
 
     platform = kwargs.get("platform")
     band_mode = platform is not None

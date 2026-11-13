@@ -26,7 +26,8 @@ from biosnicar.utils.validate_inputs import validate_inputs
 _IMPURITY_CONC_RE = re.compile(r"^impurity_(\d+)_conc$")
 
 # Parameter keys that require recalculating irradiance
-_ILLUMINATION_KEYS = {"solzen", "direct", "incoming", "diffuse_fraction"}
+_ILLUMINATION_KEYS = {"solzen", "direct", "incoming", "diffuse_fraction",
+                      "regional_albedo"}
 
 # Parameter keys that apply to the ice object (broadcast to all layers)
 _ICE_BROADCAST_KEYS = {
@@ -124,6 +125,10 @@ def run_model(
               direct beam), ``"clear_sky"`` (Rayleigh + background aerosol,
               see :mod:`biosnicar.sky`), a number, or a 480-band array.  The
               albedo is then that of the mixed sky.
+            - **regional_albedo** — albedo of the surroundings assumed by
+              ``"clear_sky"``, for light reflected back down by the
+              atmosphere.  Default 0.8 (snow-covered ice); ``None`` or 0 for
+              dark surroundings.
             - **incoming** (*int*) — irradiance spectrum index (0–6):
               0=mid-lat winter, 1=mid-lat summer, 2=sub-Arctic winter,
               3=sub-Arctic summer, 4=summit, 5=high mountain, 6=tropical
@@ -359,7 +364,8 @@ def _run_young_ice(ice, illumination):
         from biosnicar.sky import resolve_diffuse_fraction
 
         frac = resolve_diffuse_fraction(
-            getattr(illumination, "diffuse_fraction", None), illumination.solzen)
+            getattr(illumination, "diffuse_fraction", None), illumination.solzen,
+            getattr(illumination, "regional_albedo", None))
         if frac is not None:
             albedo = (1.0 - frac) * albedo + frac * _albedo(0)
 

@@ -852,8 +852,9 @@ known sign, so it belongs in the model, not in the error budget.
 
 **What changed.** `biosnicar.sky` models the diffuse fraction of a clear
 sky's irradiance (Rayleigh plus a background Arctic aerosol, single
-scattering): 0.44 at 400 nm, 0.23 at 500 nm and 0.04 at 1000 nm with the
-sun at 60° zenith; 0.87, 0.56 and 0.12 at 80°. `run_model(diffuse_fraction=
+scattering, plus light reflected by the surroundings and scattered back
+down, for a regional albedo of 0.8): 0.55 at 400 nm, 0.30 at 500 nm and 0.05
+at 1000 nm with the sun at 60° zenith; 0.89, 0.60 and 0.13 at 80°. `run_model(diffuse_fraction=
 "clear_sky")` splits the incident flux between the beam and diffuse streams
 that both solvers already carry. The retrievals blend each emulator's
 direct-beam and diffuse-sky predictions by the same fraction, by default.
@@ -868,19 +869,18 @@ over 400–1000 nm / largest single band):
 
 | Type | Solar zenith 60° | Solar zenith 78° |
 |---|---|---|
-| FYI_bare | +0.003 / 0.010 | −0.049 / 0.138 |
-| FYI_snow | −0.005 / 0.018 | −0.038 / 0.105 |
-| FYI_pond | +0.002 / 0.007 | −0.054 / 0.144 |
-| young_ice | +0.001 / 0.002 | −0.049 / 0.131 |
+| FYI_bare | +0.004 / 0.012 | −0.053 / 0.145 |
+| FYI_snow | −0.007 / 0.022 | −0.041 / 0.111 |
+| FYI_pond | +0.002 / 0.009 | −0.059 / 0.151 |
+| young_ice | +0.001 / 0.003 | −0.053 / 0.138 |
 
 Small at the sun angles of the summer field campaigns, first-order at the
 low sun of spring, autumn and high latitude — which is where satellite
 retrievals of sea ice mostly are.
 
 **Error budget, rebuilt on this forward model.** The sky term is now the
-uncertainty of the diffuse fraction (×/÷ 1.3: aerosol loading, and light
-reflected back down over a bright surface, which the default model leaves
-out) instead of its neglect.
+uncertainty of the diffuse fraction (×/÷ 1.3: aerosol loading, and the
+albedo of the surroundings, assumed 0.8) instead of its neglect.
 
 | Type | Sky term before | Sky term now | Total VIS before | Total VIS now |
 |---|---|---|---|---|
@@ -897,12 +897,12 @@ fraction drawn from its range):
 
 | Type | Within 2σ, instrument-only | Within 2σ, physics budget | Measured parameters within 1σ | Reduced χ² |
 |---|---|---|---|---|
-| FYI_bare | 83% | 95% | 77% | 0.96 |
-| FYI_snow | 56% | 92% | 69% | 1.00 |
-| FYI_summer | 59% | 91% | 67% | 0.98 |
-| MYI_bare | 86% | 96% | 85% | 0.99 |
-| FYI_pond | 57% | 96% | 78% | 0.99 |
-| young_ice | 80% | 99% | 85% | 0.97 |
+| FYI_bare | 84% | 95% | 77% | 0.96 |
+| FYI_snow | 57% | 92% | 69% | 1.00 |
+| FYI_summer | 60% | 90% | 68% | 0.97 |
+| MYI_bare | 84% | 96% | 83% | 0.97 |
+| FYI_pond | 57% | 95% | 79% | 0.99 |
+| young_ice | 78% | 100% | 86% | 0.97 |
 
 **Field numbers** — reported as context. They barely move: SHEBA was
 measured with the sun 21–35° up (zenith 55–69°), where the effect is a few
@@ -916,24 +916,74 @@ was not used to judge the change.
 | SHEBA spring snow, full / S2 / L8 | 6/7, 7/7, 7/7 | 6/7, 7/7, 7/7 |
 | SHEBA summer bare ice, full / S2 / L8 | 16/16, 16/16, 15/16 | 16/16, 16/16, 15/16 |
 | Morassutti pond classification (504) | 90.5% | 90.5% |
-| Morassutti ponds, 120-sample block: classified / depth within ±25% | 99, 24 | 99, 25 |
+| Morassutti ponds, 120-sample block: classified / depth within ±25% | 99, 24 | 100, 25 |
 | Smith VIS / full-range RMS, median | 0.008 / 0.016 | 0.008 / 0.016 |
 | Smith classified FYI_snow / snow-like | 1/44, 35/44 | 1/44, 35/44 |
 | OE SWIR experiment, default method VIS / VIS+SWIR | 12/12, 12/12 | 12/12, 11/12 |
 | OE SWIR experiment, OE + physics budget VIS / VIS+SWIR | 9/12, 11/12 | 9/12, 10/12 |
 
 The residual library and the opt-in field-fitted covariance were rebuilt on
-the new default (field-fitted held-out reduced χ² 6.68 mean / 4.42 median).
+the new default (field-fitted held-out reduced χ² 6.55 mean / 4.25 median).
 The comparison of field residuals with the physics budget is unchanged in
 substance: inside it at 400–700 nm in every campaign, 2.5–7.5× outside it
 beyond 1000 nm on bare and melting ice.
 
-**What is still approximate.** The default sky is a fixed background
-aerosol with no light reflected back from the surface; over snow that
-under-states the diffuse fraction in the blue by up to about 0.12.
-`clear_sky_diffuse_fraction(regional_albedo=...)` includes it, and a
-measured fraction can be passed to both `run_model` and the retrievals. A
+**What is still approximate.** The default sky is single scattering with a
+fixed background aerosol, over surroundings of albedo 0.8 (snow-covered
+ice). The last matters: reflected light scattered back down raises the
+diffuse fraction at 400 nm from 0.44 to 0.55 at 60° zenith, and it is wrong
+for a scene that is mostly open water or ponds — pass `regional_albedo`
+there, or a measured fraction, to `run_model` and the retrievals alike. A
 synthetic observation meant to test a retrieval has to be generated under
 the same sky the retrieval assumes: a pure-beam truth retrieved under a
 mixed sky dropped one fleet classification test from 5+/7 to 4/7.
+
+## 19. Which fixed inputs could be retrieved instead? (2026-11-13)
+
+The error budget is dominated by column structure the transforms hard-code
+(§17). The obvious response is to retrieve it — which only helps if the
+spectrum can tell it apart from what is already retrieved.
+`scripts/fixed_input_retrievability.py` answers that from the budget's own
+perturbation runs, before anything is retrained: at each of 300 states per
+type it appends one fixed input to the state vector of the linear retrieval,
+with its stated range as the prior, removes that input's term from `S_e`,
+and reports the input's averaging kernel **A** (1: the spectrum fixes it; 0:
+the retrieval returns the prior). "A alone" repeats this with every other
+fixed input taken as known exactly.
+
+Inputs costing more than 0.008 albedo, instrument sigma 0.02, each type's
+own band window:
+
+| Type | Fixed input | Cost (1σ albedo) | A (median) | States with A > 0.5 | A alone |
+|---|---|---|---|---|---|
+| FYI_bare | drained-layer thickness | 0.028 | **0.77** | 84% | 0.89 |
+| FYI_bare | interior density | 0.019 | 0.06 | 0% | 0.15 |
+| FYI_bare | bubble backscatter | 0.011 | 0.00 | 0% | 0.01 |
+| FYI_summer | drained-layer density | 0.026 | 0.05 | 0% | 0.07 |
+| FYI_summer | drained-layer thickness | 0.024 | 0.20 | 8% | 0.28 |
+| FYI_summer | interior density | 0.020 | 0.09 | 11% | 0.14 |
+| MYI_bare | drained-layer thickness | 0.009 | 0.09 | 9% | 0.15 |
+| MYI_bare | bubble backscatter | 0.011 | 0.00 | 0% | 0.01 |
+| FYI_pond | drained-layer thickness | 0.010 | 0.18 | 0% | 0.32 |
+| young_ice | frazil scattering coefficient | 0.017 | **0.77** | 86% | 0.81 |
+
+- **Two inputs are retrievable and are the largest term of their type:**
+  the drained-layer thickness of bare first-year ice, and the scattering
+  coefficient of young ice. Adding either leaves the averaging kernels of
+  the existing parameters unchanged. These are the two to make parameters.
+- **The rest are not, and a better instrument does not rescue them.** For
+  summer ice, ponds and multiyear ice the drained layer's thickness and
+  density are indistinguishable from the parameters already retrieved (A
+  alone is low too: the signature lies in the span of the existing
+  Jacobian). At an instrument sigma of 0.005, FYI_summer's drained-layer
+  thickness reaches A = 0.44 and FYI_pond's 0.37; nothing else passes 0.25.
+  Their uncertainty is correctly carried by the budget, where it widens the
+  error bars of the parameters they trade against. Only outside information
+  — freeboard, season, a thickness product — would reduce it.
+- **Bubble backscatter and brine-inclusion density are exactly absorbed by
+  bubble radius** (A = 0.00), as expected of quantities that enter only
+  through the similarity parameter.
+
+This is a linear analysis around each state with the emulator's Jacobian;
+it says what is worth building, and the built thing still has to be checked.
 

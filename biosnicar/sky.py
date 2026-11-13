@@ -34,10 +34,14 @@ replace a radiative-transfer calculation of the sky: pass a measured or
 modelled ``f`` (a number or a 480-band array) where one is available.
 
 Light reflected by a bright surface and scattered back down adds to the
-diffuse part.  That depends on the albedo of the surroundings, not of the
-target, so it is an explicit argument (``regional_albedo``), off by default.
-Its neglect and the aerosol loading are the main uncertainties of ``f`` and
-are carried in the forward-model error budget
+diffuse part — over snow, about a quarter more of it in the blue.  That
+depends on the albedo of the surroundings, not of the target, so it is an
+explicit argument, ``regional_albedo``.  ``"clear_sky"`` assumes
+:data:`DEFAULT_REGIONAL_ALBEDO` (0.8, snow-covered ice), which is the common
+case for sea ice and wrong for a scene that is mostly open water or ponds:
+pass ``regional_albedo`` (``None`` or 0 for a dark surrounding) where that is
+known.  The regional albedo and the aerosol loading are the main
+uncertainties of ``f`` and are carried in the forward-model error budget
 (:mod:`biosnicar.inverse.forward_uncertainty`).
 """
 
@@ -53,6 +57,9 @@ CLEAR_SKY = "clear_sky"
 # and Angstrom exponent.
 DEFAULT_AOD_500 = 0.05
 DEFAULT_ANGSTROM = 1.3
+
+# Albedo of the surroundings assumed by "clear_sky": snow-covered sea ice.
+DEFAULT_REGIONAL_ALBEDO = 0.8
 
 _RAYLEIGH_DOWN = 0.5      # fraction of Rayleigh-scattered light going down
 _AEROSOL_DOWN = 0.85      # same for aerosol, asymmetry parameter ~0.7
@@ -109,12 +116,14 @@ def clear_sky_diffuse_fraction(solzen_deg, wavelengths_um=None,
     return f
 
 
-def resolve_diffuse_fraction(spec, solzen_deg):
+def resolve_diffuse_fraction(spec, solzen_deg,
+                             regional_albedo=DEFAULT_REGIONAL_ALBEDO):
     """Turn a ``diffuse_fraction`` argument into a fraction, or ``None``.
 
     ``None`` -> ``None`` (pure direct beam); ``"clear_sky"`` ->
-    :func:`clear_sky_diffuse_fraction`; a number or 480-band array is used as
-    given.  The result is clipped to [0, 1].
+    :func:`clear_sky_diffuse_fraction` over surroundings of
+    *regional_albedo*; a number or 480-band array is used as given.  The
+    result is clipped to [0, 1].
     """
     if spec is None:
         return None
@@ -124,7 +133,8 @@ def resolve_diffuse_fraction(spec, solzen_deg):
                 f"diffuse_fraction={spec!r}; expected None, 'clear_sky', a "
                 "number or a 480-band array."
             )
-        f = clear_sky_diffuse_fraction(solzen_deg)
+        f = clear_sky_diffuse_fraction(solzen_deg,
+                                       regional_albedo=regional_albedo)
         f = f * perturbation.get("diffuse_fraction_scale")
     else:
         f = np.asarray(spec, dtype=float)
@@ -141,12 +151,17 @@ class MixedSky:
     the wrapped model's.
     """
 
-    def __init__(self, model, diffuse_fraction=CLEAR_SKY):
+    def __init__(self, model, diffuse_fraction=CLEAR_SKY,
+                 regional_albedo=DEFAULT_REGIONAL_ALBEDO):
         self._base = model
         self._spec = diffuse_fraction
+        self._regional = regional_albedo
+
+    def _fraction(self, solzen):
+        return resolve_diffuse_fraction(self._spec, solzen, self._regional)
 
     def __getattr__(self, name):
-        if name.startswith("__") or name in ("_base", "_spec"):
+        if name.startswith("__") or name in ("_base", "_spec", "_regional"):
             raise AttributeError(name)
         return getattr(self._base, name)
 
@@ -161,7 +176,7 @@ class MixedSky:
     def predict(self, **params):
         if not int(round(float(params.get("direct", 1)))):
             return self._base.predict(**params)
-        f = resolve_diffuse_fraction(self._spec, params["solzen"])
+        f = self._fraction(params["solzen"])
         a_dir = np.asarray(self._base.predict(**{**params, "direct": 1}))
         a_dif = np.asarray(self._base.predict(**{**params, "direct": 0}))
         return (1.0 - f) * a_dir + f * a_dif
@@ -183,21 +198,25 @@ class _MixedSkyBatch(MixedSky):
         a_dir = np.asarray(self._base.predict_batch(pts), dtype=float)
         pts[:, i_dir] = 0.0
         a_dif = np.asarray(self._base.predict_batch(pts), dtype=float)
-        f = resolve_diffuse_fraction(self._spec, points[clear, i_sz])
+        f = self._fraction(points[clear, i_sz])
         out[clear] = (1.0 - f) * a_dir + f * a_dif
         return out
 
 
-def mixed_sky(model, diffuse_fraction=CLEAR_SKY):
+def mixed_sky(model, diffuse_fraction=CLEAR_SKY,
+              regional_albedo=DEFAULT_REGIONAL_ALBEDO):
     """Wrap *model* for a mixed sky; a no-op for ``None`` and for a model
     that is already wrapped."""
     if diffuse_fraction is None or isinstance(model, MixedSky):
         return model
     has_batch = (hasattr(model, "predict_batch")
                  and {"direct", "solzen"} <= set(model.param_names))
-    return (_MixedSkyBatch if has_batch else MixedSky)(model, diffuse_fraction)
+    return (_MixedSkyBatch if has_batch else MixedSky)(
+        model, diffuse_fraction, regional_albedo)
 
 
-def mixed_sky_fleet(emulators, diffuse_fraction=CLEAR_SKY):
+def mixed_sky_fleet(emulators, diffuse_fraction=CLEAR_SKY,
+                    regional_albedo=DEFAULT_REGIONAL_ALBEDO):
     """:func:`mixed_sky` over a ``{name: model}`` dict."""
-    return {k: mixed_sky(v, diffuse_fraction) for k, v in emulators.items()}
+    return {k: mixed_sky(v, diffuse_fraction, regional_albedo)
+            for k, v in emulators.items()}

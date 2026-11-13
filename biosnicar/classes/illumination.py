@@ -68,6 +68,8 @@ class Illumination:
         diffuse_fraction: diffuse part of a clear sky's irradiance — None
             (pure direct beam), "clear_sky" (modelled, see biosnicar.sky),
             a number or a 480-band array.  Ignored when ``direct`` is 0.
+        regional_albedo: albedo of the surroundings assumed by "clear_sky"
+            (light reflected back down by the atmosphere); default 0.8.
         solzen: solar zenith angle in degrees from the vertical
         incoming: choice of spectral distribution from file 0-6
         stubs: array of stub strings for selecting irradiance files
@@ -79,6 +81,9 @@ class Illumination:
 
         self.direct = inputs["RTM"]["DIRECT"]
         self.diffuse_fraction = inputs["RTM"].get("DIFFUSE_FRACTION")
+        from biosnicar.sky import DEFAULT_REGIONAL_ALBEDO
+        self.regional_albedo = inputs["RTM"].get(
+            "REGIONAL_ALBEDO", DEFAULT_REGIONAL_ALBEDO)
         self.solzen = inputs["RTM"]["SOLZEN"]
         self.incoming = inputs["RTM"]["INCOMING"]
         self.stubs = inputs["PATHS"]["ILLUMINATION_FILE_STUBS"]
@@ -116,10 +121,13 @@ class Illumination:
         out = flx_slr / (self.mu_not * np.pi)
 
         if self.direct:
-            from biosnicar.sky import resolve_diffuse_fraction
+            from biosnicar.sky import (
+                DEFAULT_REGIONAL_ALBEDO, resolve_diffuse_fraction,
+            )
 
             frac = resolve_diffuse_fraction(
-                getattr(self, "diffuse_fraction", None), self.solzen)
+                getattr(self, "diffuse_fraction", None), self.solzen,
+                getattr(self, "regional_albedo", DEFAULT_REGIONAL_ALBEDO))
             if frac is None:
                 self.Fs = out
                 self.Fd = np.zeros(self.nbr_wvl)

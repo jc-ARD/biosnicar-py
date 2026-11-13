@@ -276,9 +276,11 @@ class TestRetrieval:
 
     @pytest.fixture(scope="class")
     def spectrum(self):
+        from biosnicar.sky import mixed_sky
         emu = load_sea_ice_emulators(["FYI_snow"])["FYI_snow"]
         p = _mid("FYI_snow")
-        return emu, emu.predict(**p)
+        # under the sky the retrieval assumes (a beam plus diffuse light)
+        return emu, mixed_sky(emu).predict(**p)
 
     def test_default_spectral_oe_uses_it(self, spectrum):
         from biosnicar.sea_ice.retrieve import retrieve_sea_ice
@@ -303,8 +305,10 @@ class TestRetrieval:
         bands = ["B2", "B3", "B4", "B8", "B11", "B12"]
         br = to_platform(y, "sentinel2", flx_slr=emu.solar_flux(60, 1))
         obs = np.array([getattr(br, b) for b in bands])
+        # one surface type: the comparison is of S_e, not of classification
         kw = dict(observed=obs, platform="sentinel2", observed_band_names=bands,
-                  solzen=60, known_month=4, method="oe")
+                  solzen=60, known_month=4, method="oe",
+                  surface_types=["FYI_snow"])
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             auto = retrieve_sea_ice(**kw)

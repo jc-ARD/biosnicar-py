@@ -391,18 +391,24 @@ Remaining:
     inside it at 400–700 nm in every campaign and 2.5–7.5× outside it beyond
     1000 nm on bare and melting ice. That gap is the SWIR physics (`D2`,
     surface-layer structure), now with a number on it.
-  - **The largest terms are structural assumptions that could be retrieved
-    or constrained**: drained-layer thickness (fixed at 5 cm; up to 0.028
-    albedo), interior density, drained-layer density where it is not
-    retrieved, the frazil scattering constant of young ice (0.032).
+  - **The largest terms are structural assumptions; two of them can be
+    retrieved** (`scripts/fixed_input_retrievability.py`,
+    `sea_ice_validation.md` §19). FYI_bare's drained-layer thickness (0.028
+    albedo, averaging kernel 0.77 if retrieved) and young ice's frazil
+    scattering coefficient (0.017 in its window, 0.77) are distinguishable
+    from the parameters already retrieved: **make them parameters and
+    retrain those two emulators.** The drained layer of FYI_summer, FYI_pond
+    and MYI_bare is not (0.05–0.20): it stays in the budget, and only
+    outside information (freeboard, season, a thickness product) would
+    shrink it.
   - ~~**Clear sky as a pure beam** costs 0.010–0.015 on specular surfaces
     and belongs in the forward model.~~ **Done 2026-11-13:** a clear sky is
     a beam plus its diffuse part (`biosnicar.sky`), natively in `run_model`
     and by an exact blend of emulator predictions in the retrievals. The
     budget term fell to 0.002–0.004 and is now the uncertainty of the
     diffuse fraction, not the neglect of it. Open: the default sky model is
-    single scattering with a fixed background aerosol and no light reflected
-    back from a bright surface; a measured fraction can be passed in.
+    single scattering with a fixed background aerosol over surroundings of
+    albedo 0.8; a regional albedo or a measured fraction can be passed in.
   - **One covariance per type, averaged over states.** It errs wide (71–91%
     of measured parameters within one sigma against 68%). A state-dependent
     budget — the fixed inputs as emulator inputs, so `K_b` comes from the

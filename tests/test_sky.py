@@ -69,8 +69,14 @@ class TestDiffuseFraction:
 
     def test_argument_forms(self):
         assert sky.resolve_diffuse_fraction(None, 60) is None
-        assert np.allclose(sky.resolve_diffuse_fraction("clear_sky", 60),
-                           sky.clear_sky_diffuse_fraction(60))
+        # "clear_sky" assumes snow-covered surroundings unless told otherwise
+        assert np.allclose(
+            sky.resolve_diffuse_fraction("clear_sky", 60),
+            sky.clear_sky_diffuse_fraction(
+                60, regional_albedo=sky.DEFAULT_REGIONAL_ALBEDO))
+        assert np.allclose(
+            sky.resolve_diffuse_fraction("clear_sky", 60, regional_albedo=None),
+            sky.clear_sky_diffuse_fraction(60))
         assert float(sky.resolve_diffuse_fraction(0.3, 60)) == 0.3
         assert float(sky.resolve_diffuse_fraction(1.7, 60)) == 1.0     # clipped
         arr = np.linspace(0, 1, 480)
@@ -98,7 +104,7 @@ class TestForwardModel:
         a_dir = _run(direct=1, **kw)
         a_dif = _run(direct=0, **kw)
         mixed = _run(direct=1, diffuse_fraction="clear_sky", **kw)
-        f = sky.clear_sky_diffuse_fraction(70)
+        f = sky.resolve_diffuse_fraction("clear_sky", 70)
         assert np.allclose(mixed, (1 - f) * a_dir + f * a_dif, atol=1e-4)
         assert np.abs(mixed - a_dir)[VIS].max() > 1e-3
 
@@ -111,7 +117,7 @@ class TestForwardModel:
         a_dir = _run(**kw)
         a_dif = _run(**{**kw, "direct": 0})
         mixed = _run(diffuse_fraction="clear_sky", **kw)
-        f = sky.clear_sky_diffuse_fraction(78)
+        f = sky.resolve_diffuse_fraction("clear_sky", 78)
         assert np.allclose(mixed, (1 - f) * a_dir + f * a_dif, atol=2e-4)
 
     def test_matters_most_for_specular_surfaces_at_low_sun(self):
@@ -126,6 +132,16 @@ class TestForwardModel:
 
         assert effect(78) > 0.03
         assert effect(78) > 5 * effect(50)
+
+    def test_regional_albedo_reaches_the_solver(self):
+        kw = dict(self.GRANULAR, direct=1, diffuse_fraction="clear_sky")
+        bright = _run(**kw)                               # default 0.8
+        dark = _run(regional_albedo=None, **kw)
+        a_dir, a_dif = _run(**self.GRANULAR, direct=1), _run(**self.GRANULAR, direct=0)
+        f = sky.clear_sky_diffuse_fraction(70)
+        assert np.allclose(dark, (1 - f) * a_dir + f * a_dif, atol=1e-4)
+        # more diffuse light over a bright surface: further from the beam
+        assert np.abs(bright - a_dir)[VIS].mean() > np.abs(dark - a_dir)[VIS].mean()
 
     def test_limits_and_overcast(self):
         kw = dict(self.GRANULAR)
@@ -163,7 +179,7 @@ class TestMixedSkyEmulator:
     def test_predict_is_the_blend(self, fleet):
         emu = fleet["FYI_pond"]
         p = {k: _mid("FYI_pond", solzen=70)[k] for k in emu.param_names}
-        f = sky.clear_sky_diffuse_fraction(70)
+        f = sky.resolve_diffuse_fraction("clear_sky", 70)
         want = ((1 - f) * emu.predict(**p)
                 + f * emu.predict(**{**p, "direct": 0}))
         assert np.allclose(sky.mixed_sky(emu).predict(**p), want)
@@ -215,7 +231,7 @@ class TestMixedSkyEmulator:
         m = sky.mixed_sky(water)
         assert not hasattr(m, "predict_batch")
         p = dict(solzen=75, wind_speed_ms=5.0)
-        f = sky.clear_sky_diffuse_fraction(75)
+        f = sky.resolve_diffuse_fraction("clear_sky", 75)
         want = ((1 - f) * water.predict(direct=1, **p)
                 + f * water.predict(direct=0, **p))
         assert np.allclose(m.predict(direct=1, **p), want)
