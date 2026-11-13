@@ -8,6 +8,10 @@ single density balance.  Both are provided here and both route through
   a bulk density.  With neither it falls back to the gas-free form, which
   overestimates nu_b by the gas fraction (1–9% across the shipped presets).
 * :func:`compute_gas_volume` — nu_air, from (S, T) and bulk density.
+* :func:`brine_salinity_at_temp` — the liquidus, taken from the same F1 so
+  that brine salinity and brine volume conserve salt.
+* :func:`mirabilite_mass_fraction`, :func:`hydrohalite_mass_fraction` — the
+  salts that precipitate below -8.2 and -22.9 degC.
 * :func:`invert_brine_volume` — T from a target nu_b, used by the emulator
   transforms.  Takes the layer density too, so the sampled
   ``brine_volume_fraction`` names the brine volume the forward model will
@@ -18,9 +22,8 @@ agrees to 0.033% (the residual is the pure-ice density constant, 0.917 vs
 0.9167 g/cm3), the bulk-density path exactly.  ``tests/test_brine_volume.py``
 pins both against hard-coded SMRT values, with no SMRT dependency added.
 
-:func:`brine_density` is a separate Frankenstein & Garner (1967) liquidus and
-is **no longer used by the forward model** — the air fraction now comes from
-the Cox & Weeks gas equation instead.  See its docstring.
+The melt season (-2 < T <= 0 degC) uses the Leppäranta & Manninen (1988)
+coefficients in the same equations, so the model no longer stops at -2 degC.
 
 Reference:
     Cox, G. F. N. & Weeks, W. F. (1983). Equations for determining the gas
@@ -41,6 +44,16 @@ _F2_WARM = [0.08903, -0.01763, -5.330e-4, -8.801e-6]
 # Cox & Weeks (1983) Table 3 cold-range coefficients (-30 <= T < -22.9 °C).
 _F1_COLD = [9899.0, 1309.0, 55.27, 0.7160]
 _F2_COLD = [8.547, 1.089, 4.518e-2, 5.819e-4]
+
+# Leppäranta & Manninen (1988) coefficients for -2 < T <= 0 °C, the melt
+# season, which the Cox & Weeks fits do not reach.  Same functional form and
+# same density balance; verified coefficient-for-coefficient against SMRT
+# v1.7.3 (``brine_volume_cox83_lepparanta88``).
+_F1_MELT = [-4.1221e-2, -1.8407e1, 5.8402e-1, 2.1454e-1]
+_F2_MELT = [9.0312e-2, -1.6111e-2, 1.2291e-4, 1.3603e-4]
+
+_T_MELT_BRANCH = -2.0     # above this the Leppäranta & Manninen fit applies
+_T_MAX = 0.0              # upper limit of the phase model
 
 
 def _poly(coeffs, T):
@@ -63,8 +76,12 @@ def _cw_terms(T):
     F2 = np.empty_like(T)
     rho_i = np.empty_like(T)
 
-    warm = T >= -22.9
-    for mask, f1c, f2c in [(warm, _F1_WARM, _F2_WARM), (~warm, _F1_COLD, _F2_COLD)]:
+    melt = T > _T_MELT_BRANCH
+    cold = T < -22.9
+    warm = ~melt & ~cold
+    for mask, f1c, f2c in [(melt, _F1_MELT, _F2_MELT),
+                           (warm, _F1_WARM, _F2_WARM),
+                           (cold, _F1_COLD, _F2_COLD)]:
         if not np.any(mask):
             continue
         Tm = T[mask]
@@ -107,9 +124,10 @@ def _validate_TS(salinity_psu, temperature_C):
 
     if np.any(S < 0):
         raise ValueError("salinity_psu must be non-negative")
-    if np.any(T < -44) or np.any(T > -2):
+    if np.any(T < -44) or np.any(T > _T_MAX):
         raise ValueError(
-            f"temperature_C must be in [-44, -2]; got min={T.min()}, max={T.max()}"
+            f"temperature_C must be in [-44, {_T_MAX:g}]; "
+            f"got min={T.min()}, max={T.max()}"
         )
     return T, S, scalar
 
@@ -192,7 +210,11 @@ def compute_brine_volume(salinity_psu, temperature_C, porosity=0.0,
         T, S, rho_si = np.broadcast_arrays(T, S, rho_si)
         F1, _F2, _rho_i = _cw_terms(T)
         # Cox & Weeks (1983): Vb = S * rho_si / F1, with rho_si in g/cm3.
-        nu_b = S * (rho_si / 1e3) / F1
+        # F1 -> 0 as T -> 0: the ice is past its own melting point and is
+        # all brine.  _all_melted marks those elements.
+        with np.errstate(divide="ignore", invalid="ignore"):
+            nu_b = np.where(_all_melted(S, rho_si / 1e3, F1), 1.0,
+                            S * (rho_si / 1e3) / F1)
     else:
         por = np.atleast_1d(np.asarray(porosity, dtype=float))
         if np.any(por < 0) or np.any(por >= 1):
@@ -200,7 +222,8 @@ def compute_brine_volume(salinity_psu, temperature_C, porosity=0.0,
         T, S, por = np.broadcast_arrays(T, S, por)
         F1, F2, rho_i = _cw_terms(T)
         denom = F1 - rho_i * S * F2
-        if np.any(denom <= 0):
+        melted = denom <= rho_i * S          # gas-free Vb would reach 1
+        if np.any((denom <= 0) & (T <= _T_MELT_BRANCH)):
             raise RuntimeError(
                 "Cox & Weeks denominator non-positive — outside the "
                 "polynomial validity range."
@@ -209,10 +232,40 @@ def compute_brine_volume(salinity_psu, temperature_C, porosity=0.0,
         # bulk density carries the (1 - Va) factor and F1 does not, so it
         # survives into Vb unchanged.  Verified identical to the
         # bulk-density path to machine precision.
-        nu_b = (1.0 - por) * (S * rho_i) / denom
+        with np.errstate(divide="ignore", invalid="ignore"):
+            nu_b = np.where(melted, 1.0 - por,
+                            (1.0 - por) * (S * rho_i) / denom)
 
     nu_b = np.clip(nu_b, 0.0, 1.0)
     return float(nu_b.ravel()[0]) if scalar else nu_b
+
+
+def _all_melted(S, rho_g_cm3, F1):
+    """True where ice of this salinity holds no solid phase at this
+    temperature — i.e. the Cox & Weeks brine volume ``S * rho / F1`` would
+    reach or pass 1, which happens as ``F1 -> 0`` on approach to 0 °C."""
+    return (F1 <= 0) | (S * rho_g_cm3 >= F1)
+
+
+def melting_temperature(salinity_psu):
+    """Temperature (°C) at which ice of bulk salinity *salinity_psu* is fully
+    melted — the liquidus temperature of water of that salinity.
+
+    Uses the same Leppäranta & Manninen relation as the brine volume, with no
+    solid salts: brine of salinity S_b has ``rho_b * S_b = F1(T)`` and the
+    ice is all brine when S_b has fallen to the bulk salinity.  For S = 5 psu
+    this is -0.27 °C, i.e. the familiar ~ -0.054 °C per psu.
+    """
+    from scipy.optimize import brentq
+
+    S = float(salinity_psu)
+    if S <= 0:
+        return 0.0
+    target = S * (1.0 + _BRINE_RHO_SLOPE * 1e-3 * S)
+    f = lambda T: _poly(_F1_MELT, T) - target          # noqa: E731
+    if f(_T_MELT_BRANCH) < 0:
+        return _T_MELT_BRANCH       # saltier than this branch covers
+    return float(brentq(f, _T_MELT_BRANCH, 0.0, xtol=1e-6))
 
 
 def compute_gas_volume(salinity_psu, temperature_C, bulk_density_kg_m3):
@@ -250,7 +303,10 @@ def compute_gas_volume(salinity_psu, temperature_C, bulk_density_kg_m3):
     F1, F2, rho_i = _cw_terms(T)
 
     rho_g = rho_si / 1e3            # kg/m3 -> g/cm3
-    nu_a = 1.0 - rho_g / rho_i + rho_g * S * F2 / F1
+    with np.errstate(divide="ignore", invalid="ignore"):
+        nu_a = 1.0 - rho_g / rho_i + rho_g * S * F2 / F1
+    # Fully melted: no ice matrix left to hold gas.
+    nu_a = np.where(_all_melted(S, rho_g, F1), 0.0, nu_a)
     nu_a = np.clip(nu_a, 0.0, 1.0)
     return float(nu_a.ravel()[0]) if scalar else nu_a
 
@@ -317,62 +373,153 @@ def invert_brine_volume(brine_volume_fraction, salinity_psu,
 
 # ── Brine salinity (liquidus) ────────────────────────────────────────────────
 # Brine in sea ice sits at phase equilibrium, so its salinity is a function of
-# temperature alone (the liquidus).  We derive S_b(T) from the Frankenstein &
-# Garner (1967) brine-VOLUME relation by salt mass balance, rather than the
-# linear "warm-ice" law S_b ≈ -T/0.05411 ≈ -18.5·T of Notz et al. (2005), which
-# overestimates brine salinity by ~30-40% below about -8 °C.
+# temperature alone (the liquidus).  It has to come from the SAME phase model
+# as the brine volume, because the two are tied by conservation of salt:
 #
-# Reference (brine volume):
-#   Frankenstein, G. & Garner, R. (1967). Equations for determining the brine
-#   volume of sea ice from -0.5° to -22.9 °C. Journal of Glaciology, 6(48),
-#   943–944. https://doi.org/10.3189/S0022143000020244
+#       S_i * rho_si  =  S_b * rho_b * V_b * (1 + k)
 #
-# Derivation (honest about its assumptions — this is a *derived* liquidus, not
-# a direct fit to Assur (1958) phase data such as Notz & Worster (2009)):
-#   F&G give the relative brine volume of ice of bulk salinity S_i:
-#       Vb = 1e-3 · S_i · (-49.185/T + 0.532)          [-22.9 ≤ T ≤ -0.5 °C]
-#   All salt resides in the brine, so salt mass balance gives
-#       S_i · ρ_si = S_b · ρ_b · Vb
-#   in which S_i cancels (S_b is independent of bulk salinity, as physics
-#   requires), leaving, with bulk/pure ice density ρ_si = 917 kg m⁻³ and the
-#   linear brine-density model ρ_b = 1000 + 0.8·S_b kg m⁻³ (see brine_density),
-#       0.8·c·S_b² + 1000·c·S_b − 1000·ρ_si = 0,   c = (-49.185/T + 0.532)
-#   solved for the physical (positive) root.
+# (S_i, rho_si bulk; S_b, rho_b brine; k the mass of precipitated salts per
+# unit mass of salt left in the brine).  The Cox & Weeks brine volume is
+# V_b = S_i * rho_si / F1(T), so their F1 *is* the liquidus:
 #
-# Accuracy (verified against accepted Assur-based brine salinities):
-#   -2 °C → ~36, -5 °C → ~83, -10 °C → ~150 psu — within a few psu of the
-#   accepted liquidus (the linear law gives 37, 94, 187: ~30% high at -10 °C).
-#   Below ~-18 °C the derived value saturates against the NaCl·2H₂O eutectic
-#   (23.3 wt% ≈ 233 psu near -22.9 °C, the F&G lower validity limit), where
-#   inverting a volume fit is least reliable; it is capped and held there.
-_FG_A = -49.185       # Frankenstein & Garner (1967) coefficient (1/°C)
-_FG_B = 0.532         # Frankenstein & Garner (1967) coefficient
-_RHO_ICE = 917.0      # pure ice density, kg m⁻³
-_BRINE_RHO_SLOPE = 0.8  # ρ_b = 1000 + slope·S_b  (kg m⁻³); see brine_density()
-_S_EUTECTIC = 233.0   # psu — NaCl·2H₂O eutectic brine salinity (~23.3 wt%, -22.9 °C)
-_T_FG_MIN = -22.9     # °C — F&G lower validity / hydrohalite eutectic
-_T_FG_MAX = -0.5      # °C — F&G upper validity
+#       F1(T) = rho_b * S_b * (1 + k),        rho_b = 1 + 0.0008 * S_b  g/cm3
+#
+# Above -8.2 degC nothing has precipitated (k = 0), and S_b follows from F1 by
+# solving that quadratic — which makes brine salinity and brine volume
+# conserve salt identically.  That is the branch every melt-season and
+# most winter retrievals sit on.
+#
+# Below -8.2 degC mirabilite, and below -22.9 degC hydrohalite, take salt out
+# of the brine, k > 0, and F1 alone no longer fixes S_b.  There the liquidus
+# is the fit to Assur's (1958) phase data:
+#
+#   -22.9 <= T < -8.2   S_b = 57.041 - 9.929 T - 0.16204 T^2 - 0.002396 T^3
+#                       (Cox & Weeks 1975, after Assur; the form SMRT uses)
+#   T < -22.9           S_b = 206.24 - 1.8907 T - 0.060868 T^2 - 0.0010247 T^3
+#                       (Cox & Weeks 1986)
+#
+# The pieces join well: at -8.2 degC the F1-derived value is 128.97 and the
+# Assur fit 128.89 (0.06%).  At -22.9 degC the two published fits differ by
+# 0.7% (228.2 vs 229.9); the cold fit is shifted by that constant so the
+# liquidus is continuous.  At -2 degC the Cox & Weeks and Leppäranta &
+# Manninen F1 polynomials themselves differ by 0.8%, and S_b inherits that
+# step — it is the brine volume's own step, so salt is still conserved on
+# both sides of it.
+#
+# This replaces a liquidus derived from the Frankenstein & Garner (1967)
+# brine-volume relation, which disagreed with the Cox & Weeks volume it was
+# used alongside by 1.7% at -2 degC rising to 13.9% at -22.9 degC: brine
+# volume and brine salinity were drawn from two different phase models.
+#
+# References:
+#   Assur, A. (1958). Composition of sea ice and its tensile strength.
+#     Arctic Sea Ice, NAS-NRC Publ. 598, 106-138.
+#   Cox, G. F. N. & Weeks, W. F. (1975). Brine drainage and initial salt
+#     entrapment in sodium chloride ice. CRREL Research Report 345.
+#   Cox, G. F. N. & Weeks, W. F. (1986). Changes in the salinity and porosity
+#     of sea-ice samples during shipping and storage. J. Glaciol. 32(112).
+#   Leppäranta, M. & Manninen, T. (1988). The brine and gas content of sea
+#     ice with attention to low salinities and high temperatures. Finnish
+#     Institute of Marine Research Internal Report 88-2.
+_BRINE_RHO_SLOPE = 0.8    # rho_b = 1000 + slope * S_b  (kg m^-3), Cox & Weeks
+_T_MIRABILITE = -8.2      # degC — onset of mirabilite precipitation
+_T_HYDROHALITE = -22.9    # degC — onset of hydrohalite precipitation
+_SB_ASSUR = [57.041, -9.929, -0.16204, -0.002396]
+_SB_COLD = [206.24, -1.8907, -0.060868, -0.0010247]
+
+
+def _sb_from_f1(F1):
+    """Brine salinity from ``rho_b * S_b = F1`` with rho_b = 1 + 0.0008 S_b."""
+    c = _BRINE_RHO_SLOPE * 1e-3
+    return (-1.0 + np.sqrt(1.0 + 4.0 * c * np.maximum(F1, 0.0))) / (2.0 * c)
+
+
+_SB_COLD_OFFSET = (_poly(_SB_ASSUR, _T_HYDROHALITE)
+                   - _poly(_SB_COLD, _T_HYDROHALITE))
 
 
 def brine_salinity_at_temp(temperature_C):
     """Brine (liquidus) salinity in psu as a function of ice temperature (°C).
 
-    Derived from the Frankenstein & Garner (1967) brine-volume relation by
-    salt mass balance (see module notes above for the full derivation,
-    citation, assumptions, and accuracy).  Valid -0.5 to -22.9 °C; held at the
-    ~233 psu NaCl·2H₂O eutectic below -22.9 °C.  Replaces the previous linear
-    warm-ice approximation, removing its ~30 % cold-ice overestimate.
+    Consistent with :func:`compute_brine_volume`: above -8.2 °C it is the
+    salinity for which the Cox & Weeks / Leppäranta & Manninen brine volume
+    conserves salt exactly; below, Assur's phase data.  See the module notes
+    above for the derivation, the joins and the references.  Valid 0 to
+    -30 °C; held at its -30 °C value below that, as the brine volume is.
+    """
+    T = np.atleast_1d(np.asarray(temperature_C, dtype=float))
+    T = np.clip(T, -30.0, _T_MAX)
+    S_b = np.empty_like(T)
+
+    melt = T > _T_MELT_BRANCH
+    warm = (T <= _T_MELT_BRANCH) & (T >= _T_MIRABILITE)
+    mid = (T < _T_MIRABILITE) & (T >= _T_HYDROHALITE)
+    cold = T < _T_HYDROHALITE
+    S_b[melt] = _sb_from_f1(_poly(_F1_MELT, T[melt]))
+    S_b[warm] = _sb_from_f1(_poly(_F1_WARM, T[warm]))
+    S_b[mid] = _poly(_SB_ASSUR, T[mid])
+    S_b[cold] = _poly(_SB_COLD, T[cold]) + _SB_COLD_OFFSET
+    S_b = np.maximum(S_b, 0.0)
+    return float(S_b[0]) if np.ndim(temperature_C) == 0 else S_b
+
+
+# ── Precipitated salts ───────────────────────────────────────────────────────
+# Two salts matter optically (Light, Maykut & Grenfell 2004): mirabilite,
+# Na2SO4.10H2O, below -8.2 degC, and hydrohalite, NaCl.2H2O, below -22.9 degC.
+#
+# _MIRABILITE_MAX: kg of mirabilite per kg of sea salt if all the sulphate
+# precipitates — 7.7% SO4 by mass is 11.4% as Na2SO4, times 322.2/142.0 as
+# the decahydrate.
+_MIRABILITE_MAX = 0.259
+_MIRABILITE_EFOLD = 5.05  # K
+_HYDROHALITE_PER_NACL = 94.47 / 58.44    # kg NaCl.2H2O per kg NaCl
+
+
+def mirabilite_mass_fraction(temperature_C):
+    """Mass of precipitated mirabilite per unit mass of sea salt.
+
+    Zero above -8.2 °C, rising towards the total-sulphate limit of 0.259 as
+    the ice cools.  The shape is a saturating exponential with one anchor
+    from the literature: 9e-4 kg of mirabilite per kg of 4.7 ppt sea ice at
+    -15 °C (Light et al. 2004, from Richardson 1976), i.e. 0.191 per kg of
+    salt, 74% of the sulphate.  It reaches 94% by -22.9 °C.
+
+    This is an interpolation, not a phase calculation: Assur's and
+    Richardson's tables were not available to fit.  It matters little —
+    mirabilite in brine has almost no refractive-index contrast and
+    contributes under 5% of the similarity parameter at any temperature.
     """
     T = np.asarray(temperature_C, dtype=float)
-    # Clamp into F&G validity; below the eutectic the brine is held constant.
-    T_eval = np.clip(T, _T_FG_MIN, _T_FG_MAX)
-    c = _FG_A / T_eval + _FG_B                      # > 0 for T_eval < 0
-    a = _BRINE_RHO_SLOPE * c
-    b = 1000.0 * c
-    disc = b * b + 4.0 * a * 1000.0 * _RHO_ICE
-    S_b = (-b + np.sqrt(disc)) / (2.0 * a)
-    S_b = np.clip(S_b, 0.0, _S_EUTECTIC)
-    return float(S_b) if np.ndim(temperature_C) == 0 else S_b
+    dT = np.maximum(_T_MIRABILITE - T, 0.0)
+    out = _MIRABILITE_MAX * (1.0 - np.exp(-dT / _MIRABILITE_EFOLD))
+    return float(out) if np.ndim(temperature_C) == 0 else out
+
+
+def _salt_fraction_in_brine_cold(T):
+    """Fraction of the bulk salt still dissolved, on the Cox & Weeks cold
+    branch: ``rho_b * S_b / F1`` = 1 / (1 + k)."""
+    T = np.clip(T, -30.0, _T_HYDROHALITE)
+    S_b = _poly(_SB_COLD, T)
+    return (1.0 + _BRINE_RHO_SLOPE * 1e-3 * S_b) * S_b / _poly(_F1_COLD, T)
+
+
+def hydrohalite_mass_fraction(temperature_C):
+    """Mass of precipitated hydrohalite per unit mass of sea salt.
+
+    Zero above -22.9 °C.  Below it, the salt that leaves the brine as the
+    Cox & Weeks cold-branch brine volume collapses is sodium chloride, and
+    it precipitates as the dihydrate.  Computed entirely from the cold-branch
+    fits (brine volume and liquidus), so it is consistent with the brine
+    volume the model uses and is exactly zero at the onset.  By -30 °C about
+    60% of the salt has left the brine and the hydrohalite outweighs the
+    original salt.  Held at its -30 °C value below that.
+    """
+    T = np.asarray(temperature_C, dtype=float)
+    lost = (_salt_fraction_in_brine_cold(np.full_like(T, _T_HYDROHALITE))
+            - _salt_fraction_in_brine_cold(T))
+    out = np.where(T < _T_HYDROHALITE,
+                   np.maximum(lost, 0.0) * _HYDROHALITE_PER_NACL, 0.0)
+    return float(out) if np.ndim(temperature_C) == 0 else out
 
 
 def brine_density(temperature_C):
@@ -383,14 +530,11 @@ def brine_density(temperature_C):
     salt-balance derivation — with S_b the liquidus salinity at *temperature_C*.
 
     Note:
-        No longer used by the forward model.  It previously supplied the brine
-        density for the sea-ice air-fraction balance; that balance has been
-        replaced by :func:`compute_gas_volume`, which is pure Cox & Weeks and
-        needs no separate brine density.  Because S_b here comes from
-        Frankenstein & Garner (1967) while brine volume comes from
-        Cox & Weeks (1983), mixing this into a Cox & Weeks calculation
-        reintroduces two phase models for one quantity.  Retained as a public
-        utility and for :mod:`brine_optics`, which uses the same liquidus.
+        Not used by the forward model (the air fraction comes from
+        :func:`compute_gas_volume`).  Retained as a public utility.  S_b is
+        the Cox & Weeks-consistent liquidus of
+        :func:`brine_salinity_at_temp`, so this is the brine density of the
+        same phase model as the brine volume.
     """
     S_b = brine_salinity_at_temp(temperature_C)
     return 1.0 + 0.0008 * S_b

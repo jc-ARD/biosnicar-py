@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """Pre-compute sea-ice optical property LUT and save to data/OP_data/480band/luts/sea_ice.npz.
 
-Grid: T(7) × S(6) × density(8) × bubble_radius(11) = 3696 combinations.
+Grid: T(14) × S(6) × density(8) × bubble_radius(11) = 7392 combinations.
 Each point stores (tau_per_m, ssa, g) at 480 wavelengths.
 
 Run from the repo root:
     uv run python scripts/build_sea_ice_lut.py
 
-Expected runtime: ~30 s on a modern laptop (the per-point cost is dominated by
+Expected runtime: about a minute on a modern laptop (the per-point cost is dominated by
 the cached brine-RI LUT, which is built once up front).
 
 Rebuilding this LUT invalidates the shipped sea-ice emulators in
@@ -33,7 +33,14 @@ import biosnicar
 _OUT_PATH = biosnicar.DATA_DIR / "OP_data" / "480band" / "luts" / "sea_ice.npz"
 
 # Parameter grids
-T_GRID = np.array([-2, -5, -10, -15, -20, -25, -30], dtype=float)
+# Temperature nodes sit on the points where the physics changes slope, since
+# the LUT is interpolated linearly: -2 (Leppäranta & Manninen / Cox & Weeks
+# join), -8.2 (mirabilite onset), -14 (inclusion merging onset), -22.9
+# (hydrohalite onset).  -1 °C is the warm limit: Light et al.'s
+# microstructure was measured up to -1 °C, and by there ice of 12 psu is
+# already more than half brine.
+T_GRID = np.array([-1, -1.5, -2, -3, -5, -8.2, -11, -14, -18, -22.9, -24,
+                   -26, -28, -30], dtype=float)
 S_GRID = np.array([1, 4, 6, 8, 10, 12], dtype=float)
 # Density grid must cover every density the model is actually asked for, since
 # column_OPs._interpolate_sea_ice_lut CLAMPS to [min, max] rather than
@@ -129,9 +136,11 @@ def build_lut():
         S_grid=S_GRID,
         rho_grid=RHO_GRID,
         bubble_radius_grid=BUBBLE_GRID,
-        tau_per_m=tau_lut,
-        ssa=ssa_lut,
-        asm=asm_lut,
+        # float32: the table is 14 x 6 x 8 x 11 x 480 x 3 values, and single
+        # precision (relative 1e-7) is far below anything the model resolves.
+        tau_per_m=tau_lut.astype(np.float32),
+        ssa=ssa_lut.astype(np.float32),
+        asm=asm_lut.astype(np.float32),
     )
     print(f"Saved: {_OUT_PATH}")
     print(f"Total time: {time.time() - t0:.1f}s")

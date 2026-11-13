@@ -65,6 +65,31 @@ def _fresnel_unpolarized(cos_theta, m):
     return 0.5 * (np.abs(rs) ** 2 + np.abs(rp) ** 2)
 
 
+_ocean_reflectance_cache = None
+
+
+def ocean_subsurface_reflectance():
+    """Irradiance reflectance of the ocean seen from just above it, 480 bands.
+
+    ``R = f * b_b / (a + b_b)`` for pure seawater (Morel), the same term the
+    open-water model uses beneath its surface.  This is the lower boundary of
+    a sea-ice column: what light that reaches the bottom of the ice meets is
+    water, about 2-4% reflective in the blue and black beyond the red.  No
+    interface term is applied — ice against water is a refractive step of
+    1.31 to 1.34.
+    """
+    global _ocean_reflectance_cache
+    if _ocean_reflectance_cache is None:
+        import pandas as pd
+
+        df = pd.read_csv(_WATER_RI_PATH)
+        wvl_um = df["wvl"].to_numpy()
+        a = 4.0 * np.pi * df["k"].to_numpy() / (wvl_um * 1e-6)
+        bb = 0.5 * _BW_500 * (wvl_um / 0.5) ** -4.32
+        _ocean_reflectance_cache = _MOREL_F * bb / (a + bb)
+    return _ocean_reflectance_cache.copy()
+
+
 class OpenWaterModel:
     """Analytical open water albedo model.
 

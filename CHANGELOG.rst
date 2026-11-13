@@ -11,6 +11,29 @@ Unreleased
 Added
 ~~~~~
 
+- **Brine inclusions and precipitated salts scatter light.**  Sea-ice
+  scattering came from air bubbles alone; brine entered only as an absorber.
+  New module :mod:`biosnicar.sea_ice.inclusion_scattering` adds scattering by
+  brine pockets and tubes, by mirabilite below -8.2 °C and by hydrohalite
+  below -22.9 °C, following the structural-optical model of Light, Maykut &
+  Grenfell (2004).  The implementation reproduces their published figures
+  from the inclusion size distribution: 24 inclusions per mm^3, cross-sections
+  of 28 and 82 m^-1 for pockets and tubes (published 30 and 80), and
+  290 m^-1 of scattering at -15 °C for their 4.7 ppt sample (published 280).
+  Efficiencies come from a new soft-sphere Mie table
+  (``scripts/build_soft_sphere_mie_lut.py``).  Preset broadband albedos rise
+  by 0.003-0.007; the effect is largest in dense interior ice, where bubbles
+  are few.
+
+- **The melt season: -2 to 0 °C.**  ``compute_brine_volume`` and
+  ``compute_gas_volume`` use the Leppäranta & Manninen (1988) coefficients
+  above -2 °C (checked against SMRT v1.7.3), return fully-melted ice as such,
+  and no longer refuse anything warmer than -2 °C.  New
+  ``melting_temperature(salinity)``; ``mirabilite_mass_fraction`` and
+  ``hydrohalite_mass_fraction`` for the precipitated salts;
+  ``effective_medium.bruggeman``.  FYI_summer and FYI_pond now retrieve
+  temperature up to -1 °C.
+
 - **``run_model(fresnel_layer=...)``** — explicit placement of the smooth
   refractive boundary: ``"auto"`` (default rule), a layer index, or ``None``
   to remove it.  Sea ice previously had no way to move or disable its
@@ -80,6 +103,32 @@ Added
 
 Fixed
 ~~~~~
+
+- **Brine volume and brine salinity came from two different phase models.**
+  Volume was Cox & Weeks (1983); the liquidus salinity that sets the brine's
+  refractive index was derived from Frankenstein & Garner (1967), and the two
+  disagreed by 1.7% at -2 °C rising to 13.9% at -22.9 °C.  The liquidus now
+  comes from the Cox & Weeks ``F1`` itself — which is the statement that salt
+  is conserved — above -8.2 °C, and from Assur's phase data below, so brine
+  volume and brine salinity conserve salt identically wherever nothing has
+  precipitated.
+
+- **The brine refractive index was too low.**  It was built on a tabulated
+  water index (Rowe et al. 2020) whose real part is 0.003 low at 589 nm and
+  0.005 low at 700 nm, which removed about a tenth of the brine-ice contrast.
+  It is now the Quan & Fry (1995) formula itself plus a high-salinity term,
+  and matches the brine measurements of Maykut & Light (1995) at both ends
+  of their range (1.341 at -2 °C, 1.397 at -32 °C).
+
+- **The ice-brine effective medium was applied outside its validity.**
+  Maxwell-Garnett with ice as host holds for dilute inclusions; it is
+  replaced by the symmetric Bruggeman rule, valid at any brine fraction.  The
+  two agree to 0.04% in absorption, so results do not move.
+
+- **A sea-ice column sat on glacier ice.**  The lower boundary was the
+  default blue glacier-ice spectrum (16% reflective at 450 nm); under sea
+  ice it is now the ocean's subsurface reflectance.  0.002 in broadband
+  albedo for 30 cm of ice, under 0.001 at 1.5 m.
 
 - **Emulator-derived broadband albedo and band values used an arbitrary
   solar flux.**  ``Emulator.flx_slr`` is the flux of the first training
@@ -165,6 +214,12 @@ Fixed
 
 Changed
 ~~~~~~~
+- **The sea-ice LUT and the whole sea-ice emulator fleet are rebuilt** for
+  the changes above.  The LUT temperature axis now has 14 nodes from -1 to
+  -30 °C, placed on the points where the physics changes slope, and is
+  stored in single precision.  The model-error covariance is rebuilt against
+  the new fleet.
+
 - **``FYI_summer`` parameterises its surface scattering layer by optical
   depth.**  New retrieved parameter ``tau_ssl`` (SSL thickness / grain
   radius, 1-100) replaces the fixed 5 cm layer; ``ssl_grain_radius`` is kept

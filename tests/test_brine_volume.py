@@ -109,8 +109,10 @@ class TestBrineVolumeAgainstSMRT:
 
 class TestBrineVolumeValidation:
     def test_raises_on_too_warm(self):
+        """0 °C is the upper limit; the melt season below it is covered."""
         with pytest.raises(ValueError, match="temperature_C"):
-            compute_brine_volume(8.0, 0.0)
+            compute_brine_volume(8.0, 0.5)
+        assert compute_brine_volume(8.0, 0.0) == 1.0      # all melted
 
     def test_raises_on_too_cold(self):
         with pytest.raises(ValueError, match="temperature_C"):
@@ -149,7 +151,7 @@ class TestBrineVolumeVectorised:
 
 
 class TestBrineSalinityLiquidus:
-    """Frankenstein & Garner (1967)-derived liquidus salinity S_b(T)."""
+    """Liquidus salinity S_b(T) of the Cox & Weeks phase model."""
 
     def test_check_values_against_accepted_liquidus(self):
         from biosnicar.sea_ice.brine_volume import brine_salinity_at_temp as Sb
@@ -170,8 +172,12 @@ class TestBrineSalinityLiquidus:
         T = np.linspace(-2, -30, 100)
         s = Sb(T)
         assert np.all(np.diff(s) >= -1e-9)          # non-decreasing as T falls
-        assert s.max() <= 233.0 + 1e-6              # eutectic cap
-        assert Sb(-30.0) == Sb(-22.9)              # held below eutectic
+        # Below the hydrohalite onset (-22.9 °C) the brine barely
+        # concentrates further: Assur's data rise from ~228 to ~236 psu by
+        # -30 °C.  (The earlier derived liquidus was capped flat at 233.)
+        assert 226.0 < Sb(-22.9) < 231.0
+        assert Sb(-22.9) < Sb(-30.0) < 238.0
+        assert Sb(-40.0) == Sb(-30.0)               # held below the fitted range
 
     def test_scalar_and_vector(self):
         import numpy as np
