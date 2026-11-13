@@ -81,6 +81,27 @@ Added
 Fixed
 ~~~~~
 
+- **Emulator-derived broadband albedo and band values used an arbitrary
+  solar flux.**  ``Emulator.flx_slr`` is the flux of the first training
+  sample, so when ``solzen`` and ``direct`` are emulator parameters it is the
+  flux of whatever illumination that sample drew — for the shipped sea-ice
+  fleet, clear sky at SZA 32, 53 or 60 for four emulators and an overcast sky
+  for the other two.  ``run_emulator``, band convolution and every retrieval
+  result weighted spectra with it whatever geometry was requested.  Narrow
+  satellite bands moved by at most 0.001, but broadband albedo was wrong by
+  0.007-0.027 on average and up to 0.08.
+
+  New ``biosnicar.classes.illumination.solar_flux(solzen, direct, incoming)``
+  and ``Emulator.solar_flux(solzen, direct)`` return the flux of a stated
+  illumination; ``OpenWaterModel`` implements the same method.  They are used
+  by ``run_emulator``, by ``retrieve`` (re-evaluated per candidate state when
+  ``solzen`` or ``direct`` is itself retrieved), by the vectorised OE engine
+  (one band operator per distinct geometry when ``solzen`` / ``direct`` are
+  per-pixel arrays) and for ``RetrievalResult.flx_slr``.  ``flx_slr`` remains
+  as a documented legacy attribute and as the fallback when the geometry is
+  not known.  No emulator needs retraining: albedo does not depend on the
+  flux spectrum.
+
 - **The refractive boundary of a melt pond was on the ice under it.**  For a
   column ``[5, 4, 4]`` the Fresnel interface landed on the first sea-ice
   layer and was computed as air->ice, as though the water above were absent.

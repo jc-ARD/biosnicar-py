@@ -390,7 +390,8 @@ class TestSpectralOEDefaultsToFieldCovariance:
         fleet = load_sea_ice_emulators(["FYI_pond", "FYI_bare"])
         obs = TestAgainstARealRetrieval()._pond_obs()
         bands = ["B2", "B3", "B4", "B8"]
-        br = to_platform(obs, "sentinel2", flx_slr=fleet["FYI_pond"].flx_slr)
+        br = to_platform(obs, "sentinel2",
+                         flx_slr=fleet["FYI_pond"].solar_flux(60, 1))
         y = [getattr(br, b) for b in bands]
         kw = dict(observed=y, emulators=fleet, platform="sentinel2",
                   observed_band_names=bands, solzen=60, direct=1,

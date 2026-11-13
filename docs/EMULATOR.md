@@ -156,7 +156,8 @@ Save/load emulator to/from `.npz`. No sklearn required for loading.
 | `bounds`           | dict           | `{name: (min, max)}` from training.  |
 | `n_pca_components` | int            | Number of PCA components retained.   |
 | `training_score`   | float          | R² on the **PCA coefficients**, scored on the training data — not held out, not a spectral accuracy figure. See below. |
-| `flx_slr`          | ndarray (480,) | Solar flux spectrum from build time. |
+| `flx_slr`          | ndarray (480,) | Solar flux of the *first training sample* — an arbitrary geometry when `solzen`/`direct` are emulator parameters. Legacy; do not weight spectra with it. |
+| `solar_flux(solzen, direct)` | method | Solar flux for a stated illumination geometry. This is what `run_emulator`, band convolution and retrieval results use. |
 
 #### Reading `training_score`
 

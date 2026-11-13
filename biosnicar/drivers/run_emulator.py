@@ -49,7 +49,12 @@ def run_emulator(emulator, **params):
         ``heat_rt``, ``absorbed_flux_per_layer``) are ``None``.
     """
     albedo = emulator.predict(**params)
-    flx_slr = emulator.flx_slr
+    # Flux of the illumination these parameters describe, not of whichever
+    # training sample the emulator happened to store.
+    if hasattr(emulator, "solar_flux"):
+        flx_slr = emulator.solar_flux(params.get("solzen"), params.get("direct"))
+    else:
+        flx_slr = emulator.flx_slr
 
     outputs = Outputs()
     outputs.albedo = albedo
