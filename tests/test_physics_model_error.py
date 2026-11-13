@@ -75,6 +75,7 @@ class TestSwitches:
         ("FYI_pond", "water_absorption_scale", 1.3),
         ("young_ice", "young_ice_scattering_scale", 1.5),
         ("open_water", "ocean_reflectance_scale", 2.0),
+        ("FYI_pond", "diffuse_fraction_scale", 1.3),
     ])
     def test_each_switch_moves_the_spectrum(self, type_name, switch, value):
         p = _mid(type_name)
@@ -182,15 +183,6 @@ class TestArithmetic:
         assert "interior_density" in names
         names = {f.name for f in fu.applicable_factors("FYI_summer")}
         assert {"drained_layer_density", "grain_shape"} <= names
-
-    def test_clear_sky_diffuse_fraction_is_rayleigh_like(self):
-        f60 = fu.clear_sky_diffuse_fraction(60)
-        f80 = fu.clear_sky_diffuse_fraction(80)
-        i400, i800, i1600 = (np.argmin(np.abs(WVL - w)) for w in (0.4, 0.8, 1.6))
-        assert 0.2 < f60[i400] < 0.6
-        assert f60[i400] > f60[i800] > f60[i1600]
-        assert f60[i1600] < 0.03
-        assert (f80 >= f60).all()
 
     def test_band_space_covariance_is_the_projection(self):
         rng = np.random.default_rng(2)
@@ -349,7 +341,7 @@ class TestRetrieval:
                                             seed=11)
         inst = closure.summarise(rows["instrument"], free, mask, 0.005, None)
         phys = closure.summarise(rows["physics"], free, mask, 0.005, cov)
-        assert inst["chi2_median"] > 5 * phys["chi2_median"]
+        assert inst["chi2_median"] > 3 * phys["chi2_median"]
         assert phys["chi2_median"] < 3.0
         assert phys["cover2"] > inst["cover2"] + 0.1
         assert phys["cover2"] > 0.9

@@ -56,7 +56,10 @@ NOISE = 0.005
 
 def forward_obs(stype, truth):
     """Honest observation: forward model + noise (never the emulator)."""
-    a = np.asarray(run_model(**SEA_ICE_EMULATOR_CONFIGS[stype]["transform_fn"](truth)).albedo)
+    # under a real clear sky: a beam plus scattered light (biosnicar.sky)
+    a = np.asarray(run_model(
+        diffuse_fraction="clear_sky",
+        **SEA_ICE_EMULATOR_CONFIGS[stype]["transform_fn"](truth)).albedo)
     return np.clip(a + rng.normal(0, NOISE, 480), 0.0, 1.0)
 
 
@@ -65,7 +68,8 @@ def forward_obs(stype, truth):
 print("=" * 70)
 print("1. Optimal-estimation retrieval of a melt pond (full 480-band spectrum)")
 print("=" * 70)
-emu = load_sea_ice_emulators(["FYI_pond"])["FYI_pond"]
+from biosnicar.sky import mixed_sky
+emu = mixed_sky(load_sea_ice_emulators(["FYI_pond"])["FYI_pond"])
 # FYI_pond retrieves the pond floor's bubble radius (its coarseness), so the
 # forward model needs a value for it; it is held fixed here to keep this
 # example's information-content story to three parameters.

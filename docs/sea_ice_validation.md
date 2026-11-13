@@ -761,7 +761,9 @@ Three things this says that the field-fitted covariance could not:
   0.004 or less.
 - **Treating a clear sky as a pure direct beam is a first-order error for
   specular surfaces** (ponds, young ice, open water: 0.010–0.015) and should
-  become part of the forward model, not of its error.
+  become part of the forward model, not of its error. *(Done — §18. The
+  tables in this section are as first built; §18 gives the budget rebuilt on
+  the corrected sky.)*
 
 The error is strongly correlated across bands: 1.1–1.7 effective independent
 directions over the 60 visible bands.
@@ -841,4 +843,97 @@ is fed back. RMS field residual divided by the budget's one sigma (instrument
 - Band mode now carries the budget (`Wᵀ S W` through the band convolution).
   On synthetic Sentinel-2 retrievals of spectra with perturbed physics, 280
   cases: classification 84% → 86%, mean confidence when wrong 0.73 → 0.66.
+
+## 18. Clear skies as a beam plus scattered light (2026-11-13)
+
+§17 found that modelling a clear sky as a pure direct beam was one of the
+larger forward-model errors on specular surfaces. It is a known bias with a
+known sign, so it belongs in the model, not in the error budget.
+
+**What changed.** `biosnicar.sky` models the diffuse fraction of a clear
+sky's irradiance (Rayleigh plus a background Arctic aerosol, single
+scattering): 0.44 at 400 nm, 0.23 at 500 nm and 0.04 at 1000 nm with the
+sun at 60° zenith; 0.87, 0.56 and 0.12 at 80°. `run_model(diffuse_fraction=
+"clear_sky")` splits the incident flux between the beam and diffuse streams
+that both solvers already carry. The retrievals blend each emulator's
+direct-beam and diffuse-sky predictions by the same fraction, by default.
+Albedo is linear in the incident field, so the blend is exact and the
+emulators were not retrained; the native mixed-sky run and the blend of two
+runs agree to 1e-4 in both solvers. One solver defect surfaced and was
+fixed: its smoothing filter rang across the total-reflection bands near
+3 µm once diffuse light was present.
+
+**Size of the effect** (mixed sky minus pure beam, mid-range state, mean
+over 400–1000 nm / largest single band):
+
+| Type | Solar zenith 60° | Solar zenith 78° |
+|---|---|---|
+| FYI_bare | +0.003 / 0.010 | −0.049 / 0.138 |
+| FYI_snow | −0.005 / 0.018 | −0.038 / 0.105 |
+| FYI_pond | +0.002 / 0.007 | −0.054 / 0.144 |
+| young_ice | +0.001 / 0.002 | −0.049 / 0.131 |
+
+Small at the sun angles of the summer field campaigns, first-order at the
+low sun of spring, autumn and high latitude — which is where satellite
+retrievals of sea ice mostly are.
+
+**Error budget, rebuilt on this forward model.** The sky term is now the
+uncertainty of the diffuse fraction (×/÷ 1.3: aerosol loading, and light
+reflected back down over a bright surface, which the default model leaves
+out) instead of its neglect.
+
+| Type | Sky term before | Sky term now | Total VIS before | Total VIS now |
+|---|---|---|---|---|
+| FYI_bare | 0.008 | 0.002 | 0.042 | 0.040 |
+| FYI_snow | 0.006 | 0.002 | 0.018 | 0.017 |
+| FYI_summer | 0.007 | 0.002 | 0.046 | 0.046 |
+| MYI_bare | 0.008 | 0.002 | 0.021 | 0.018 |
+| FYI_pond | 0.010 | 0.003 | 0.036 | 0.034 |
+| young_ice | 0.015 | 0.004 | 0.038 | 0.033 |
+| open_water | 0.014 | 0.004 | 0.017 | 0.008 |
+
+**Closure test, rerun** (150 states per type; truth includes a diffuse
+fraction drawn from its range):
+
+| Type | Within 2σ, instrument-only | Within 2σ, physics budget | Measured parameters within 1σ | Reduced χ² |
+|---|---|---|---|---|
+| FYI_bare | 83% | 95% | 77% | 0.96 |
+| FYI_snow | 56% | 92% | 69% | 1.00 |
+| FYI_summer | 59% | 91% | 67% | 0.98 |
+| MYI_bare | 86% | 96% | 85% | 0.99 |
+| FYI_pond | 57% | 96% | 78% | 0.99 |
+| young_ice | 80% | 99% | 85% | 0.97 |
+
+**Field numbers** — reported as context. They barely move: SHEBA was
+measured with the sun 21–35° up (zenith 55–69°), where the effect is a few
+thousandths, and two thirds of the Smith and Istomina spectra are overcast,
+where nothing changes. Istomina's clear-sky spectra are at low sun (median
+zenith 79°) and are the ones this matters for; it is the frozen test set and
+was not used to judge the change.
+
+| Block | Before | After |
+|---|---|---|
+| SHEBA spring snow, full / S2 / L8 | 6/7, 7/7, 7/7 | 6/7, 7/7, 7/7 |
+| SHEBA summer bare ice, full / S2 / L8 | 16/16, 16/16, 15/16 | 16/16, 16/16, 15/16 |
+| Morassutti pond classification (504) | 90.5% | 90.5% |
+| Morassutti ponds, 120-sample block: classified / depth within ±25% | 99, 24 | 99, 25 |
+| Smith VIS / full-range RMS, median | 0.008 / 0.016 | 0.008 / 0.016 |
+| Smith classified FYI_snow / snow-like | 1/44, 35/44 | 1/44, 35/44 |
+| OE SWIR experiment, default method VIS / VIS+SWIR | 12/12, 12/12 | 12/12, 11/12 |
+| OE SWIR experiment, OE + physics budget VIS / VIS+SWIR | 9/12, 11/12 | 9/12, 10/12 |
+
+The residual library and the opt-in field-fitted covariance were rebuilt on
+the new default (field-fitted held-out reduced χ² 6.68 mean / 4.42 median).
+The comparison of field residuals with the physics budget is unchanged in
+substance: inside it at 400–700 nm in every campaign, 2.5–7.5× outside it
+beyond 1000 nm on bare and melting ice.
+
+**What is still approximate.** The default sky is a fixed background
+aerosol with no light reflected back from the surface; over snow that
+under-states the diffuse fraction in the blue by up to about 0.12.
+`clear_sky_diffuse_fraction(regional_albedo=...)` includes it, and a
+measured fraction can be passed to both `run_model` and the retrievals. A
+synthetic observation meant to test a retrieval has to be generated under
+the same sky the retrieval assumes: a pure-beam truth retrieved under a
+mixed sky dropped one fleet classification test from 5+/7 to 4/7.
 

@@ -251,8 +251,14 @@ def adding_doubling_solver(tau, ssa, g, L_snw, ice, illumination, model_config):
         # TIR bands and a guard zone of window_size // 2 bands on each side,
         # so the polynomial is never fitted across the discontinuity.
         raw = outputs.albedo.copy()
+        # Under a mixed sky (beam plus diffuse light) the TIR bands are no
+        # longer exactly 1 — the diffuse part is not totally reflected — but
+        # the step is still there, so find it in the beam's own reflectance.
+        tir = np.isclose(raw, 1.0)
+        if np.any(illumination.Fs > 0) and np.any(illumination.Fd > 0):
+            tir |= np.isclose(fdirup[:, 0], 1.0)
         tir_guard = binary_dilation(
-            np.isclose(raw, 1.0), iterations=model_config.window_size // 2
+            tir, iterations=model_config.window_size // 2
         )
         smoothed = apply_smoothing_function(raw, model_config)
         outputs.albedo = np.where(tir_guard, raw, smoothed)

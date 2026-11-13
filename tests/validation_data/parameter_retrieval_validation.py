@@ -63,7 +63,8 @@ def _forward(stype, params):
         from biosnicar.sea_ice.open_water import OpenWaterModel
         return OpenWaterModel().predict(**params)
     cfg = SEA_ICE_EMULATOR_CONFIGS[stype]
-    return np.asarray(run_model(**cfg["transform_fn"](params)).albedo)
+    return np.asarray(run_model(
+        diffuse_fraction="clear_sky", **cfg["transform_fn"](params)).albedo)
 
 
 def validate_type(stype, emulators, n, rng):

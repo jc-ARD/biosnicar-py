@@ -51,6 +51,10 @@ NEUTRAL = {
     # Multiplies the ocean's subsurface reflectance (lower boundary of a
     # sea-ice column; water-leaving term of open water).
     "ocean_reflectance_scale": 1.0,
+    # Multiplies the modelled diffuse fraction of a clear sky
+    # (biosnicar.sky; aerosol loading, light reflected back by a bright
+    # surface).
+    "diffuse_fraction_scale": 1.0,
 }
 
 _SEA_ICE_SWITCHES = frozenset({
