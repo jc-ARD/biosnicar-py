@@ -185,7 +185,10 @@ class TestSeaIceEmulatorPredictComplete:
 
     def test_summer_ssl_grain_radius_nir_physics(self, emu500_fyi_summer):
         """Larger SSL grain radius → less scattering → lower NIR albedo."""
-        kw = dict(sea_ice_temperature=-5.0, sea_ice_bubble_radius=200.0,
+        # tau_ssl held fixed: isolates the grain-size (absorption) effect
+        # from the optical-depth effect.
+        kw = dict(tau_ssl=30.0, sea_ice_temperature=-5.0,
+                  sea_ice_bubble_radius=200.0,
                   black_carbon=0.0, solzen=60, direct=1)
         fine = emu500_fyi_summer.predict(ssl_grain_radius=600.0, **kw)
         coarse = emu500_fyi_summer.predict(ssl_grain_radius=4000.0, **kw)
@@ -712,7 +715,8 @@ class TestSeaIcePhysicsChecks:
 
     def test_fyi_summer_larger_ssl_lower_overall_bba(self, emu500_fyi_summer):
         """Larger SSL grain radius → lower broadband albedo."""
-        kw = dict(sea_ice_temperature=-5.0, sea_ice_bubble_radius=200.0,
+        kw = dict(tau_ssl=30.0, sea_ice_temperature=-5.0,
+                  sea_ice_bubble_radius=200.0,
                   black_carbon=0.0, solzen=60, direct=1)
         fine   = emu500_fyi_summer.predict(ssl_grain_radius=600.0, **kw)
         coarse = emu500_fyi_summer.predict(ssl_grain_radius=4500.0, **kw)

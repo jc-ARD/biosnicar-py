@@ -165,6 +165,18 @@ Fixed
 
 Changed
 ~~~~~~~
+- **``FYI_summer`` parameterises its surface scattering layer by optical
+  depth.**  New retrieved parameter ``tau_ssl`` (SSL thickness / grain
+  radius, 1-100) replaces the fixed 5 cm layer; ``ssl_grain_radius`` is kept
+  and ``ssl_thickness`` (m) is reported as a derived quantity.  Scattering
+  optical depth goes as ``rho * dz / (rho_ice * r)``, so thickness and grain
+  size trade off and the spectrum constrains their ratio; density is exactly
+  interchangeable with thickness and is therefore not a parameter.  The
+  emulator is now 7-parameter and its file is
+  ``sea_ice_FYI_summer_tau_7param.npz`` (``sea_ice_FYI_summer_6param.npz`` is
+  removed).  **Callers of the FYI_summer emulator must now supply
+  ``tau_ssl``.**  The model-error covariance is rebuilt against it.
+
 - **Spectral optimal estimation uses the field-calibrated error covariance
   by default.**  ``retrieve_sea_ice(model_error="auto")`` resolves to the
   calibrated forward-model error for spectral ``method="oe"`` and to nothing

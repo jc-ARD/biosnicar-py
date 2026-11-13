@@ -73,6 +73,8 @@ _LOG_SAMPLE_PARAMS = {
     # Snow optical-depth proxy (depth / grain radius): albedo response is
     # logarithmic in tau, so log-sampling covers the thin-snow regime.
     "tau_snow",
+    # SSL optical-depth proxy (thickness / grain radius), same reasoning.
+    "tau_ssl",
     # Young ice thickness (cm): transmittance is exponential in thickness.
     "ice_thickness_cm",
 }

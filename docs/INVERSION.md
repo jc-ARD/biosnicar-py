@@ -669,6 +669,7 @@ result = retrieve_sea_ice(
 | `snow_depth` | (0.02, 0.30) m | 0.10 | Derived output for FYI_snow; direct retrieval only for custom emulators |
 | `snow_grain_radius` | (50, 2000) µm | 500 | log-space in optimiser |
 | `ssl_grain_radius` | (500, 5000) µm | 2000 | log-space in optimiser |
+| `tau_ssl` | (1, 100) | — | SSL thickness ÷ grain radius; log-space in optimiser |
 | `pond_depth` | (0.02, 0.60) m | 0.15 | log-space in optimiser |
 | `ice_thickness_cm` | (0.5, 30) cm | — | Young ice (layer_type=6); log-space. Metres derived in `result.parameters["ice_thickness"]` |
 | `ocean_albedo` | (0.03, 0.08) | — | Sub-ice ocean reflectance for young ice |

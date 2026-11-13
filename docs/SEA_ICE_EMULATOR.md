@@ -101,7 +101,7 @@ result.to_outputs().to_platform("sentinel2")
 |------|-------------|------------|-------------|---|
 | `FYI_bare` | Winter/spring bare first-year ice (no snow, no SSL) | brine_volume_fraction, bubble_radius, BC, rho_DL, solzen, direct | 0.55–0.85 | vis_only |
 | `FYI_snow` | Snow-covered first-year ice | tau_snow, snow_grain_radius, T, BC, solzen, direct | 0.80–0.95 | vis_swir |
-| `FYI_summer` | Melt-season bare FYI with Surface Scattering Layer | ssl_grain_radius, T, bubble_radius, BC, solzen, direct | 0.45–0.75 | vis_only |
+| `FYI_summer` | Melt-season bare FYI with Surface Scattering Layer | tau_ssl, ssl_grain_radius, T, bubble_radius, BC, solzen, direct | 0.45–0.75 | vis_only |
 | `MYI_bare` | Bare multiyear ice (lower salinity, larger bubbles) | brine_volume_fraction, bubble_radius, BC, solzen, direct | 0.55–0.85 | vis_only |
 | `FYI_pond` | Melt pond on first-year ice | pond_depth, T, BC, solzen, direct | 0.05–0.30 | vis_swir |
 | `young_ice` | Grease ice, nilas, grey/grey-white ice (0.5–30 cm, semi-transparent thin slab over ocean) | ice_thickness_cm, T, salinity, ocean_albedo, solzen, direct | 0.08–0.30 | vis_swir |
@@ -168,6 +168,7 @@ The Surface Scattering Layer is a porous, highly scattering near-surface layer t
 | Parameter | Range | Units | Role |
 |-----------|-------|-------|------|
 | `ssl_grain_radius` | 500 to 5000 | μm | SSL scattering; larger grains = lower NIR |
+| `tau_ssl` | 1 to 100 | – | SSL thickness ÷ grain radius (both in µm), at 300 kg/m³. Thickness is derived: `ssl_thickness = tau_ssl × ssl_grain_radius × 1e-6` m. Density is exactly interchangeable with thickness, so what is constrained is mass path per grain radius |
 | `sea_ice_temperature` | -10 to -2 | °C | Brine in underlying DL |
 | `sea_ice_bubble_radius` | 50 to 500 | μm | Bubble scattering in DL |
 | `black_carbon` | 0 to 5000 | ppb | SSL surface layer |

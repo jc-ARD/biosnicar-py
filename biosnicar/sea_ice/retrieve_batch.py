@@ -301,6 +301,12 @@ def vectorized_oe_fleet(observed, emulators, emu_regs, shared_fixed,
             if grain is not None:
                 pvals["snow_depth"] = float(
                     np.clip(pvals["tau_snow"] * grain * 1e-6, 0.003, 1.5))
+        if "tau_ssl" in pvals:
+            grain = pvals.get("ssl_grain_radius",
+                              shared_fixed.get("ssl_grain_radius"))
+            if grain is not None and np.ndim(grain) == 0:
+                from biosnicar.sea_ice.emulator_configs import ssl_thickness_m
+                pvals["ssl_thickness"] = ssl_thickness_m(pvals["tau_ssl"], grain)
         if "ice_thickness_cm" in pvals:
             pvals["ice_thickness"] = pvals["ice_thickness_cm"] / 100.0
 
