@@ -876,10 +876,17 @@ class TestBuiltEmulators:
                     mid_kw[pname] = int(round(mid))
                 else:
                     mid_kw[pname] = mid
+            # Truth under the sky the retrieval assumes: a clear sky is a
+            # beam plus its diffuse part (biosnicar.sky).  A pure-beam truth
+            # retrieved under a mixed sky is a mismatch large enough to flip
+            # classes.
             if "transform_fn" in cfg:
-                obs = np.asarray(run_model(**cfg["transform_fn"](mid_kw)).albedo)
+                obs = np.asarray(run_model(
+                    diffuse_fraction="clear_sky",
+                    **cfg["transform_fn"](mid_kw)).albedo)
             else:  # analytical model (open_water) IS the forward model
-                obs = emu.predict(**mid_kw)
+                from biosnicar.sky import mixed_sky
+                obs = mixed_sky(emu).predict(direct=1, **mid_kw)
 
             result = retrieve_sea_ice(
                 observed=obs,

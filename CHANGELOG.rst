@@ -11,6 +11,28 @@ Unreleased
 Added
 ~~~~~
 
+- **Clear skies are a direct beam plus scattered light.**  New module
+  :mod:`biosnicar.sky`.  ``run_model(diffuse_fraction=...)`` splits a clear
+  sky's irradiance between the beam and diffuse light — ``"clear_sky"``
+  (modelled: Rayleigh plus a background aerosol, single scattering, plus
+  light reflected by surroundings of albedo ``regional_albedo``, default
+  0.8, and scattered back down), a number, or a 480-band array; default
+  ``None``, the pure beam as before.
+  Both solvers already carried the two streams, so this is the right split
+  of the incident flux and nothing more; it reproduces the blend of a
+  direct-beam and a diffuse-sky run to 1e-4.  At a solar zenith of 78° the
+  visible albedo of every sea-ice surface type falls by 0.04-0.06.
+  ``biosnicar.sky.mixed_sky(emulator)`` gives any emulator trained on
+  ``direct`` in {0, 1} the same sky by blending its two predictions, exactly
+  and without retraining.
+
+- **``scripts/fixed_input_retrievability.py``** — for each fixed input of
+  the forward model, whether the spectrum could retrieve it instead: its
+  averaging kernel if appended to the state vector, from the error budget's
+  own perturbation runs.  Drained-layer thickness of bare first-year ice and
+  the scattering coefficient of young ice could be (0.77); the drained layer
+  of summer ice, ponds and multiyear ice could not (0.05-0.20).
+
 - **A forward-model error budget computed from the physics.**  New module
   :mod:`biosnicar.inverse.forward_uncertainty` lists every input the forward
   model holds fixed during a retrieval — the column under the retrieved
@@ -142,6 +164,15 @@ Added
 Fixed
 ~~~~~
 
+- **Smoothing no longer rings across the total-reflection bands under a
+  mixed sky.**  The adding-doubling solver protects the bands where the
+  direct beam is totally reflected (near 3 um at low sun) from its
+  Savitzky-Golay filter by looking for an albedo of exactly 1.  With diffuse
+  light in the incident field the albedo there is below 1, the guard missed,
+  and the filter rang across the step (albedo 0.37 where it should be 0.06
+  at 2.85 um).  The step is now found in the beam's own reflectance.  Pure
+  direct and pure diffuse runs are unchanged.
+
 - **Brine volume and brine salinity came from two different phase models.**
   Volume was Cox & Weeks (1983); the liquidus salinity that sets the brine's
   refractive index was derived from Frankenstein & Garner (1967), and the two
@@ -252,6 +283,18 @@ Fixed
 
 Changed
 ~~~~~~~
+
+- **Sea-ice retrievals assume a real clear sky.**  ``retrieve_sea_ice`` and
+  ``retrieve_sea_ice_batch`` take ``diffuse_fraction`` (default
+  ``"clear_sky"``) and ``regional_albedo`` (default 0.8), and blend each
+  emulator's direct and diffuse predictions when ``direct=1``.  Retrievals at low sun change most.  Pass ``None`` for
+  the previous pure-beam behaviour, or a measured fraction.  The physics
+  error budget was rebuilt on this forward model: its sky term is now the
+  uncertainty of the diffuse fraction (0.002-0.004 albedo) rather than its
+  neglect (0.006-0.015), and open water's total falls from 0.017 to 0.008.
+  Synthetic observations for testing a retrieval should be generated with
+  ``run_model(diffuse_fraction="clear_sky")``; the examples and validation
+  scripts now do.
 
 - **``method="oe"`` now defaults to the physics error budget**, in spectral
   and band mode (``model_error="auto"``).  It was the covariance fitted to

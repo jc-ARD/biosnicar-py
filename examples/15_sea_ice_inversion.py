@@ -40,7 +40,7 @@ def _fwd(type_name, params, solzen=60, direct=1):
     run_kw = SEA_ICE_EMULATOR_CONFIGS[type_name]["transform_fn"](
         {**params, "solzen": solzen, "direct": direct}
     )
-    return run_model(**run_kw)
+    return run_model(diffuse_fraction="clear_sky", **run_kw)
 
 PLOT = True
 WAVELENGTHS = np.arange(0.205, 4.999, 0.01)
@@ -49,7 +49,10 @@ WAVELENGTHS = np.arange(0.205, 4.999, 0.01)
 # ── Load emulators ───────────────────────────────────────────────────────────
 
 print("Loading sea ice emulators…")
-emulators = load_sea_ice_emulators()
+# A clear sky is a beam plus scattered light (biosnicar.sky): generate the
+# observation under that sky, and give plain retrieve() the same one.
+from biosnicar.sky import mixed_sky_fleet
+emulators = mixed_sky_fleet(load_sea_ice_emulators())
 
 
 # ── 1. Synthetic spectral retrieval — bare FYI ───────────────────────────────
