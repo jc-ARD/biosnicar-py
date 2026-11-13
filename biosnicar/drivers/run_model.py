@@ -309,7 +309,10 @@ def _set_lower_boundary(ice):
     """
     if ice.layer_type and ice.layer_type[-1] == 4:
         from biosnicar.sea_ice.open_water import ocean_subsurface_reflectance
-        ice.sfc = ocean_subsurface_reflectance()
+        from biosnicar import perturbation
+
+        ice.sfc = (ocean_subsurface_reflectance()
+                   * perturbation.get("ocean_reflectance_scale"))
 
 
 def _run_young_ice(ice, illumination):

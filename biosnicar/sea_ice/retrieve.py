@@ -406,22 +406,25 @@ def _classification_cost(fit, observed, mask_name, platform,
 
 
 def _resolve_model_error(model_error, method, platform):
-    """Resolve the ``model_error="auto"`` default.
+    """Resolve ``model_error`` to a covariance object, or ``None``.
 
-    Spectral optimal estimation gets the field-calibrated forward-model error
-    covariance; every other path gets ``None`` (non-OE methods have no S_e to
-    add it to, and band mode has no calibrated budget).  Anything the caller
-    passed explicitly is returned untouched, so an explicit ``True`` in band
-    mode still raises downstream rather than being silently dropped.
+    ``"auto"`` gives optimal estimation the physics budget (spectral and
+    band mode alike — it is a property of the forward model, not of the
+    sensor) and every other method ``None``, since they have no S_e to add
+    it to.  ``True`` and ``"physics"`` are the physics budget; ``"field"``
+    is the field-fitted covariance, which is spectral-mode only and raises
+    downstream in band mode.  An object is returned untouched.
     """
-    if isinstance(model_error, str):
-        if model_error != "auto":
-            raise ValueError(
-                f"model_error={model_error!r}; expected 'auto', None, True "
-                "or a ModelErrorCovariance."
-            )
-        return True if (method == "oe" and platform is None) else None
-    return model_error
+    from biosnicar.inverse.model_error import resolve
+
+    if isinstance(model_error, str) and model_error == "auto":
+        model_error = "physics" if method == "oe" else None
+    return resolve(model_error)
+
+
+def _resolve_for_type(model_error, surface_type):
+    from biosnicar.inverse.model_error import resolve
+    return resolve(model_error, surface_type)
 
 
 # ── retrieve_sea_ice ─────────────────────────────────────────────────────────
@@ -530,25 +533,29 @@ def retrieve_sea_ice(
         classification are **spectrum-only** (an explicit *regularization* dict
         you pass is still honoured; only the metadata-derived priors are
         dropped).  Use this to see what the spectrum alone constrains.
-    model_error : "auto", None, True, or ModelErrorCovariance
-        A7 forward-model error term for ``method="oe"``, spectral mode only.
-        ``True`` loads the shipped field-calibrated covariance
-        (``biosnicar.inverse.model_error``, SHEBA+Smith correct-model
-        residuals, Istomina held out); or pass a
-        :class:`~biosnicar.inverse.model_error.ModelErrorCovariance`.
-        Adds the empirical low-rank residual covariance to S_e so spectral
-        evidence is not over-counted (field residuals have ~2 effective DOF
-        over 60 VIS bands, not 60).
+    model_error : "auto", "physics", "field", True, None, or a covariance
+        Forward-model error added to S_e for ``method="oe"``.
 
-        ``"auto"`` (default) resolves to ``True`` for spectral OE and to
-        ``None`` everywhere else.  An instrument-noise-only S_e treats every
-        one of several hundred correlated bands as independent evidence,
-        which is a wrong covariance, not a conservative one — it is what
-        produced posterior class probabilities of ~1.00 on wrong classes
-        (docs/sea_ice_validation.md §12).  Band mode is untouched: there the
-        error budget is atmospheric correction (roadmap B-MS1), no
-        calibration of it exists, and an explicit ``model_error`` raises.
-        Pass ``None`` for the old instrument-noise-only behaviour.
+        ``"physics"`` (also ``True``) is the shipped per-surface-type budget:
+        the uncertainty of everything the forward model holds fixed,
+        propagated to the spectrum
+        (:mod:`biosnicar.inverse.forward_uncertainty`).  Nothing in it is
+        fitted to measurements.  It is a lower bound — physics the model
+        lacks contributes nothing — and it does not include sensor or
+        atmospheric-correction error, which belong in *obs_uncertainty*.
+        In band mode it is carried through the band convolution.
+
+        ``"field"`` is the earlier covariance fitted to field residuals
+        (one for all surface types, spectral mode only).
+
+        ``"auto"`` (default) is ``"physics"`` for optimal estimation and
+        ``None`` for every other method.  An instrument-noise-only S_e
+        treats several hundred correlated bands as independent evidence,
+        which is a wrong covariance, not a conservative one.  Pass ``None``
+        for that behaviour.  A
+        :class:`~biosnicar.inverse.model_error.PhysicsModelError` or
+        :class:`~biosnicar.inverse.model_error.ModelErrorCovariance` is used
+        as given.
     class_priors : dict or None
         Caller-supplied per-surface-type **class log-priors** (relative,
         0 = neutral, negative = disfavoured), composed with the spectral
@@ -720,7 +727,7 @@ def retrieve_sea_ice(
                 regularization=emu_reg or None,
                 wavelength_mask=wavelength_mask,
                 method=method,
-                model_error=model_error,
+                model_error=_resolve_for_type(model_error, name),
                 mcmc_walkers=mcmc_walkers,
                 mcmc_steps=mcmc_steps,
                 mcmc_burn=mcmc_burn,

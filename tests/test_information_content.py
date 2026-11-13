@@ -233,8 +233,8 @@ class TestAgainstARealRetrieval:
     def _retrieve(self):
         from biosnicar.sea_ice.emulator_configs import load_sea_ice_emulators
         from biosnicar.sea_ice.retrieve import retrieve_sea_ice
-        # model_error=True: the field-calibrated S_e.  With instrument noise
-        # alone every one of the 480 bands counts as independent evidence,
+        # model_error=True: the forward-model error budget.  With instrument
+        # noise alone every one of the 480 bands counts as independent evidence,
         # and the small visible signal temperature does have (through the
         # brine volume of the pond floor, amplified since the pond-surface
         # interface fix by light recycling under the water surface) is
@@ -355,17 +355,21 @@ class TestConstrainedCombinations:
 
 
 @pytest.mark.skipif(not _BUILT, reason="pre-built sea ice emulators not found")
-class TestSpectralOEDefaultsToFieldCovariance:
-    """model_error="auto": spectral OE uses the calibrated S_e, nothing else
-    changes."""
+class TestOEDefaultsToTheForwardModelErrorBudget:
+    """model_error="auto": optimal estimation carries the physics budget in
+    S_e, in spectral and band mode; other methods are untouched."""
 
     def test_resolution_rule(self):
+        from biosnicar.inverse.model_error import (
+            ModelErrorCovariance, PhysicsModelError,
+        )
         from biosnicar.sea_ice.retrieve import _resolve_model_error as f
-        assert f("auto", "oe", None) is True
-        assert f("auto", "oe", "sentinel2") is None
+        assert isinstance(f("auto", "oe", None), PhysicsModelError)
+        assert isinstance(f("auto", "oe", "sentinel2"), PhysicsModelError)
         assert f("auto", "L-BFGS-B", None) is None
         assert f(None, "oe", None) is None
-        assert f(True, "oe", "sentinel2") is True      # explicit: left to raise
+        assert isinstance(f(True, "oe", None), PhysicsModelError)
+        assert isinstance(f("field", "oe", None), ModelErrorCovariance)
         with pytest.raises(ValueError, match="model_error"):
             f("yes", "oe", None)
 
@@ -384,7 +388,7 @@ class TestSpectralOEDefaultsToFieldCovariance:
         # Honest covariance: fewer independent pieces of evidence.
         assert default.dfs < off.dfs
 
-    def test_band_mode_default_is_unchanged(self):
+    def test_band_mode_carries_the_physics_budget_and_refuses_the_field_one(self):
         from biosnicar.bands import to_platform
         from biosnicar.sea_ice.emulator_configs import load_sea_ice_emulators
         from biosnicar.sea_ice.retrieve import retrieve_sea_ice
@@ -397,7 +401,12 @@ class TestSpectralOEDefaultsToFieldCovariance:
         kw = dict(observed=y, emulators=fleet, platform="sentinel2",
                   observed_band_names=bands, solzen=60, direct=1,
                   known_month=7, method="oe")
-        assert retrieve_sea_ice(**kw).parameters == \
-            retrieve_sea_ice(model_error=None, **kw).parameters
+        default = retrieve_sea_ice(**kw)
+        assert default.uncertainty == \
+            retrieve_sea_ice(model_error="physics", **kw).uncertainty
+        assert default.uncertainty != \
+            retrieve_sea_ice(model_error=None, **kw).uncertainty
+        # The field-fitted covariance carries field-spectrometer error; it
+        # has no business in a satellite band.
         with pytest.raises(ValueError, match="spectral"):
-            retrieve_sea_ice(model_error=True, **kw)
+            retrieve_sea_ice(model_error="field", **kw)

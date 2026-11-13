@@ -52,7 +52,7 @@ MYI_BARE_S_REF = 2.0   # psu — typical desalinated MYI
 
 # Interior-layer density for _transform_myi_bare.  The *drained-layer* density
 # is now a retrieved parameter (rho_DL), so only the IL is fixed here.
-_MYI_IL_RHO = 870.0
+_MYI_IL_RHO = 870.0   # kept for importers; the value in use is MYI_BARE_FIXED
 
 
 def _snap(rds):
@@ -70,10 +70,84 @@ def _snap(rds):
 
 
 # ============================================================================
+# Fixed inputs
+# ============================================================================
+# Everything a transform sets that is not a sampled parameter.  These are the
+# forward-model parameters ``b`` in ``y = F(x, b)``: a retrieval cannot move
+# them, so whatever is uncertain about them is forward-model error.  They are
+# gathered here, one dict per surface type, so that they can be perturbed
+# (``transform_fn(p, fixed={...})``) and their contribution to the
+# measurement covariance evaluated — see
+# :mod:`biosnicar.inverse.forward_uncertainty`.
+#
+# Shared vocabulary:
+#   dl_thickness, il_thickness  drained / interior layer thickness (m)
+#   dl_density, il_density      bulk density (kg m^-3), where not retrieved
+#   salinity_scale              multiplies every fixed salinity in the column
+#   il_bubble_ratio             interior bubble radius / drained-layer radius
+#   dl_bubble_radius            drained-layer bubble radius (um), where fixed
+#   grain_shape                 ``shp`` of the granular layer (0 = spheres)
+
+FYI_BARE_FIXED = dict(dl_thickness=0.05, il_thickness=1.45, il_density=910.0,
+                      salinity_scale=1.0, il_bubble_ratio=2.0)
+FYI_SNOW_FIXED = dict(dl_thickness=0.05, il_thickness=1.45, dl_density=850.0,
+                      il_density=910.0, salinity_scale=1.0,
+                      dl_bubble_radius=200.0, il_bubble_ratio=2.0,
+                      grain_shape=0)
+FYI_SUMMER_FIXED = dict(dl_thickness=0.05, il_thickness=1.40, dl_density=850.0,
+                        il_density=910.0, salinity_scale=1.0,
+                        il_bubble_ratio=2.0, grain_shape=0)
+MYI_BARE_FIXED = dict(dl_thickness=0.30, il_thickness=2.70, il_density=870.0,
+                      salinity_scale=1.0, il_bubble_ratio=1.5)
+FYI_POND_FIXED = dict(dl_thickness=0.05, il_thickness=1.40, dl_density=850.0,
+                      il_density=910.0, salinity_scale=1.0,
+                      il_bubble_ratio=2.5)
+YOUNG_ICE_FIXED = dict()
+
+# The LUT's bubble ceiling, not a physical limit.
+_BUBBLE_CEILING = 2000.0
+
+
+def _fixed(defaults, overrides):
+    if not overrides:
+        return defaults
+    unknown = set(overrides) - set(defaults)
+    if unknown:
+        raise KeyError(f"unknown fixed input(s) {sorted(unknown)}; "
+                       f"this surface type has {sorted(defaults)}")
+    return {**defaults, **overrides}
+
+
+def _temperature_at_brine_volume(vb, salinity, density, salinity_scale):
+    """Temperature at which ice of *salinity* and *density* holds brine
+    volume *vb*.
+
+    At the reference salinity (``salinity_scale == 1``) the parameter bounds
+    guarantee a root on the default search interval.  At a perturbed
+    salinity the same brine volume can need a temperature outside it, so the
+    search is widened to the whole range of the phase model and, if the
+    brine volume is still unreachable, the nearest end is used.
+    """
+    from biosnicar.sea_ice.brine_volume import (
+        compute_brine_volume, invert_brine_volume,
+    )
+    if salinity_scale == 1.0:
+        return invert_brine_volume(vb, salinity, bulk_density_kg_m3=density)
+    lo, hi = -30.0, -1.0
+    try:
+        return invert_brine_volume(vb, salinity, T_lo=lo, T_hi=hi,
+                                   bulk_density_kg_m3=density)
+    except ValueError:
+        ends = {T: compute_brine_volume(salinity, T, bulk_density_kg_m3=density)
+                for T in (lo, hi)}
+        return min(ends, key=lambda T: abs(ends[T] - vb))
+
+
+# ============================================================================
 # Transform functions  (sampled scalar dict → run_model kwargs)
 # ============================================================================
 
-def _transform_fyi_bare(p):
+def _transform_fyi_bare(p, fixed=None):
     """Winter/spring bare FYI: two sea-ice layers (DL + IL).
 
     Primary parameter is ``brine_volume_fraction`` (Vb) rather than the
@@ -90,30 +164,30 @@ def _transform_fyi_bare(p):
     degenerate with ``rho_DL``.  The whole point of the reparameterisation is
     that it is not.
     """
-    from biosnicar.sea_ice.brine_volume import invert_brine_volume
-    T   = invert_brine_volume(
-        p["brine_volume_fraction"], FYI_BARE_S_REF,
-        bulk_density_kg_m3=p["rho_DL"],
-    )
+    f = _fixed(FYI_BARE_FIXED, fixed)
+    S = FYI_BARE_S_REF * f["salinity_scale"]
+    T = _temperature_at_brine_volume(
+        p["brine_volume_fraction"], S, p["rho_DL"], f["salinity_scale"])
     bbl = p["sea_ice_bubble_radius"]
     return dict(
         layer_type=[4, 4],
-        dz=[0.05, 1.45],
+        dz=[f["dl_thickness"], f["il_thickness"]],
         rds=[500, 500],
-        rho=[p["rho_DL"], 910],
-        sea_ice_salinity=[FYI_BARE_S_REF, FYI_BARE_S_REF * 0.5],
+        rho=[p["rho_DL"], f["il_density"]],
+        sea_ice_salinity=[S, S * 0.5],
         sea_ice_temperature=[T, T],
         # IL cap is the LUT's bubble ceiling, not a physical limit.  It was
         # 1000 — the *old* grid max — so for bbl >= 500 the interior layer's
         # radius froze at 1000 regardless, over ~23% of the sampled log range.
-        sea_ice_bubble_radius=[bbl, min(2000.0, bbl * 2.0)],
+        sea_ice_bubble_radius=[bbl, min(_BUBBLE_CEILING,
+                                        bbl * f["il_bubble_ratio"])],
         black_carbon=[p["black_carbon"], 0],
         solzen=p["solzen"],
         direct=p["direct"],
     )
 
 
-def _transform_fyi_snow(p):
+def _transform_fyi_snow(p, fixed=None):
     """Snow-covered FYI: fresh snow layer on top of DL + IL.
 
     Parameterised by ``tau_snow`` (snow depth in units of grain radius —
@@ -123,17 +197,22 @@ def _transform_fyi_snow(p):
     sampling depth directly piles retrievals onto the depth bounds.
     Physical depth is recovered as ``tau_snow * snow_grain_radius * 1e-6``.
     """
+    f = _fixed(FYI_SNOW_FIXED, fixed)
     T = p["sea_ice_temperature"]
     r = p["snow_grain_radius"]
     depth = float(np.clip(p["tau_snow"] * r * 1e-6, 0.003, 1.5))
+    bbl = f["dl_bubble_radius"]
     return dict(
         layer_type=[0, 4, 4],
-        dz=[depth, 0.05, 1.45],
+        dz=[depth, f["dl_thickness"], f["il_thickness"]],
         rds=[_snap(r), 500, 500],
-        rho=[300, 850, 910],
-        sea_ice_salinity=[None, 8, 5],
+        rho=[300, f["dl_density"], f["il_density"]],
+        shp=[f["grain_shape"], 0, 0],
+        sea_ice_salinity=[None, 8 * f["salinity_scale"],
+                          5 * f["salinity_scale"]],
         sea_ice_temperature=[None, T, T],
-        sea_ice_bubble_radius=[None, 200, 400],
+        sea_ice_bubble_radius=[None, bbl, min(_BUBBLE_CEILING,
+                                              bbl * f["il_bubble_ratio"])],
         black_carbon=[p["black_carbon"], 0, 0],
         solzen=p["solzen"],
         direct=p["direct"],
@@ -150,7 +229,7 @@ def ssl_thickness_m(tau_ssl, ssl_grain_radius_um):
     return float(tau_ssl) * float(ssl_grain_radius_um) * 1e-6
 
 
-def _transform_fyi_summer(p):
+def _transform_fyi_summer(p, fixed=None):
     """Summer bare FYI: SSL (granular) on top of DL + IL.
 
     The surface scattering layer is parameterised by ``tau_ssl`` — its
@@ -182,24 +261,29 @@ def _transform_fyi_summer(p):
     grains at ``tau_ssl`` = 100 is half a metre); read the derived
     ``ssl_thickness`` in the retrieval output.
     """
+    f   = _fixed(FYI_SUMMER_FIXED, fixed)
     T   = p["sea_ice_temperature"]
     bbl = p["sea_ice_bubble_radius"]
     r   = p["ssl_grain_radius"]
     return dict(
         layer_type=[0, 4, 4],
-        dz=[ssl_thickness_m(p["tau_ssl"], r), 0.05, 1.40],
+        dz=[ssl_thickness_m(p["tau_ssl"], r), f["dl_thickness"],
+            f["il_thickness"]],
         rds=[_snap(r), 500, 500],
-        rho=[SSL_REFERENCE_DENSITY, 850, 910],
-        sea_ice_salinity=[None, 4, 2],
+        rho=[SSL_REFERENCE_DENSITY, f["dl_density"], f["il_density"]],
+        shp=[f["grain_shape"], 0, 0],
+        sea_ice_salinity=[None, 4 * f["salinity_scale"],
+                          2 * f["salinity_scale"]],
         sea_ice_temperature=[None, T, T],
-        sea_ice_bubble_radius=[None, bbl, min(2000.0, bbl * 2.0)],
+        sea_ice_bubble_radius=[None, bbl, min(_BUBBLE_CEILING,
+                                              bbl * f["il_bubble_ratio"])],
         black_carbon=[p["black_carbon"], 0, 0],
         solzen=p["solzen"],
         direct=p["direct"],
     )
 
 
-def _transform_myi_bare(p):
+def _transform_myi_bare(p, fixed=None):
     """Bare MYI: lower salinity, larger bubbles, lower drained-layer density.
 
     Primary parameter is ``brine_volume_fraction`` (Vb) rather than (T, S).
@@ -212,33 +296,34 @@ def _transform_myi_bare(p):
     and trapped gas — could not be retrieved at all.  Timco & Frederking
     (1996) give 720-910 kg/m3 for MYI above the waterline.
     """
-    from biosnicar.sea_ice.brine_volume import invert_brine_volume
-    T   = invert_brine_volume(
-        p["brine_volume_fraction"], MYI_BARE_S_REF,
-        bulk_density_kg_m3=p["rho_DL"],
-    )
+    f = _fixed(MYI_BARE_FIXED, fixed)
+    S = MYI_BARE_S_REF * f["salinity_scale"]
+    T = _temperature_at_brine_volume(
+        p["brine_volume_fraction"], S, p["rho_DL"], f["salinity_scale"])
     bbl = p["sea_ice_bubble_radius"]
     return dict(
         layer_type=[4, 4],
-        dz=[0.30, 2.70],
+        dz=[f["dl_thickness"], f["il_thickness"]],
         rds=[500, 500],
-        rho=[p["rho_DL"], _MYI_IL_RHO],
-        sea_ice_salinity=[MYI_BARE_S_REF, max(0.3, MYI_BARE_S_REF * 0.4)],
+        rho=[p["rho_DL"], f["il_density"]],
+        sea_ice_salinity=[S, max(0.3, S * 0.4)],
         sea_ice_temperature=[T, T],
-        sea_ice_bubble_radius=[bbl, min(2000.0, bbl * 1.5)],
+        sea_ice_bubble_radius=[bbl, min(_BUBBLE_CEILING,
+                                        bbl * f["il_bubble_ratio"])],
         black_carbon=[p["black_carbon"], 0],
         solzen=p["solzen"],
         direct=p["direct"],
     )
 
 
-def _transform_young_ice(p):
+def _transform_young_ice(p, fixed=None):
     """Young ice: thin slab over dark ocean (layer_type=6).
 
     The sampled parameter is ``ice_thickness_cm`` (0.5-30 cm) so the
     log10(x+1) sampling/optimisation machinery conditions it properly
     (on the metre scale the +1 makes the transform a no-op).
     """
+    _fixed(YOUNG_ICE_FIXED, fixed)
     return dict(
         layer_type=6,
         ice_thickness=p["ice_thickness_cm"] / 100.0,
@@ -250,7 +335,7 @@ def _transform_young_ice(p):
     )
 
 
-def _transform_fyi_pond(p):
+def _transform_fyi_pond(p, fixed=None):
     """Melt pond on FYI: liquid water layer over DL + IL.
 
     The refractive boundary of this column is the pond surface (air->water),
@@ -272,16 +357,19 @@ def _transform_fyi_pond(p):
     1000 ppb is already an effective-LAP proxy), or a floor density of
     916 kg/m3, which is bubble-free pure ice.
     """
+    f = _fixed(FYI_POND_FIXED, fixed)
     T = p["sea_ice_temperature"]
     bbl = p["sea_ice_bubble_radius"]
     return dict(
         layer_type=[5, 4, 4],
-        dz=[p["pond_depth"], 0.05, 1.40],
+        dz=[p["pond_depth"], f["dl_thickness"], f["il_thickness"]],
         rds=[500, 500, 500],
-        rho=[1000, 850, 910],
-        sea_ice_salinity=[None, 8, 6],
+        rho=[1000, f["dl_density"], f["il_density"]],
+        sea_ice_salinity=[None, 8 * f["salinity_scale"],
+                          6 * f["salinity_scale"]],
         sea_ice_temperature=[None, T, T],
-        sea_ice_bubble_radius=[None, bbl, min(2000.0, bbl * 2.5)],
+        sea_ice_bubble_radius=[None, bbl, min(_BUBBLE_CEILING,
+                                              bbl * f["il_bubble_ratio"])],
         black_carbon=[0, p["black_carbon"], 0],
         solzen=p["solzen"],
         direct=p["direct"],
@@ -314,6 +402,7 @@ SEA_ICE_EMULATOR_CONFIGS = {
             "direct":                 (0,     1),
         },
         "transform_fn":       _transform_fyi_bare,
+        "fixed":              FYI_BARE_FIXED,
         # 60k samples: the A1 audit showed halved BBA MAE vs 30k.
         "n_samples":          60000,
         "hidden_layer_sizes": (256, 256, 128, 64),
@@ -342,6 +431,7 @@ SEA_ICE_EMULATOR_CONFIGS = {
             "direct":                 (0,     1),
         },
         "transform_fn":  _transform_fyi_snow,
+        "fixed":              FYI_SNOW_FIXED,
         "n_samples":     12000,
         "emulator_file": str(_DATA_DIR / "sea_ice_FYI_snow_tau_6param.npz"),
     },
@@ -380,6 +470,7 @@ SEA_ICE_EMULATOR_CONFIGS = {
             "direct":                 (0,     1),
         },
         "transform_fn":  _transform_fyi_summer,
+        "fixed":              FYI_SUMMER_FIXED,
         # 7 parameters now; doubled from 12k.
         "n_samples":     24000,
         "emulator_file": str(_DATA_DIR / "sea_ice_FYI_summer_tau_7param.npz"),
@@ -406,6 +497,7 @@ SEA_ICE_EMULATOR_CONFIGS = {
             "direct":                 (0,     1),
         },
         "transform_fn":       _transform_myi_bare,
+        "fixed":              MYI_BARE_FIXED,
         "n_samples":          30000,
         "hidden_layer_sizes": (256, 256, 128, 64),
         "emulator_file": str(_DATA_DIR / "sea_ice_MYI_bare_6param.npz"),
@@ -426,6 +518,7 @@ SEA_ICE_EMULATOR_CONFIGS = {
             "direct":                 (0,     1),
         },
         "transform_fn":  _transform_fyi_pond,
+        "fixed":              FYI_POND_FIXED,
         # Doubled, and a deeper network, since the pond-surface interface
         # fix: the specular term off the water depends steeply on solar
         # zenith for direct light and not at all for diffuse, which a
@@ -447,6 +540,7 @@ SEA_ICE_EMULATOR_CONFIGS = {
             "direct":                 (0,     1),
         },
         "transform_fn":       _transform_young_ice,
+        "fixed":              YOUNG_ICE_FIXED,
         "n_samples":          8000,
         "hidden_layer_sizes": (128, 128, 64),  # thin-ice physics is smooth
         "emulator_file": str(_DATA_DIR / "sea_ice_young_ice_6param.npz"),

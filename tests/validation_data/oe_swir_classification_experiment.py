@@ -85,14 +85,16 @@ def _classify(obs, window_mask, sza, month, method, model_error=None):
     return r
 
 
-# (label, method kwarg, model_error kwarg).  "oe+Se" adds the A7 field-
-# calibrated forward-model error covariance to the OE measurement covariance
-# (biosnicar.inverse.model_error) — the acceptance test for whether honest
-# S_e repairs the evidence-based classification.
+# (label, method kwarg, model_error kwarg).  The two "oe+" variants add a
+# forward-model error covariance to the OE measurement covariance
+# (biosnicar.inverse.model_error): "physics" is the default per-type budget
+# propagated from the forward model's fixed inputs; "field" is the earlier
+# covariance fitted to field residuals.
 VARIANTS = (
     ("L-BFGS-B", "L-BFGS-B", None),
     ("oe", "oe", None),
-    ("oe+Se", "oe", True),
+    ("oe+physics", "oe", "physics"),
+    ("oe+field", "oe", "field"),
 )
 
 
@@ -122,13 +124,13 @@ def run():
                     class_probabilities={k: float(v) for k, v
                                          in r.class_probabilities.items()},
                 ))
-                print(f"  {date:<12} {wname:<9} {label:<9} "
+                print(f"  {date:<12} {wname:<9} {label:<10} "
                       f"{r.surface_type:<12} {r.confidence:6.2f}  "
                       f"{'Y' if ok else 'N'}")
 
     print("\n  Summary (correct / n):")
     for (label, wname), (c, n) in tally.items():
-        print(f"    {label:<9} {wname:<9} {c}/{n}  ({c/n:.0%})")
+        print(f"    {label:<10} {wname:<9} {c}/{n}  ({c/n:.0%})")
 
     return results, {f"{m}|{w}": f"{c}/{n}" for (m, w), (c, n) in tally.items()}
 

@@ -30,7 +30,9 @@ Rules:
 1. Generalisation numbers are quoted from the **test** set and nowhere else.
 2. Code that fits or calibrates calls `corpus.require_role(campaigns, purpose)`;
    it raises on a test-set campaign. `scripts/build_model_error_covariance.py`
-   does.
+   does. (The default error budget, `scripts/build_physics_model_error.py`,
+   reads no field data at all; `physics_budget_vs_field.py` compares it with
+   field residuals afterwards, as evaluation.)
 3. Looking at a test-set result and then changing the model to improve it turns
    that dataset into a development set. There is no way back, so record it in
    the manifest's `conversions` list and say so wherever its numbers are quoted.

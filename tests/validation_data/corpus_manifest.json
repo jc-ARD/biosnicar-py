@@ -275,7 +275,7 @@
         "mosaic"
       ],
       "description": "Smith et al. (2021) MOSAiC Leg 4 2020 spectral albedo, 82N. ASD 350-2500 nm.",
-      "used_for": "Calibrates the forward-model error covariance (data/model_error/field_se_v1.npz) together with SHEBA. Was an independent hold-out until 2026-07; numbers quoted from it since are in-sample for S_e, and it has also informed forward-model experiments (D2).",
+      "used_for": "Calibrates the field-fitted forward-model error covariance (data/model_error/field_se_v1.npz, opt-in since 2026-11-13; the default budget is computed from the forward model and reads no field data) together with SHEBA. Was an independent hold-out until 2026-07; numbers quoted from it since are in-sample for S_e, and it has also informed forward-model experiments (D2).",
       "files": {
         "resource_map_doi_10_18739_A2FT8DK8Z/data/MOSAiC_SurfaceAlbedo_Leg4_fieldLog.txt": "684eb56f44bb1559693aafbdde9dcd17f106af1c1c291aee822013ef2c3ebb2b",
         "resource_map_doi_10_18739_A2FT8DK8Z/data/SpectralAlbedoData/spectralalbedo_mosaic_20200613_IS_processedv0.csv": "646e04cdcf99981341411d5c3939c25268518c7993b052780d889324aa3a5c96",

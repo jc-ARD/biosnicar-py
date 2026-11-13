@@ -109,3 +109,31 @@ def _lazy_load():
         modis,
         planetscope,
     )
+
+
+_band_matrix_cache: dict = {}
+
+
+def band_weight_matrix(platform, band_names, flx_slr):
+    """(480, k) matrix W such that ``band_values = albedo @ W``.
+
+    Band convolution is linear in albedo, so ``W[:, b]`` is
+    ``to_platform(e_i)[b]`` over the 480 unit spectra.  Built once per
+    (platform, bands, flux) and cached.  The same matrix carries a spectral
+    covariance into band space: ``S_band = W.T @ S @ W``.
+    """
+    flx_slr = np.asarray(flx_slr, dtype=float)
+    key = (platform, tuple(band_names), flx_slr.tobytes())
+    W = _band_matrix_cache.get(key)
+    if W is not None:
+        return W
+    nwvl = flx_slr.size
+    W = np.empty((nwvl, len(band_names)))
+    e = np.zeros(nwvl)
+    for i in range(nwvl):
+        e[i] = 1.0
+        br = to_platform(e, platform, flx_slr=flx_slr)
+        W[i, :] = [getattr(br, b) for b in band_names]
+        e[i] = 0.0
+    _band_matrix_cache[key] = W
+    return W

@@ -55,8 +55,9 @@ the numbers do not generalise as far as they first appear.
 
 Two significant fixes have shipped: the **liquidus correction** (`D1`, derived
 from Frankenstein & Garner 1967 brine volume) removed a ~30% cold-ice
-brine-salinity error, and the **forward-model error covariance** (`A7`) is in
-place for the VIS. Note that the brine *volume* itself is Cox & Weeks (1983),
+brine-salinity error, and a **forward-model error covariance** (`A7`) is in
+place — since 2026-11-13 a budget propagated from the model's own fixed
+inputs, not one fitted to field residuals. Note that the brine *volume* itself is Cox & Weeks (1983),
 not Frankenstein & Garner — see the SMRT cross-check below, which is where that
 mismatch matters.
 
@@ -88,7 +89,7 @@ test set, and the suite fails if a frozen file changes.
 | Dataset | Role |
 |---|---|
 | SHEBA (Grenfell & Light 2007), Morassutti (1995), Macfarlane (2022) | development — in-sample |
-| Smith (2021) MOSAiC | calibration — feeds the model-error covariance |
+| Smith (2021) MOSAiC | calibration — feeds the opt-in field-fitted covariance (the default error budget reads no field data) |
 | Istomina (2016) IceArc | **test — frozen, evaluate only** |
 
 One campaign of 121 coarsely-labelled spectra is a thin test set. It is what
@@ -316,6 +317,10 @@ Remaining:
   2026-11-12 from residuals of the current emulators — the previous artifact
   had been fitted to a fleet since retrained twice — and holds out at reduced
   χ² 3.7 mean / 2.4 median on Istomina (39.6 / 33.1 instrument-only).
+  *This paragraph is about the field-fitted covariance, which is opt-in
+  since 2026-11-13. The default physics budget reaches the same conclusion
+  from the other side: its SWIR term is 0.009–0.015 albedo and field SWIR
+  misfit on bare ice is 2.5–7.5 times that.*
 - **`D2` liquid water — needs a coated-sphere LUT.** A melting surface with no
   liquid water is physically wrong, but the fast wet-grain model in the code
   is not the fix. `layer_type=3` adds water as *separate spheres*, i.e. extra
@@ -368,24 +373,41 @@ Remaining:
   the floor should move is a physical question — what optical grain size a
   real SSL has, and where FYI_summer ends and coarse snow begins — and has not
   been settled by lowering it until the pins go away.
-- **The model-error covariance under-covers, and a better-fitting model makes
-  it worse.** It is calibrated on post-fit residuals of the winning model on
-  SHEBA and Smith. A more flexible FYI_summer halves those residuals, so the
-  fitted covariance tightens (effective DOF over the VIS 2.7 → 7.5) while the
-  frozen test set's misfit does not shrink — held-out reduced χ² rises from
-  3.7 to 7.4. This is the known weakness of calibrating `S_e` from in-sample
-  post-fit residuals (the optimiser absorbs misfit into the parameters), now
-  visible. The fix is methodological — calibrate on residuals of spectra not
-  used to develop the model, or inflate by the fitted degrees of freedom —
-  and it matters more than any single physics item for whether OE
-  uncertainties can be believed.
+- ~~**The model-error covariance under-covers, and a better-fitting model
+  makes it worse.**~~ **Replaced 2026-11-13, not recalibrated.** The
+  field-fitted covariance tightened whenever the model was made more
+  flexible, and it carried the field instruments' error and the guesswork of
+  configuring the model to match a field measurement. The default is now a
+  budget computed from the forward model alone — the uncertainty of every
+  fixed input, propagated to the spectrum, per surface type
+  (`biosnicar.inverse.forward_uncertainty`, `sea_ice_validation.md` §17).
+  It closes on synthetic spectra with perturbed physics (91–100% of truths
+  within two sigma, reduced χ² 0.96–1.01) and applies in band mode. The
+  field-fitted covariance stays as `model_error="field"`. What this opens:
+  - **The ranges are proposals.** Every one-sigma in `FACTORS` is a judgement
+    from the cited source and needs review; changing one and rerunning
+    `scripts/build_physics_model_error.py` is the whole procedure.
+  - **It is a lower bound, and loose in the SWIR.** Field residuals sit
+    inside it at 400–700 nm in every campaign and 2.5–7.5× outside it beyond
+    1000 nm on bare and melting ice. That gap is the SWIR physics (`D2`,
+    surface-layer structure), now with a number on it.
+  - **The largest terms are structural assumptions that could be retrieved
+    or constrained**: drained-layer thickness (fixed at 5 cm; up to 0.028
+    albedo), interior density, drained-layer density where it is not
+    retrieved, the frazil scattering constant of young ice (0.032).
+  - **Clear sky as a pure beam** costs 0.010–0.015 on specular surfaces and
+    belongs in the forward model: blend direct and diffuse by a modelled
+    diffuse fraction.
+  - **One covariance per type, averaged over states.** It errs wide (71–91%
+    of measured parameters within one sigma against 68%). A state-dependent
+    budget — the fixed inputs as emulator inputs, so `K_b` comes from the
+    emulator at the retrieved state — would be sharper.
 - ~~**`V1` — freeze the independent test corpus.**~~ Done; see above.
-- ~~**The default-behaviour decision.**~~ **Taken 2026-11-12:** spectral `method="oe"` now defaults to the calibrated covariance
-  (`model_error="auto"`). The coordination worry no longer applies:
-  BioSNICAR is not currently served in IceNav, and in any case `model_error`
-  is refused in band mode, so the default resolves to off there. On the
-  SHEBA SWIR experiment the default now gives 11/12 VIS-only and 8/12 with
-  SWIR; instrument-only gives 7/12 and 8/12.
+- ~~**The default-behaviour decision.**~~ **Taken 2026-11-12, revised
+  2026-11-13:** `method="oe"` defaults to a forward-model error covariance
+  (`model_error="auto"`) — since 2026-11-13 the physics budget, in spectral
+  and band mode. BioSNICAR is not currently served in IceNav, so there is no
+  integration to coordinate with.
 - **OE uncertainties on a degenerate ridge are noisy.** Seen while testing
   the above: the finite-difference Jacobian of a ReLU emulator is piecewise
   constant, so along a |r| ≈ 0.98 ridge a 1% move in the solution can change

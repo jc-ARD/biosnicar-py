@@ -213,7 +213,10 @@ class OpenWaterModel:
             r_f = self._fresnel_direct_rough(solzen, wind_speed_ms)
         else:
             r_f = self._rf_diffuse
-        albedo = r_f + (1.0 - r_f) * self._water_leaving
+        from biosnicar import perturbation
+
+        albedo = r_f + (1.0 - r_f) * (
+            self._water_leaving * perturbation.get("ocean_reflectance_scale"))
         return np.clip(albedo, 0.0, 1.0)
 
     def predict_platform(self, platform, band_names, **kwargs):

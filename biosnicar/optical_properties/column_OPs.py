@@ -19,6 +19,7 @@ from scipy.interpolate import pchip, RegularGridInterpolator
 import biosnicar.optical_properties.mie_coated_water_spheres as wcs
 from biosnicar.optical_properties.op_lookup import get_hex_lut, get_lut
 import biosnicar as _biosnicar
+from biosnicar import perturbation
 
 _SEA_ICE_LUT_PATH = str(
     _biosnicar.DATA_DIR / "OP_data" / "480band" / "luts" / "sea_ice.npz"
@@ -334,12 +335,22 @@ def get_layer_OPs(ice, model_config):
                     "Set these fields on the Ice object or via the YAML config."
                 )
 
-            tau_per_m, ssa_si, g_si = _interpolate_sea_ice_lut(
-                salinity_psu=S,
-                temperature_C=T,
-                density_kg_m3=ice.rho[i],
-                bubble_radius_um=bbl,
-            )
+            if perturbation.sea_ice_direct():
+                # A perturbed-physics run: the LUT was built at the neutral
+                # physics, so compute the layer from first principles.
+                from biosnicar.sea_ice.sea_ice_optics import (
+                    compute_sea_ice_optics_per_metre,
+                )
+                tau_per_m, ssa_si, g_si = compute_sea_ice_optics_per_metre(
+                    S, T, ice.rho[i], bbl
+                )
+            else:
+                tau_per_m, ssa_si, g_si = _interpolate_sea_ice_lut(
+                    salinity_psu=S,
+                    temperature_C=T,
+                    density_kg_m3=ice.rho[i],
+                    bubble_radius_um=bbl,
+                )
             # Convert per-metre optical depth to mass extinction coefficient:
             # mac = tau_per_m / rho  [m²/kg], so that mix_in_impurities gives
             # tau_layer = L_snw * mac = rho * dz * (tau_per_m / rho) = tau_per_m * dz
@@ -354,6 +365,7 @@ def get_layer_OPs(ice, model_config):
             k_water = ice.ref_idx_im_water  # shape (480,), already loaded
             lam_m   = model_config.wavelengths * 1e-6   # µm → m
             abs_coeff = 4.0 * np.pi * k_water / lam_m  # m⁻¹
+            abs_coeff = abs_coeff * perturbation.get("water_absorption_scale")
 
             # Rayleigh-like scattering from molecular fluctuations in liquid water.
             # β_w ≈ 0.003 × (0.55/λ_µm)⁴ m⁻¹ — very small but avoids ssa=0 singularities.
@@ -366,6 +378,22 @@ def get_layer_OPs(ice, model_config):
             mac_snw[i, :] = ext_coeff / rho_pond
             ssa_snw[i, :] = np.clip(beta_w / ext_coeff, 1e-8, 1.0 - 1e-8)
             g_snw[i, :]   = 0.0    # isotropic molecular scattering
+
+    blend = perturbation.get("ice_absorption_blend")
+    if blend:
+        # Granular and solid-ice layers take their optics from tables built
+        # at one absorption spectrum.  Where the published spectra disagree
+        # (the visible) the grains are weakly absorbing, and there the
+        # co-albedo is proportional to k, so scaling it is exact to first
+        # order.  Sea-ice layers were handled in compute_sea_ice_optics.
+        from biosnicar.sea_ice.sea_ice_optics import ice_absorption_ratio
+
+        ratio = ice_absorption_ratio(blend)
+        for i in range(ice.nbr_lyr):
+            if ice.layer_type[i] in (0, 1, 2, 3):
+                ssa_snw[i, :] = np.clip(
+                    1.0 - (1.0 - ssa_snw[i, :]) * ratio, 1e-8, 1.0 - 1e-8
+                )
 
     return ssa_snw, g_snw, mac_snw
 
@@ -413,6 +441,11 @@ def _compute_young_ice_ops(thickness_m, temperature_C, salinity_psu,
     lam_m = wvl_um * 1e-6
 
     m_ice = _load_ice_ri()
+    blend = perturbation.get("ice_absorption_blend")
+    if blend:
+        from biosnicar.sea_ice.sea_ice_optics import ice_absorption_ratio
+
+        m_ice = m_ice.real + 1j * m_ice.imag * ice_absorption_ratio(blend)
     vb = float(np.clip(compute_brine_volume(S, T), 0.0, 0.7))
     k_brine = compute_brine_rfidx(T).imag
 
@@ -423,7 +456,7 @@ def _compute_young_ice_ops(thickness_m, temperature_C, salinity_psu,
     # Kubelka-Munk slab over a reflecting boundary (diffuse two-flux):
     # K = 2×absorption, S = backscatter coefficient.
     K = 2.0 * kappa_abs
-    Ssc = _YOUNG_ICE_SCAT
+    Ssc = _YOUNG_ICE_SCAT * perturbation.get("young_ice_scattering_scale")
     a_km = 1.0 + K / Ssc
     b_km = np.sqrt(np.maximum(a_km**2 - 1.0, 1e-12))
     coth = 1.0 / np.tanh(np.minimum(b_km * Ssc * d, 50.0))
