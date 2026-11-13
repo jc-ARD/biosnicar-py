@@ -8,8 +8,161 @@ and this project adheres to `Semantic Versioning <https://semver.org/spec/v2.0.0
 Unreleased
 -----------
 
+Added
+~~~~~
+
+- **``run_model(fresnel_layer=...)``** — explicit placement of the smooth
+  refractive boundary: ``"auto"`` (default rule), a layer index, or ``None``
+  to remove it.  Sea ice previously had no way to move or disable its
+  interface (there is no ``layer_type=2`` analogue of type 4), and the
+  default rule puts it *beneath* a granular surface scattering layer, which
+  is a modelling choice rather than a fact.
+
+- **``constrained_combinations()``** on ``RetrievalResult`` and
+  ``SeaIceRetrievalResult`` — the principal axes of the posterior, i.e. the
+  parameter combinations the spectrum actually determined, best first.  For
+  a degenerate pair with correlation ``r`` the constrained combination has
+  ``sigma = sqrt(1 - |r|)`` in units of the marginal error bars: 7x tighter
+  at ``r = -0.98``, which is what FYI_summer's bubble-radius / black-carbon
+  pair measures on SHEBA.  ``summary()`` now names any pair with
+  ``|r| >= 0.8``; ``SeaIceRetrievalResult`` also gains
+  ``parameter_correlation()`` and ``degenerate_parameters()`` for the winning
+  fit.  No emulator is reparameterised: a rotation re-expresses the same
+  posterior and adds no information.
+
+- **The validation corpus is frozen (roadmap V1).**
+  ``tests/validation_data/corpus_manifest.json`` gives every field dataset a
+  role — development, calibration or test — and a SHA-256 of every data
+  file; ``corpus.require_role`` refuses to tune or calibrate on a test set,
+  and ``scripts/build_model_error_covariance.py`` calls it.  Istomina (2016)
+  is the frozen test set.
+
+- **Experiments**, under ``scripts/experiments/``:
+  ``ssl_morphology_experiment.py`` (grain pile or porous crust, and where the
+  interface sits) and ``melt_surface_lwc_experiment.py`` (liquid water in the
+  melting surface layer).
+
+- **Per-parameter information content is now part of the output contract.**
+  Optimal estimation always computed the averaging kernel, but only the
+  ``averaging_kernel_diag`` dict carried it, and nothing consumed that by
+  default: ``summary()``, ``plot()`` and the scene rasters presented every
+  free parameter with the same authority whether the spectrum determined it
+  or the prior did.  A reader could not tell a measurement from a
+  restatement of their own assumptions, and ``uncertainty`` cannot tell them
+  apart — a narrow prior and a sharp measurement both give a small sigma.
+
+  New module :mod:`biosnicar.inverse.information` defines one convention —
+  ``MEASURED_THRESHOLD = 0.5``, ``NOT_RETRIEVED_THRESHOLD = 0.1`` — shared by
+  everything that reports a retrieved value.  The lower threshold is set from
+  measurement: ``sea_ice_temperature`` scores an averaging kernel of 0.048
+  across 22 of 23 SHEBA spectra.
+
+  Both ``RetrievalResult`` and ``SeaIceRetrievalResult`` gain
+  ``information_content()``, ``parameter_provenance()`` and
+  ``measured_parameters()``; ``prior_dominated_parameters()`` now exists on
+  both and takes its default threshold from the shared constant instead of
+  each class hard-coding 0.5.  ``summary()`` grows an ``info`` /
+  ``provenance`` column and an explicit warning for anything below the lower
+  threshold; ``plot_retrieval`` hatches prior-influenced bars and greys out
+  not-retrieved ones.  Output without averaging kernels (non-OE methods) is
+  unchanged.
+
+  Note the caveat, documented in the module: the averaging kernel is measured
+  relative to *the prior supplied*, not against truth.  A wide prior inflates
+  it for free.  Read it alongside ``QualityFlag.AT_BOUNDS`` and
+  ``parameter_correlation()``.
+
+- **Scene output carries information content.**  ``SeaIceSceneResult`` writes
+  ``akd_<name>`` rasters beside ``param_<name>`` and ``unc_<name>`` when the
+  retrieval produced averaging kernels, and ``summary()`` reports the
+  scene-mean per parameter.  Downstream consumers reading ``param_<name>`` as
+  a measurement can now mask on it.
+
+Fixed
+~~~~~
+
+- **The refractive boundary of a melt pond was on the ice under it.**  For a
+  column ``[5, 4, 4]`` the Fresnel interface landed on the first sea-ice
+  layer and was computed as air->ice, as though the water above were absent.
+  A pond therefore had no surface reflection at all — NIR albedo exactly
+  zero wherever the water is opaque, where real water returns 2% at normal
+  incidence and 13% at SZA 70 — and no recycling of upwelling light under
+  the water surface.  The boundary is now air->water at the pond top, with
+  water's refractive index for the beam and exact diffuse reflectances
+  (``biosnicar.classes.ice.diffuse_fresnel``).  Pond broadband albedo moves
+  by about -0.01 at SZA 50 and +0.06 at SZA 70.  ``FYI_pond`` is retrained.
+
+  Not changed, but found: the inherited ice diffuse-Fresnel table is ~0.02
+  low for light arriving from below (it violates the ``n^2`` radiance
+  relation that the from-above column satisfies to 2e-7).  Correcting it
+  would lower ice albedo by 0.003-0.005 and move the glacier-ice benchmarks,
+  so it is documented in ``docs/sea_ice.md`` rather than applied.
+
+- **The vectorised and per-pixel OE engines disagreed in band mode**, by up
+  to 2e-2 in class probability on nine Sentinel-2 bands.  It was two defects
+  in the vectorised path, not weak conditioning: it skipped the per-band
+  platform SNR default for ``obs_uncertainty`` (using a flat 0.02, so a
+  different ``S_e``), and it convolved every candidate with the *first*
+  emulator's solar flux instead of each emulator's own.  The engines now
+  agree to 2e-3, as they do in spectral mode, and the test that had been
+  relaxed to tolerate the disagreement is strict again.
+
+  **This changes band-mode results from ``engine="vectorized"``** for
+  callers who do not pass ``obs_uncertainty``: they now get the SNR-table
+  uncertainties the documented per-pixel path always used.
+
+- **Salinity on a layer with no brine model is no longer dropped silently.**
+  Only ``layer_type`` 4 and 6 model brine; ``sea_ice_salinity`` on a granular
+  or bubbly-ice layer now warns that the layer is computed as fresh ice.
+
+- **Three examples were broken by parameterisation changes that shipped
+  without them.**  ``07_inversion_spectral`` and ``14_sea_ice_emulator``
+  still passed ``snow_depth`` to FYI_snow, which takes ``tau_snow`` (depth is
+  the derived product ``tau * r``); ``14`` and ``15_sea_ice_inversion`` omitted
+  FYI_pond's now-retrievable ``sea_ice_bubble_radius`` and MYI_bare's
+  ``rho_DL``; and ``14`` formatted ``training_score`` as a float for
+  ``open_water``, which is an analytical model with no training score.
+
+  Two silent defects in the same files, found alongside: ``14``'s
+  "all surface types" figure had an ``if/elif`` chain covering five of seven
+  emulators, so ``young_ice`` and ``open_water`` plotted the previous
+  iteration's spectrum under their own labels — the chain now ends in a
+  ``raise``.  And ``07``'s snow section drew its truth uniformly over the full
+  ``tau`` range, which is almost always optically opaque — the regime where
+  depth is *not* retrievable — contradicting the caption above it; it now
+  states a thin (8 cm) pack.
+
+  Examples are not covered by the test suite, which is why a retrain and a
+  reparameterisation both passed CI while leaving them broken.  Note they
+  need ``MPLBACKEND=Agg`` to run unattended: ``PLOT = True`` is hard-coded and
+  ``plt.show()`` blocks on a GUI backend.
+
+- **The per-pixel loop retrieval path dropped the averaging kernel.**
+  ``_result_to_record`` omitted ``averaging_kernel_diag`` while the
+  vectorised batch path carried it, so whether a scene result retained
+  per-parameter provenance depended on which engine produced it.
+
 Changed
 ~~~~~~~
+- **Spectral optimal estimation uses the field-calibrated error covariance
+  by default.**  ``retrieve_sea_ice(model_error="auto")`` resolves to the
+  calibrated forward-model error for spectral ``method="oe"`` and to nothing
+  elsewhere.  An instrument-noise-only ``S_e`` counts several hundred
+  correlated bands as independent evidence; that is a wrong covariance, and
+  it is what produced wrong classes at posterior probability ~1.00.  Band
+  mode is unaffected (no calibrated budget exists there and an explicit
+  ``model_error`` still raises).  Pass ``model_error=None`` for the previous
+  behaviour.
+
+- **The shipped model-error covariance is rebuilt** from a residual library
+  regenerated with the current emulators.  The previous artifact was fitted
+  to residuals of a fleet that has since been retrained twice.
+
+- **``FYI_summer`` bubble-radius ceiling raised 1000 -> 2000 um** (the LUT's
+  own limit, matching MYI_bare and FYI_pond).  On SHEBA 4 of 23 retrievals
+  sat on the old ceiling with an averaging kernel of 0.83, i.e. the bound
+  was setting the value.  Retrained.
+
 - **Sea-ice gas (air) content now follows Cox & Weeks (1983).**
   ``compute_brine_volume`` takes a new ``porosity`` *or* ``bulk_density_kg_m3``
   argument (mutually exclusive, as in SMRT), and a new ``compute_gas_volume``

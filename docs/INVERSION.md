@@ -108,6 +108,31 @@ Main entry point for parameter retrieval.
 
 `result.summary()` returns a human-readable string.
 
+### Was it measured, or was it the prior?
+
+A value and a 1-sigma do not distinguish *"the spectrum pinned this"* from
+*"the prior was narrow and the spectrum said nothing"* — both give a small
+sigma. The averaging kernel does, and `method="oe"` reports it per parameter:
+
+```python
+res.information_content()        # {param: 0..1}  1 = measured, 0 = prior
+res.parameter_provenance()       # {param: "measured" | "prior-influenced" | "not retrieved"}
+res.prior_dominated_parameters() # {param: True if kernel < 0.5}
+res.measured_parameters()        # the subset of best_fit the data determined
+```
+
+`summary()` and `plot()` show this by default, so a prior-dominated
+parameter is visible without going looking for it. Thresholds live in
+`biosnicar.inverse.information` (`MEASURED_THRESHOLD = 0.5`,
+`NOT_RETRIEVED_THRESHOLD = 0.1`) and are shared with the sea-ice path.
+
+**The kernel is relative to the prior you supplied, not to truth.** Widen
+the prior and it rises for free. Read it together with
+`QualityFlag.AT_BOUNDS` (a pinned parameter with a high kernel is a binding
+constraint, and its sigma is the width of a wall) and
+`parameter_correlation()` (a parameter can be well measured and still
+meaningless on its own if it is 0.98-correlated with its neighbour).
+
 ### Optimal estimation (`method="oe"`)
 
 Optimal estimation (Rodgers 2000) replaces "find the best-fit point" with a full

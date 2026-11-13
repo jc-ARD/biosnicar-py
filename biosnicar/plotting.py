@@ -342,21 +342,64 @@ def plot_retrieval(result, true_values=None, wvl_range=(0.35, 2.5),
     x = np.arange(len(params))
     colors = plt.cm.get_cmap("tab10")
 
+    # Per-parameter information content.  A bar drawn identically for a
+    # measured parameter and for one the retrieval copied from its prior
+    # invites the reader to believe both equally, so prior-dominated bars
+    # are hatched and labelled.  Absent for non-OE methods, in which case
+    # this reduces to the plain bar chart.
+    from biosnicar.inverse import information as _info
+    akd = getattr(result, "averaging_kernel_diag", None) or {}
+    labels = _info.provenance(akd, result.best_fit) if akd else {}
+    # "not retrieved" drops the series colour entirely: a coloured bar reads
+    # as a result, and this one is the prior drawn back at the reader.
+    _STYLE = {
+        _info.PRIOR_INFLUENCED: dict(hatch="///", alpha=0.55,
+                                     edgecolor="#555555", facecolor=None),
+        _info.NOT_RETRIEVED: dict(hatch="xxx", alpha=0.9,
+                                  edgecolor="#999999", facecolor="#e0e0e0"),
+    }
+
     for i, (p, v, u) in enumerate(zip(params, values, uncertainties)):
-        ax_params.barh(i, v, xerr=u, height=0.5, color=colors(i), alpha=0.8,
-                       edgecolor="white", linewidth=0.5, capsize=3)
+        style = _STYLE.get(labels.get(p), {})
+        ax_params.barh(i, v, xerr=u, height=0.5,
+                       color=style.get("facecolor") or colors(i),
+                       alpha=style.get("alpha", 0.8), hatch=style.get("hatch"),
+                       edgecolor=style.get("edgecolor", "white"),
+                       linewidth=0.6, capsize=3)
         if true_values and p in true_values:
             ax_params.plot(true_values[p], i, "kx", markersize=10, markeredgewidth=2,
                            label="True" if i == 0 else None)
 
     ax_params.set_yticks(x)
-    ax_params.set_yticklabels(params)
+    if labels:
+        ticks = []
+        for p in params:
+            lab = labels.get(p)
+            a = akd.get(p)
+            if lab in _STYLE and a is not None:
+                ticks.append(f"{p}\n({lab}, A={float(a):.2f})")
+            else:
+                ticks.append(p)
+        ax_params.set_yticklabels(ticks, fontsize=7)
+    else:
+        ax_params.set_yticklabels(params)
     ax_params.set_xlabel("Parameter value")
     ax_params.set_title("(b) Retrieved parameters")
     ax_params.spines["top"].set_visible(False)
     ax_params.spines["right"].set_visible(False)
+
+    handles = []
     if true_values:
-        ax_params.legend(fontsize=8)
+        handles, _ = ax_params.get_legend_handles_labels()
+    import matplotlib.patches as _mpatches
+    for lab in (_info.PRIOR_INFLUENCED, _info.NOT_RETRIEVED):
+        if any(v == lab for v in labels.values()):
+            st = _STYLE[lab]
+            handles.append(_mpatches.Patch(
+                facecolor=st["facecolor"] or "grey", alpha=st["alpha"],
+                hatch=st["hatch"], edgecolor=st["edgecolor"], label=lab))
+    if handles:
+        ax_params.legend(handles=handles, fontsize=7)
 
     fig.tight_layout()
     _finalize(fig, save=save, show=show, dpi=dpi)

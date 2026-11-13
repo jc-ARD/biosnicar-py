@@ -261,8 +261,13 @@ if PLOT:
         "Bare FYI (warm, dirty)": np.array(_fwd("FYI_bare",
             dict(brine_volume_fraction=0.095, sea_ice_bubble_radius=400.0,
                  black_carbon=2000.0, rho_DL=840.0)).albedo),
+        # The pond floor's bubble radius is a free parameter: it sets how
+        # coarse (and so how bright) the ice under the pond is.  It used to
+        # be hard-coded at 200 µm, a winter-ice value, which left the darkest
+        # fifth of observed ponds unreachable at any other setting.
         "Melt pond (shallow)":    np.array(_fwd("FYI_pond",
             dict(pond_depth=0.08, sea_ice_temperature=-4.0,
+                 sea_ice_bubble_radius=600.0,
                  black_carbon=1200.0)).albedo),
         "Snow-covered FYI":       np.array(_fwd("FYI_snow",
             dict(tau_snow=300.0, snow_grain_radius=400.0,   # 0.12 m snow

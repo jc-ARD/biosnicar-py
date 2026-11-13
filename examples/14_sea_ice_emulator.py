@@ -38,8 +38,11 @@ from biosnicar.sea_ice.emulator_configs import load_sea_ice_emulators
 
 emulators = load_sea_ice_emulators()
 for name, emu in emulators.items():
-    print(f"  {name:14s}  R²={emu.training_score:.4f}  "
-          f"params={emu.param_names}")
+    # open_water is an analytical Fresnel + subsurface model, not a trained
+    # network, so it has no training score — printing one would invent it.
+    score = (f"{'analytic':>9s}" if emu.training_score is None
+             else f"R²={emu.training_score:.4f}")
+    print(f"  {name:14s}  {score}  params={emu.param_names}")
 
 
 # ── Speed benchmark ──────────────────────────────────────────────────────────
@@ -116,10 +119,24 @@ for bbl in bubble_radii:
 # ── Snow depth sweep (FYI_snow) ────────────────────────────────────────────
 
 print("\n── Snow depth sweep (FYI_snow emulator) ──")
+
+
+def tau_for_depth(depth_m, grain_um):
+    """Optical depth for a given geometric snow depth and grain radius.
+
+    FYI_snow is parameterised by `tau_snow`, not by depth: depth and grain
+    radius are nearly perfectly degenerate against each other (thinner and
+    coarser looks like thicker and finer), while tau and grain radius are
+    close to orthogonal.  Depth is the derived product, d = tau * r.
+    """
+    return depth_m / (grain_um * 1e-6)
+
+
 emu_snow = emulators["FYI_snow"]
 depths_cm = [2, 5, 10, 15, 20, 30]
 for d_cm in depths_cm:
-    a = emu_snow.predict(snow_depth=d_cm / 100, snow_grain_radius=300.0,
+    a = emu_snow.predict(tau_snow=tau_for_depth(d_cm / 100, 300.0),
+                         snow_grain_radius=300.0,
                          sea_ice_temperature=-15.0, black_carbon=0.0,
                          solzen=60, direct=1)
     bba = float(np.sum(emu_snow.flx_slr * a) / np.sum(emu_snow.flx_slr))
@@ -133,6 +150,7 @@ emu_pond = emulators["FYI_pond"]
 pond_depths = [0.02, 0.05, 0.10, 0.20, 0.40, 0.60]
 for d in pond_depths:
     a = emu_pond.predict(pond_depth=d, sea_ice_temperature=-5.0,
+                         sea_ice_bubble_radius=600.0,
                          black_carbon=1200.0, solzen=60, direct=1)
     nir = float(np.mean(a[50:]))
     bba = float(np.sum(emu_pond.flx_slr * a) / np.sum(emu_pond.flx_slr))
@@ -187,7 +205,8 @@ if PLOT:
             a = emu.predict(brine_volume_fraction=0.033, sea_ice_bubble_radius=200.0,
                             black_carbon=0.0, rho_DL=850.0, solzen=60, direct=1)
         elif name == "FYI_snow":
-            a = emu.predict(snow_depth=0.15, snow_grain_radius=300.0,
+            a = emu.predict(tau_snow=tau_for_depth(0.15, 300.0),
+                            snow_grain_radius=300.0,
                             sea_ice_temperature=-15.0, black_carbon=0.0,
                             solzen=60, direct=1)
         elif name == "FYI_summer":
@@ -196,10 +215,22 @@ if PLOT:
                             solzen=60, direct=1)
         elif name == "MYI_bare":
             a = emu.predict(brine_volume_fraction=0.015, sea_ice_bubble_radius=500.0,
-                            black_carbon=0.0, solzen=60, direct=1)
+                            black_carbon=0.0, rho_DL=820.0, solzen=60, direct=1)
         elif name == "FYI_pond":
             a = emu.predict(pond_depth=0.15, sea_ice_temperature=-5.0,
+                            sea_ice_bubble_radius=600.0,
                             black_carbon=1200.0, solzen=60, direct=1)
+        elif name == "young_ice":
+            a = emu.predict(ice_thickness_cm=10.0, sea_ice_temperature=-10.0,
+                            sea_ice_salinity=20.0, ocean_albedo=0.05,
+                            solzen=60, direct=1)
+        elif name == "open_water":
+            a = emu.predict(solzen=60, wind_speed_ms=5.0)
+        else:
+            # Without this, an unhandled surface type silently reuses the
+            # previous iteration's spectrum and plots it under the wrong
+            # label — which is what young_ice and open_water were doing.
+            raise ValueError(f"no representative state defined for {name}")
         spectra_types[name] = a
         ax.plot(WAVELENGTHS, a, lw=1.5, label=name)
     ax.set_xlim(0.3, 2.5); ax.set_ylim(0, 1.05)
@@ -222,7 +253,8 @@ if PLOT:
     emu_snow = emulators["FYI_snow"]
     snow_cmap = plt.cm.Blues_r
     for i, d_cm in enumerate(depths_cm):
-        a = emu_snow.predict(snow_depth=d_cm / 100, snow_grain_radius=300.0,
+        a = emu_snow.predict(tau_snow=tau_for_depth(d_cm / 100, 300.0),
+                             snow_grain_radius=300.0,
                              sea_ice_temperature=-15.0, black_carbon=0.0,
                              solzen=60, direct=1)
         ax.plot(WAVELENGTHS, a, color=snow_cmap(0.2 + 0.65 * i / (len(depths_cm) - 1)),

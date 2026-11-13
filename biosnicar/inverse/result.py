@@ -192,6 +192,127 @@ class RetrievalResult:
                 out.append((a, b, r))
         return sorted(out, key=lambda t: -abs(t[2]))
 
+    def constrained_combinations(self):
+        """Principal axes of the posterior — what the measurement actually
+        constrained, when it is a combination rather than a parameter.
+
+        Returns a list of ``{"weights": {param: w}, "variance": lam,
+        "sigma": sqrt(lam)}``, sorted from best- to worst-determined.  Empty
+        unless ``method="oe"``.
+
+        Each entry is an eigenvector of the posterior *correlation* matrix,
+        i.e. a unit-length combination of the parameters measured in units
+        of their own marginal 1-sigma::
+
+            c = sum_i  w_i * (x_i - x_hat_i) / sigma_i
+
+        and ``sigma`` is the posterior standard deviation of ``c``.  If the
+        parameters were independently determined every ``sigma`` would be 1.
+        A value well below 1 is a combination the spectrum pins down far
+        better than the marginal error bars suggest; a value above 1 is the
+        direction the retrieval is free to slide along.  For a single
+        degenerate pair with correlation ``r`` the two values are
+        ``sqrt(1 - |r|)`` and ``sqrt(1 + |r|)`` — at r = -0.98 the
+        constrained combination is known 7x better than either component.
+
+        This is the general form of what :attr:`ssa` does for the bubble
+        radius / density pair, and it needs no retraining: rotating an
+        emulator's inputs onto these axes would re-express the same
+        posterior, not add information to it.  The axes are local — the
+        posterior is linearised at the solution — so they describe this
+        retrieval, not the emulator.
+        """
+        corr = self.parameter_correlation()
+        if not corr:
+            return []
+        names = [p for p in self.best_fit if (p, p) in corr]
+        C = np.array([[corr[(a, b)] for b in names] for a in names])
+        lam, vec = np.linalg.eigh(0.5 * (C + C.T))
+        out = []
+        for k in np.argsort(lam):
+            w = vec[:, k]
+            # Fix the arbitrary eigenvector sign: largest weight positive.
+            if w[np.argmax(np.abs(w))] < 0:
+                w = -w
+            v = float(max(lam[k], 0.0))
+            out.append({
+                "weights": {p: float(w[i]) for i, p in enumerate(names)},
+                "variance": v,
+                "sigma": float(np.sqrt(v)),
+            })
+        return out
+
+    def _degeneracy_lines(self, threshold: float = 0.8):
+        """Summary lines naming degenerate pairs; empty when there are none."""
+        pairs = self.degenerate_parameters(threshold)
+        if not pairs:
+            return []
+        lines = [
+            f"  Degenerate pairs (posterior |r| >= {threshold:g}) — the "
+            "spectrum fixes a combination,",
+            "  not the components; each marginal sigma is inflated as shown:",
+        ]
+        for a, b, r in pairs:
+            infl = 1.0 / np.sqrt(max(1.0 - r * r, 1e-12))
+            lines.append(f"    {a} / {b}  r = {r:+.2f}  ({infl:.1f}x)")
+        return lines
+
+    # ── Information content: measurement or prior? ──────────────────────
+
+    def information_content(self) -> Dict[str, float]:
+        """``{param: averaging-kernel diagonal}`` — 1 = measured, 0 = prior.
+
+        Empty unless ``method="oe"``.  This is the diagnostic that
+        ``uncertainty`` cannot give you: a small sigma means either the
+        spectrum pinned the value or the prior was narrow and the spectrum
+        said nothing, and only the averaging kernel tells the two apart.
+
+        See :mod:`biosnicar.inverse.information` for the threshold
+        convention shared across the package.
+        """
+        return dict(self.averaging_kernel_diag or {})
+
+    def parameter_provenance(self, **kw) -> Dict[str, str]:
+        """``{param: "measured" | "prior-influenced" | "not retrieved"}``.
+
+        Parameters with no averaging kernel (non-OE methods, or derived
+        quantities) are labelled ``"unknown"`` rather than dropped.
+        """
+        from biosnicar.inverse import information as _info
+        return _info.provenance(self.averaging_kernel_diag, self.best_fit, **kw)
+
+    def prior_dominated_parameters(self, threshold: float = None) -> Dict[str, bool]:
+        """``{param: True}`` where the prior, not the spectrum, set the value.
+
+        *threshold* defaults to
+        :data:`biosnicar.inverse.information.MEASURED_THRESHOLD` (0.5).
+        Empty unless ``method="oe"``.  Mirrors the method of the same name
+        on :class:`~biosnicar.sea_ice.retrieve.SeaIceRetrievalResult`, which
+        shares this threshold.
+        """
+        from biosnicar.inverse import information as _info
+        if threshold is None:
+            threshold = _info.MEASURED_THRESHOLD
+        return {p: (a < threshold) for p, a in (self.averaging_kernel_diag or {}).items()}
+
+    def measured_parameters(self, threshold: float = None) -> Dict[str, float]:
+        """The subset of ``best_fit`` the measurement actually determined.
+
+        Use this when the retrieved values are going somewhere they will be
+        read as measurements — a publication table, a downstream fusion
+        step — rather than filtering ``best_fit`` by eye.  Returns the whole
+        of ``best_fit`` when no averaging kernel is available, since in that
+        case nothing has been shown either way.
+        """
+        from biosnicar.inverse import information as _info
+        akd = self.averaging_kernel_diag or {}
+        if not akd:
+            return dict(self.best_fit)
+        if threshold is None:
+            threshold = _info.MEASURED_THRESHOLD
+        return {p: v for p, v in self.best_fit.items()
+                if akd.get(p, float("nan")) >= threshold}
+
     def _ssa_param_names(self):
         """Which (radius, density) pair in ``best_fit`` defines SSA, if any.
 
@@ -322,9 +443,12 @@ class RetrievalResult:
         lines = [f"RetrievalResult (method={self.method}, converged={self.converged})"]
         lines.append(f"  Cost: {self.cost:.4f}  |  Function evaluations: {self.n_function_evals}")
         lines.append("  Best-fit parameters:")
-        for name, val in self.best_fit.items():
-            unc = self.uncertainty.get(name, float("nan"))
-            lines.append(f"    {name:25s} = {val:12.4f}  ±  {unc:.4f}")
+        from biosnicar.inverse import information as _info
+        lines.extend(_info.format_parameter_lines(
+            self.best_fit, self.uncertainty, self.averaging_kernel_diag,
+            name_width=25,
+        ))
+        lines.extend(self._degeneracy_lines())
         if self.ssa is not None:
             lines.append("  Derived quantities:")
             lines.append(

@@ -16,8 +16,10 @@ BioSNICAR uses a `layer_type` integer per layer to select the optical-property m
 | 2 | Solid bubbly glacier ice, no Fresnel correction | No |
 | 3 | Granular water/ice sphere mixture (slush) | No |
 | **4** | **Sea ice — brine inclusions via Maxwell-Garnett** | **Yes** |
-| **5** | **Melt pond — liquid water layer (near-pure absorption)** | No |
+| **5** | **Melt pond — liquid water layer (near-pure absorption)** | **Yes** (air–water, n ≈ 1.33) |
 | **6** | **Young ice — semi-transparent thin slab over ocean (boundary condition, bypasses the τ/ω/g pipeline)** | **Yes** |
+
+The smooth interface sits on top of the **first** layer of type 1, 4 or 5, and takes the refractive index of that layer — water for a melt pond, ice otherwise. `run_model(fresnel_layer=...)` overrides the rule: an integer puts the interface on top of that layer whatever its type, `None` removes it. The default placement is a modelling choice, not a fact: under a granular surface scattering layer (`[0, 4, 4]`) it puts a smooth interface *beneath* the grains.
 
 Types 1 and 2 are the same optical model (bulk ice matrix, absorption from `k_ice`, scattering from air/water bubble LUTs) — the only difference is that type 1 triggers the Fresnel surface reflection in the solver and type 2 does not. Type 3 is a different physical picture altogether: discrete spheres of ice and water in air, combined by linear volume-fraction mixing, with no effective medium theory.
 
@@ -284,10 +286,24 @@ For comparison, the CCSM4/CICE pond parameterisation produces visible broadband 
 | BC as proxy for mixed absorbers | Slightly wrong spectral shape at 600–700 nm (missing chlorophyll red edge) | Spectral analysis |
 | Uniform BC throughout top 5cm ice layer | Overestimates darkening if LAPs are surface-concentrated | Very shallow ponds |
 | No depth-varying LAP concentration | LAP loading fixed at 1000 ppb regardless of season or location | Regional application |
-| No Fresnel correction at air-water surface | ~2% underestimate of surface reflection | Small effect on BBA |
+| Water–ice interface at the pond floor neglected | Normal-incidence reflectance of a 1.33 → 1.31 step is ~6×10⁻⁵ | Never |
+| Flat pond surface | No wind roughening of the specular term | Large SZA, windy ponds |
 | Pure liquid water at 0°C | Neglects pond water turbidity (DOM, suspended particles) | Turbid ponds |
 
 The NIR prediction is robust — it depends only on water absorption physics and is nearly independent of floor properties for ponds deeper than ~5 cm.
+
+### The pond surface is the refractive boundary (2026-11-12)
+
+For a ponded column `[5, 4, 4]` the Fresnel interface used to land on the ice *under* the pond and be computed as air→ice, as if the water above were absent. Two consequences, both wrong:
+
+- **No reflection off the water.** Wherever the pond is optically thick, the only light that can return is the specular reflection from its surface, so the old model gave a NIR albedo of exactly zero. Real water reflects 2% at normal incidence, 6% at SZA 60° and 13% at SZA 70°.
+- **No light recycling under the water surface.** Upwelling diffuse light meets the water–air interface from below, where 47% of it is returned (`1 − (1 − R_a)/n²`). That traps visible light over the pond floor and raises the sensitivity of pond albedo to the floor's properties.
+
+The interface is now air→water at the pond top, with water's own refractive index (Rowe et al. 2020) for the direct-beam Fresnel coefficients and the refracted angle, and exact diffuse reflectances from `biosnicar.classes.ice.diffuse_fresnel`. The water→ice step at the floor is neglected (table above). The total-internal-reflection override the solver applies to ice near 3 µm is skipped for water, whose real index never drops below 1.11.
+
+Effect on broadband albedo is solar-geometry dependent rather than uniform: about −0.01 at SZA 50° (recycling dominates), about +0.06 at SZA 70° (specular dominates), and +0.01 to +0.02 under diffuse sky.
+
+**A related inaccuracy in the inherited ice tables, not changed here.** `fl_reflection_diffuse.npz` (from SNICAR-ADv4) agrees with `diffuse_fresnel` to 2×10⁻⁷ for diffuse light from above, but its from-below values sit ~0.02 under the `n²` relation (0.427 against 0.451 at 0.7 µm; CICE uses 0.455 for n = 1.31). Applying the exact value to ice lowers broadband albedo by 0.003–0.005 on the sea-ice presets and on glacier ice. It is left alone because the glacier-ice benchmarks are pinned to those tables — a decision for the forward model as a whole, not for the sea-ice extension.
 
 ---
 

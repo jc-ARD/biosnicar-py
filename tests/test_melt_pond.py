@@ -78,12 +78,18 @@ class TestPondLayerPhysics:
             "BBA must decrease monotonically with depth"
         )
 
-    def test_nir_nearly_zero_deep_pond(self):
-        """A 40 cm pond is essentially opaque in NIR."""
+    def test_nir_of_deep_pond_is_surface_reflection_only(self):
+        """A 40 cm pond is opaque in the NIR, so nothing returns from below
+        and NIR albedo falls to the specular reflection off the water
+        surface (~6% at SZA 60) — not to zero, which is what a pond with no
+        surface interface would give."""
         out = _pond_on_fyi(0.40)
-        assert out.BBANIR < 0.05, (
-            f"NIR should be near 0 for 40cm pond, got {out.BBANIR:.3f}"
+        assert 0.03 < out.BBANIR < 0.10, (
+            f"NIR of a 40 cm pond should be ~ the water-surface Fresnel "
+            f"reflectance, got {out.BBANIR:.3f}"
         )
+        beyond_1p2um = np.asarray(out.albedo)[100:230]
+        assert beyond_1p2um.max() - beyond_1p2um.min() < 0.02
 
     def test_vis_still_significant_shallow(self):
         """Shallow pond transmits most visible light to ice below."""
@@ -138,9 +144,9 @@ class TestPondPresets:
         deep    = run_model(preset=FYI_POND_DEEP,    solzen=60)
         assert deep.BBA < shallow.BBA
 
-    def test_deep_pond_nir_near_zero(self):
+    def test_deep_pond_nir_is_surface_reflection_only(self):
         out = run_model(preset=FYI_POND_DEEP, solzen=60)
-        assert out.BBANIR < 0.05
+        assert 0.03 < out.BBANIR < 0.10
 
     def test_preset_by_name(self):
         for name in ["FYI_POND_SHALLOW", "FYI_POND_DEEP"]:
@@ -168,3 +174,151 @@ class TestPondRegressionExistingIce:
     def test_sea_ice_unchanged(self):
         out = run_model(preset="FYI_WINTER_BARE", solzen=60)
         assert 0.4 <= out.BBA <= 0.9
+
+
+# ── Refractive boundary of a ponded column ──────────────────────────────────
+
+class TestPondSurfaceInterface:
+    """The smooth interface of a pond is its water surface, not the ice floor.
+
+    For a column [5, 4, 4] the Fresnel boundary used to land on the ice under
+    the pond and be computed as air->ice, as though the water were absent.
+    The signature of that error is unambiguous: wherever the pond is
+    optically thick the only light that can come back is the specular
+    reflection off the water, so a pond with no surface interface has zero
+    NIR albedo.  Real water reflects ~2% at normal incidence.
+    """
+
+    _POND = dict(
+        layer_type=[5, 4, 4], dz=[0.30, 0.05, 1.40], rds=[500, 500, 500],
+        rho=[1000, 850, 910], sea_ice_salinity=[None, 8, 6],
+        sea_ice_temperature=[None, -3, -3],
+        sea_ice_bubble_radius=[None, 300, 750],
+    )
+    # 1.6-1.8 um: 30 cm of water is opaque, so albedo == surface reflectance.
+    _OPAQUE = slice(140, 160)
+
+    @staticmethod
+    def _fresnel_unpolarised(n, sza_deg):
+        mu = np.cos(np.radians(sza_deg))
+        mut = np.sqrt(1.0 - (1.0 - mu ** 2) / n ** 2)
+        rs = ((mu - n * mut) / (mu + n * mut)) ** 2
+        rp = ((n * mu - mut) / (n * mu + mut)) ** 2
+        return 0.5 * (rs + rp)
+
+    @pytest.mark.parametrize("sza", [30, 50, 70])
+    def test_opaque_band_albedo_is_water_fresnel(self, sza):
+        import pandas as pd
+        import biosnicar
+        n_w = pd.read_csv(
+            biosnicar.DATA_DIR / "OP_data" / "480band"
+            / "refractive_index_water_273K_Rowe2020.csv"
+        ).n.values[self._OPAQUE]
+        out = run_model(solzen=sza, direct=1, **self._POND)
+        alb = np.asarray(out.albedo)[self._OPAQUE]
+        assert alb == pytest.approx(self._fresnel_unpolarised(n_w, sza),
+                                    abs=3e-3)
+
+    def test_interface_is_on_the_pond_layer(self):
+        from biosnicar.rt_solvers.adding_doubling_solver import (
+            _first_fresnel_layer,
+        )
+
+        class _Ice:
+            layer_type = [5, 4, 4]
+        assert _first_fresnel_layer(_Ice) == 0
+
+    def test_no_spurious_total_reflection_near_3um(self):
+        # Water's real index stays above 1.11, so air->water never totally
+        # reflects.  The complex-arcsin criterion used for ice would fire at
+        # SZA >~ 69 deg and paint albedo = 1 over 2.9-3.2 um.
+        out = run_model(solzen=75, direct=1, **self._POND)
+        assert np.asarray(out.albedo)[250:310].max() < 0.5
+
+    def test_diffuse_fresnel_is_exact(self):
+        from biosnicar.classes.ice import diffuse_fresnel
+        # CICE's constants for n = 1.31 (Briegleb & Light 2007).
+        ra, rb = diffuse_fresnel(np.array([1.31]))
+        assert ra[0] == pytest.approx(0.063, abs=1e-3)
+        assert rb[0] == pytest.approx(0.455, abs=2e-3)
+        # Radiance conservation ties the two directions together exactly.
+        n = np.linspace(1.2, 1.45, 11)
+        ra, rb = diffuse_fresnel(n)
+        assert (1 - rb) * n ** 2 == pytest.approx(1 - ra, rel=1e-12)
+        # No interface when the media match.
+        ra, rb = diffuse_fresnel(np.array([1.0 + 1e-9]))
+        assert ra[0] == pytest.approx(0.0, abs=1e-6)
+
+    def test_from_above_agrees_with_the_inherited_ice_table(self):
+        from pathlib import Path
+        import biosnicar
+        from biosnicar.classes.ice import diffuse_fresnel
+        from biosnicar.drivers.setup_snicar import setup_snicar
+        ice = setup_snicar(str(Path(biosnicar.__file__).parent / "inputs.yaml"))[0]
+        vis_nir = slice(20, 200)
+        ra, _ = diffuse_fresnel(ice.ref_idx_re[vis_nir])
+        assert ra == pytest.approx(ice.fl_r_dif_a[vis_nir], abs=1e-6)
+        # Water is optically denser than ice across the solar spectrum.
+        assert (ice.fl_r_dif_a_water[vis_nir] > ice.fl_r_dif_a[vis_nir]).all()
+
+
+class TestFresnelLayerOverride:
+    _COL = dict(
+        layer_type=[0, 4, 4], dz=[0.05, 0.05, 1.40], rds=[1000, 500, 500],
+        rho=[300, 850, 910], sea_ice_salinity=[None, 4, 2],
+        sea_ice_temperature=[None, -3, -3],
+        sea_ice_bubble_radius=[None, 300, 600], solzen=60,
+    )
+
+    def test_auto_is_the_default(self):
+        a = run_model(**self._COL).albedo
+        b = run_model(fresnel_layer="auto", **self._COL).albedo
+        assert np.array_equal(a, b)
+
+    def test_explicit_index_matches_auto_rule(self):
+        # auto puts the boundary on the first sea-ice layer: index 1 here.
+        a = run_model(**self._COL).albedo
+        b = run_model(fresnel_layer=1, **self._COL).albedo
+        assert np.array_equal(a, b)
+
+    def test_none_removes_the_interface(self):
+        with_ifc = run_model(**self._COL)
+        without = run_model(fresnel_layer=None, **self._COL)
+        assert not np.allclose(with_ifc.albedo, without.albedo)
+        # No internal reflection trapping light under the grains: brighter.
+        assert without.BBA > with_ifc.BBA
+
+    def test_solid_ice_type1_equals_type2_with_interface_on_top(self):
+        col = dict(self._COL, layer_type=[1, 4, 4], rho=[700, 850, 910])
+        a = run_model(**col).albedo
+        b = run_model(fresnel_layer=0,
+                      **dict(col, layer_type=[2, 4, 4])).albedo
+        assert np.allclose(a, b)
+
+    def test_out_of_range_index_raises(self):
+        with pytest.raises(ValueError, match="fresnel_layer"):
+            run_model(fresnel_layer=7, **self._COL)
+
+
+class TestBrineOnlyInSeaIceLayers:
+    def test_salinity_on_granular_layer_warns(self):
+        with pytest.warns(UserWarning, match="sea_ice_salinity is ignored"):
+            run_model(
+                layer_type=[0, 4], dz=[0.1, 1.0], rds=[300, None],
+                rho=[300, 900], sea_ice_salinity=[5, 6],
+                sea_ice_temperature=[None, -10],
+                sea_ice_bubble_radius=[None, 200],
+            )
+
+    def test_none_or_zero_salinity_is_silent(self):
+        import warnings
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            run_model(preset="FYI_WINTER_SNOW")
+            run_model(preset="FYI_POND_SHALLOW")
+            run_model(
+                layer_type=[0, 4], dz=[0.1, 1.0], rds=[300, None],
+                rho=[300, 900], sea_ice_salinity=[0, 6],
+                sea_ice_temperature=[None, -10],
+                sea_ice_bubble_radius=[None, 200],
+            )

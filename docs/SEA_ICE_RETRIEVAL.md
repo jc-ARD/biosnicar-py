@@ -237,8 +237,24 @@ res.class_probabilities   # {type: probability}, sums to 1
 res.dfs                   # information content of the winning fit
 res.averaging_kernel_diag # {param: 0..1}  ~1 = measured, ~0 = prior-driven
 res.uncertainty           # 1-sigma per parameter (posterior covariance)
+
+# Provenance of each retrieved value — shown by default in summary() and plot()
+res.information_content()         # {param: 0..1}, same as averaging_kernel_diag
+res.parameter_provenance()        # {param: "measured" | "prior-influenced" | "not retrieved"}
 res.prior_dominated_parameters()  # {param: True if prior-driven (kernel < 0.5)}
+res.measured_parameters()         # the subset the spectrum actually determined
 ```
+
+`summary()` prints an `info` / `provenance` column and warns explicitly about
+anything below a kernel of 0.1, so a parameter the spectrum never constrained
+cannot be read as a measurement by accident. Thresholds are defined once in
+`biosnicar.inverse.information` and shared with the hyperspectral path. Scene
+retrievals carry the same information as `akd_<name>` rasters alongside
+`param_<name>` and `unc_<name>`.
+
+**The kernel is measured against the prior you supplied, not against truth** —
+widen the prior and it rises for free. Read it with the `at_bounds` quality
+flag and `parameter_correlation()`, not alone.
 
 **Spectrum-only vs priors-on (provenance).** The `known_month` priors are
 powerful — they can change the *classification*, not just sharpen parameters
@@ -273,11 +289,12 @@ state from a spectrum but reports only what a few bands can support). Speed is
 comparable to or faster than L-BFGS-B per pixel. Worked demonstration:
 `examples/17_optimal_estimation.py`.
 
-> **Honest status — the posteriors are not yet calibrated.** (1) The
-> measurement covariance currently contains instrument noise only; the
-> forward-model-error term — which makes the *uncertainties* (not the point
-> estimates) trustworthy — is pending empirical calibration against field
-> residuals (roadmap A7). (2) The class probabilities inherit sensitivity to
+> **Honest status — the posteriors are not yet calibrated.** (1) In spectral
+> mode the measurement covariance now includes the field-calibrated
+> forward-model error by default (`model_error="auto"`, roadmap A7), but that
+> term is calibrated in the VIS only; beyond 1000 nm it is a per-band diagonal
+> and the SWIR evidence is still over-counted. In band mode S_e is instrument
+> noise only. (2) The class probabilities inherit sensitivity to
 > the default weak-prior widths (σ = full parameter range): the Laplace
 > evidence's Occam term depends on those prior volumes, so `class_probabilities`
 > should be read as a well-ordered ranking, not calibrated frequencies, until
@@ -294,14 +311,19 @@ comparable to or faster than L-BFGS-B per pixel. Worked demonstration:
 >   (2026-07-15, `oe_swir_classification_experiment.py`; `sea_ice_validation.md`
 >   §12) — default 12/12 in both windows; OE 7/12 VIS-only, 2/12 with SWIR,
 >   failures at p≈1.00. The instrument-only S_e over-counts correlated
->   spectral evidence ~30×. Mitigations: `model_error=True` (repairs VIS-only
->   to 92%), or a 400–1000 nm `wavelength_mask`, or use the default method.
+>   spectral evidence ~30×. That is a wrong covariance rather than a
+>   cautious one, so since 2026-11-12 spectral OE uses the field-calibrated
+>   `model_error` **by default** (`model_error="auto"`; it repairs VIS-only to
+>   92%). Pass `model_error=None` to reproduce the instrument-only numbers
+>   above. The SWIR remains unrepaired — restrict to 400–1000 nm with
+>   `wavelength_mask`, or classify with the default method.
 > * **Satellite bands (≤ ~9): sound.** The band-mode experiment (2026-07-17,
 >   `oe_bandmode_classification_experiment.py`) — on Sentinel-2's 9 VIS-NIR
 >   bands OE classifies summer bare ice 15/16 (beating the default 13/16),
 >   spring 7/7, at honest confidences (median 0.82; worst miss 0.73). Few
 >   SRF-integrated bands don't trigger the over-counting. `model_error` is not
->   used (and is refused) in band mode.
+>   used in band mode: the `"auto"` default resolves to off there, and an
+>   explicit `model_error=True` is refused.
 >
 > In all modes OE is the right tool for **parameter posteriors / DFS /
 > averaging kernels** on a known or default-classified surface type.
@@ -489,7 +511,7 @@ takes seconds.
 | Open water albedo | Fresnel/Cox & Munk physics: BBA 0.02 (SZA 20°) → 0.07 (60°) → ~0.3 (80°, calm); wind darkens high-SZA water |
 | Emulator fidelity | FYI_bare held-out spectral R² 0.9977, BBA MAE 0.0024 (2000 forward-model spectra, seed 777, re-measured after the 2026-11-05 physics rebuild); all six sea-ice emulators 0.998–1.000 |
 | Parameter degeneracy | Dominant pair is `sea_ice_bubble_radius`/`rho_DL`: posterior correlation 0.84 mean, 0.995 max, same sign at all 24 base points, inflating marginal σ 4.2× typical / 9.8× worst. `rho_DL`/`brine_volume_fraction`, previously the tracked pair, is minor (0.31 mean, 1.1× inflation) and **changes sign**. All parameters stay measurement-determined (averaging kernel ≥ 0.84 for `rho_DL`). Read per-retrieval via `parameter_correlation()`, not asserted globally |
-| **`sea_ice_temperature` is not retrieved** | Averaging kernel **0.048** across 22 of 23 SHEBA spectra — roughly 95% prior, 5% measurement. Temperature acts only through brine volume/salinity, and the bare-ice and SSL emulators are `vis_only`-masked where bubble scattering swamps brine absorption. Reported with an uncertainty, but the spectrum is barely informing it. Check `averaging_kernel_diag` before quoting it |
+| **`sea_ice_temperature` is not retrieved** | Averaging kernel **0.048** across 22 of 23 SHEBA spectra — roughly 95% prior, 5% measurement. Temperature acts only through brine volume/salinity, and the bare-ice and SSL emulators are `vis_only`-masked where bubble scattering swamps brine absorption. Now **flagged automatically**: `summary()`, `plot()` and `parameter_provenance()` mark it `not retrieved`, and `measured_parameters()` excludes it. That makes the limitation visible; it does not remove it — the fix is SWIR coverage, which waits on the SWIR model-error term |
 | Bound-pinning on real data | 22/92 retrieved parameters (24%) land within 2% of a bound on SHEBA; 19/23 spectra carry a \|r\| > 0.8 pair. Pin + high averaging kernel = bound binding; pin + low = flat likelihood and the value is meaningless. See `tests/validation_data/parameter_identifiability_sheba.py` |
 | Parameter identifiability | Synthetic validation, seed 2026 — see §3 |
 

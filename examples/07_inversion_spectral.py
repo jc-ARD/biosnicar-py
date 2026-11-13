@@ -404,26 +404,61 @@ print(f"  True depth = {TRUE_POND['pond_depth']:.4f} m  "
 # enough to transmit NIR through to the underlying ice.  Thick snow
 # (>~20 cm) is optically opaque and depth becomes unconstrained from
 # albedo alone; grain radius and BC dominate in that regime.
+#
+# The FYI_snow emulator does not take depth directly.  Its free parameters
+# are optical depth `tau_snow` and `snow_grain_radius`, and depth is the
+# derived product `tau * r`.  That is deliberate: depth and grain radius
+# trade off against each other almost perfectly (thinner-and-coarser looks
+# like thicker-and-finer), while tau and grain radius are close to
+# orthogonal — after this reparameterisation they are the *least*
+# degenerate pair in the whole emulator fleet.  Retrieve the orthogonal
+# pair, then combine.
 
 print("\n── SI-3: Snow-covered FYI — snow_depth retrieval ──")
 
 emu_snow  = si_emus["FYI_snow"]
-TRUE_SNOW = _rand07("FYI_snow")
+# This truth is stated rather than drawn at random, because the section is
+# about one specific regime: ~8 cm of medium-grained, clean snow, thin
+# enough that NIR still reaches the ice.  A uniform draw from the full tau
+# range is almost always optically opaque — depth is then not retrievable
+# from albedo at all, and the demo would illustrate the opposite of its
+# own caption.
+SNOW_DEPTH_M, SNOW_GRAIN_UM = 0.08, 300.0
+TRUE_SNOW = dict(tau_snow=SNOW_DEPTH_M / (SNOW_GRAIN_UM * 1e-6),
+                 snow_grain_radius=SNOW_GRAIN_UM,
+                 sea_ice_temperature=-15.0, black_carbon=50.0,
+                 solzen=60, direct=1)
 obs_snow  = _si_fwd("FYI_snow", TRUE_SNOW)
 
+FREE_SNOW = ["tau_snow", "snow_grain_radius"]
 result_snow = retrieve(
     observed     = obs_snow,
-    parameters   = ["snow_depth", "snow_grain_radius"],
+    parameters   = FREE_SNOW,
     emulator     = emu_snow,
     fixed_params = {k: v for k, v in TRUE_SNOW.items()
-                    if k not in ("snow_depth", "snow_grain_radius")
-                    and k in emu_snow.bounds},
+                    if k not in FREE_SNOW and k in emu_snow.bounds},
 )
-print(f"  True snow_depth={TRUE_SNOW['snow_depth']:.4f} m  "
-      f"Retrieved={result_snow.best_fit['snow_depth']:.4f} m  "
+
+
+def _snow_depth_m(tau, grain_um):
+    """Geometric depth from optical depth and grain radius (as retrieve_sea_ice
+    derives it): d = tau * r, clipped to the physically sensible range."""
+    return float(np.clip(tau * grain_um * 1e-6, 0.003, 1.5))
+
+
+true_depth = _snow_depth_m(TRUE_SNOW["tau_snow"], TRUE_SNOW["snow_grain_radius"])
+retr_depth = _snow_depth_m(result_snow.best_fit["tau_snow"],
+                           result_snow.best_fit["snow_grain_radius"])
+print(f"  True tau_snow={TRUE_SNOW['tau_snow']:.1f}  "
+      f"Retrieved={result_snow.best_fit['tau_snow']:.1f}  "
       f"Converged: {result_snow.converged}")
 print(f"  True grain_radius={TRUE_SNOW['snow_grain_radius']:.1f} µm  "
       f"Retrieved={result_snow.best_fit['snow_grain_radius']:.1f} µm")
+print(f"  → derived snow_depth: true={true_depth:.4f} m  "
+      f"retrieved={retr_depth:.4f} m")
+print("    (tau is the weaker of the two: it trades off against black carbon,"
+      " FYI_snow's\n     most correlated pair, so expect depth to be the less"
+      " certain number here)")
 
 # ── Example SI-4: retrieve_sea_ice() — classify AND retrieve ──────────────
 #
@@ -506,25 +541,25 @@ if PLOT:
                     result_snow.predicted_albedo, obs_snow, alpha=0.12, color="#6a3d9a")
     ax.axvline(0.7, color="gray", lw=0.5, ls=":", alpha=0.5)
     ax.set_xlim(0.3, 2.5); ax.set_ylim(0, 1.05)
-    sd_ret = result_snow.best_fit["snow_depth"]
     rds_ret = result_snow.best_fit["snow_grain_radius"]
-    ax.set_title(f"SI-3: Snow-covered FYI — depth={sd_ret:.4f} m, rds={rds_ret:.0f} µm\n"
-                 f"(true: {TRUE_SNOW['snow_depth']:.2f} m, {TRUE_SNOW['snow_grain_radius']:.0f} µm)")
+    ax.set_title(f"SI-3: Snow-covered FYI — depth={retr_depth:.4f} m, rds={rds_ret:.0f} µm\n"
+                 f"(true: {true_depth:.2f} m, {TRUE_SNOW['snow_grain_radius']:.0f} µm)")
     ax.set_xlabel("Wavelength (µm)"); ax.set_ylabel("Spectral albedo"); ax.legend(fontsize=8)
 
-    # Panel 4: retrieve_sea_ice() — residuals for all five emulators
-    # The winning emulator (FYI_bare) has flat near-zero residuals;
-    # the others show systematic misfit that reveals the wrong surface type.
+    # Panel 4: retrieve_sea_ice() — residuals for every emulator in the fleet
+    # The winning emulator has flat near-zero residuals; the others show
+    # systematic misfit that reveals the wrong surface type.
     ax = axes_si[1, 1]
     type_col_si = {"FYI_bare": "#1b7837", "FYI_snow": "#4575b4",
                    "FYI_summer": "#d73027", "MYI_bare": "#762a83",
-                   "FYI_pond": "#e08214"}
+                   "FYI_pond": "#e08214", "young_ice": "#17becf",
+                   "open_water": "#555555"}
     for stype, fit in result_class.all_fits.items():
         resid = fit.predicted_albedo - obs_bare
         rmse  = float(np.sqrt(np.mean(resid ** 2)))
         winner = "★ " if stype == result_class.surface_type else ""
         lw     = 2.0 if stype == result_class.surface_type else 1.0
-        ax.plot(wavelengths, resid, color=type_col_si[stype], lw=lw,
+        ax.plot(wavelengths, resid, color=type_col_si.get(stype, "#999999"), lw=lw,
                 label=f"{winner}{stype} RMSE={rmse:.4f}")
     ax.axhline(0, color="k", lw=0.8, ls="--", alpha=0.5)
     ax.axvline(0.7, color="gray", lw=0.5, ls=":", alpha=0.5)

@@ -11,6 +11,45 @@ Empirical datasets and validation scripts for the BioSNICAR sea ice extension (`
 > `docs/SEA_ICE_RETRIEVAL.md`) as the verified record. After any emulator or
 > physics rebuild, re-run the relevant script before quoting numbers.
 
+## The corpus is frozen — dataset roles (V1, 2026-11-12)
+
+Every dataset here has exactly one role, recorded with a SHA-256 of every data
+file in `corpus_manifest.json` and enforced by `corpus.py` and
+`tests/test_validation_corpus.py`:
+
+| Dataset | Role | What that means |
+|---|---|---|
+| SHEBA (Grenfell & Light 2007) | **development** | Free to tune on. Emulator ranges, band masks, seasonal priors and the FYI_snow temperature bound were all set against it. Numbers are in-sample |
+| Morassutti (1995) ponds | **development** | Pond forward model and FYI_pond design. In-sample |
+| Macfarlane (2022) micro-CT | **development** | Surface-layer structure experiments |
+| Smith (2021) MOSAiC | **calibration** | Calibrates the shipped forward-model error covariance. May be fitted for that artifact; not a hold-out any more |
+| Istomina (2016) IceArc | **test** | **Frozen. Evaluate only.** Never used to set a forward-model, emulator, prior, mask, threshold or covariance choice |
+
+Rules:
+
+1. Generalisation numbers are quoted from the **test** set and nowhere else.
+2. Code that fits or calibrates calls `corpus.require_role(campaigns, purpose)`;
+   it raises on a test-set campaign. `scripts/build_model_error_covariance.py`
+   does.
+3. Looking at a test-set result and then changing the model to improve it turns
+   that dataset into a development set. There is no way back, so record it in
+   the manifest's `conversions` list and say so wherever its numbers are quoted.
+4. Changing a data file fails the test suite. `corpus.py --freeze` re-hashes;
+   it is for adding a dataset, not for making a failing check pass.
+
+The frozen test set is a single campaign of 121 spectra with coarse field-note
+labels. That is thin, and it is the reason the roadmap's empirical data
+collection matters: one more independent campaign is worth more than any
+amount of further analysis of these four. Field labels, solar geometry and
+surface structure are all uncertain in every dataset here, so treat any
+accuracy figure as weak evidence — these data can expose a wrong model, but
+agreement with them does not establish a right one.
+
+```bash
+uv run python tests/validation_data/corpus.py            # verify hashes
+uv run python tests/validation_data/corpus.py --status   # roles and counts
+```
+
 ## Validation inventory and status
 
 | Script | Tests | Modality / data | Status |

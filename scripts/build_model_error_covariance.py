@@ -29,6 +29,7 @@ sys.path.insert(0, str(ROOT / "tests" / "validation_data"))
 
 from biosnicar.inverse.model_error import fit_model_error  # noqa: E402
 from build_residual_library import load_residual_library  # noqa: E402
+from corpus import require_role  # noqa: E402
 
 # Calibrate on two campaigns, hold a third out entirely: the held-out reduced
 # chi2 is the only honest check that the covariance generalises rather than
@@ -84,6 +85,11 @@ def main():
     # regime-spanning full-range residuals exist. See OE doc §8.
     ap.add_argument("--gap-tolerant", action="store_true")
     args = ap.parse_args()
+
+    # V1: the test corpus is frozen.  Refuse to calibrate on it, and refuse
+    # to quote a "held-out" number from a campaign that is not a test set.
+    require_role(CAL_CAMPAIGNS, "calibrate")
+    require_role((HOLDOUT,), "evaluate")
 
     lib = load_residual_library(args.library)
 

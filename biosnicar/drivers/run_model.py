@@ -40,6 +40,10 @@ _ICE_BROADCAST_KEYS = {
 # object and consumed by the thin-slab boundary-condition path.
 _YOUNG_ICE_KEYS = {"ice_thickness", "ocean_albedo"}
 
+# Placement of the refractive (Fresnel) boundary — a column-level scalar:
+# "auto" (default rule), a layer index, or None to remove the interface.
+_FRESNEL_KEYS = {"fresnel_layer"}
+
 # All per-layer ice list attributes (used to resize when nbr_lyr changes)
 _ICE_ALL_LIST_ATTRS = [
     "dz", "layer_type", "cdom", "rho", "rds", "shp", "water",
@@ -136,6 +140,15 @@ def run_model(
             - **cdom** — CDOM flag (0/1, types 1/2 only)
             - **water** — liquid water coating radius (µm, type 0 only)
             - **hex_side**, **hex_length** — hexagonal prism dimensions
+
+            Refractive boundary (adding-doubling solver only):
+
+            - **fresnel_layer** (*"auto" | int | None*) — where the smooth
+              air/medium interface sits.  ``"auto"`` (default) puts it on
+              top of the first solid-ice, sea-ice or melt-pond layer
+              (types 1, 4, 5).  An integer puts it on top of that layer
+              instead; ``None`` removes it.  The medium is water when that
+              layer is a melt pond and ice otherwise.
 
             Sea ice (required when ``layer_type=4``; use ``None`` for
             non-sea-ice layers in the same column):
@@ -354,6 +367,37 @@ def _blend_with_pond(ice_outputs, f, pond_depth, pond_preset_arg,
     return blend_pond_fraction(ice_outputs, pond_outputs, f)
 
 
+# Layer types whose optics include brine: sea ice (4) and young ice (6).
+_BRINE_LAYER_TYPES = {4, 6}
+
+
+def _warn_ignored_brine(ice):
+    """Warn when salinity is given for a layer whose optics carry no brine.
+
+    Only ``layer_type`` 4 and 6 model brine.  Granular (0, 3) and bubbly-ice
+    (1, 2) layers are treated as fresh, so a saline snow cover or a saline
+    weathering crust has no correct representation: the salinity would be
+    accepted and silently dropped.  Drained crust is largely desalinated, so
+    the approximation is usually tolerable — but it should be a stated one.
+    """
+    sal = getattr(ice, "sea_ice_salinity", None) or []
+    ignored = [
+        (i, lt, s) for i, (lt, s) in enumerate(zip(ice.layer_type, sal))
+        if s is not None and float(s) > 0 and lt not in _BRINE_LAYER_TYPES
+    ]
+    if ignored:
+        detail = ", ".join(
+            f"layer {i} (layer_type={lt}, S={s:g} psu)" for i, lt, s in ignored
+        )
+        warnings.warn(
+            f"sea_ice_salinity is ignored for {detail}: only layer_type 4 "
+            "(sea ice) and 6 (young ice) model brine, so these layers are "
+            "computed as fresh ice. Pass None (or 0) for them to state that "
+            "explicitly, or use layer_type=4 for saline ice.",
+            UserWarning, stacklevel=4,
+        )
+
+
 # Alternative ("optical") parameterisations, resolved to canonical model
 # inputs before _apply_overrides sees them.  Keyed by the alias the caller
 # supplies; the value is the canonical key(s) it replaces.
@@ -518,6 +562,10 @@ def _apply_overrides(overrides, ice, illumination, impurities, input_file):
         elif key in _YOUNG_ICE_KEYS:
             setattr(ice, key, float(value))
 
+        # Fresnel-boundary placement (validated by the solver)
+        elif key in _FRESNEL_KEYS:
+            ice.fresnel_layer = value
+
         # Ice broadcast keys
         elif key in _ICE_BROADCAST_KEYS:
             # rds=None is valid for layer_type=4 (sea ice) layers where rds
@@ -561,9 +609,11 @@ def _apply_overrides(overrides, ice, illumination, impurities, input_file):
                 imp_names = sorted(_imp_name_map.keys())
                 raise ValueError(
                     f"Unknown override key {key!r}. Supported: "
-                    f"{sorted(_ILLUMINATION_KEYS | _ICE_BROADCAST_KEYS | _YOUNG_ICE_KEYS)} "
+                    f"{sorted(_ILLUMINATION_KEYS | _ICE_BROADCAST_KEYS | _YOUNG_ICE_KEYS | _FRESNEL_KEYS)} "
                     f"and impurity names {imp_names}."
                 )
+
+    _warn_ignored_brine(ice)
 
     if needs_refractive:
         ice.calculate_refractive_index(input_file)

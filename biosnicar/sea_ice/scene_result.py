@@ -8,9 +8,16 @@ The xarray Dataset is the single internal representation; every export method
 operates on it.  This keeps the retrieval engine swappable: a future
 vectorised inverse network only needs to produce the same Dataset.
 
-Variable naming: retrieved parameters are stored as ``param_<name>`` and
-their 1-sigma uncertainties as ``unc_<name>`` (xarray/NetCDF variable names
-cannot contain ``.``).
+Variable naming: retrieved parameters are stored as ``param_<name>``, their
+1-sigma uncertainties as ``unc_<name>`` and their averaging-kernel diagonals
+as ``akd_<name>`` (xarray/NetCDF variable names cannot contain ``.``).
+
+``akd_<name>`` is the per-pixel information content: 1 = the spectrum
+determined that parameter, 0 = the retrieval returned the prior.  It is
+written only when the retrieval produced averaging kernels (``method="oe"``).
+Consumers reading ``param_<name>`` as a measurement should mask on it --
+``unc_<name>`` alone cannot distinguish a sharp measurement from a narrow
+prior.  See :mod:`biosnicar.inverse.information` for the thresholds.
 
 Requires the ``geo`` optional dependencies::
 
@@ -93,6 +100,7 @@ class SeaIceSceneResult:
             _ok(r) and r.get("prior_resolved") is not None for r in records
         )
         any_dfs = any(_ok(r) and r.get("dfs") is not None for r in records)
+        any_akd = any(_ok(r) and r.get("averaging_kernel_diag") for r in records)
 
         stype = np.full(n, "no_data", dtype="U16")
         code = np.full(n, NO_DATA_CODE, dtype=np.uint8)
@@ -101,6 +109,7 @@ class SeaIceSceneResult:
         qflags = np.zeros(n, dtype=np.uint8)
         params = {p: np.full(n, np.nan, dtype=np.float32) for p in param_names}
         uncs = {p: np.full(n, np.nan, dtype=np.float32) for p in param_names}
+        akds = {p: np.full(n, np.nan, dtype=np.float32) for p in param_names}
         probs = {t: np.full(n, np.nan, dtype=np.float32) for t in prob_types}
         dfs = np.full(n, np.nan, dtype=np.float32)
         # prior_resolved: -1 = not diagnosed, 0 = spectrum agrees, 1 = the
@@ -125,6 +134,9 @@ class SeaIceSceneResult:
             for p, v in r.get("uncertainty", {}).items():
                 if p in uncs and np.isfinite(v):
                     uncs[p][i] = v
+            for p, v in (r.get("averaging_kernel_diag") or {}).items():
+                if p in akds and np.isfinite(v):
+                    akds[p][i] = v
             for t, v in r.get("class_probabilities", {}).items():
                 probs[t][i] = v
             if r.get("dfs") is not None:
@@ -153,6 +165,10 @@ class SeaIceSceneResult:
         for p in param_names:
             data_vars[f"param_{p}"] = (dims, _r(params[p]))
             data_vars[f"unc_{p}"] = (dims, _r(uncs[p]))
+            # Only when the engine produced averaging kernels: an all-NaN
+            # akd_ raster would be indistinguishable from "measured nothing".
+            if any_akd:
+                data_vars[f"akd_{p}"] = (dims, _r(akds[p]))
         for t in prob_types:
             data_vars[f"prob_{t}"] = (dims, _r(probs[t]))
         if any_dfs:
@@ -305,6 +321,23 @@ class SeaIceSceneResult:
                 lines.append(f"  {name:12s} {count:8d}  ({count / n_valid:.1%})")
         flagged = int((self._ds["quality_flags"].values.ravel() != 0).sum())
         lines.append(f"  quality-flagged pixels: {flagged}")
+
+        # Information content, if the engine produced averaging kernels.
+        # Reported scene-wide because a parameter that is prior-dominated
+        # everywhere is a property of the emulator, not of the scene.
+        from biosnicar.inverse import information as _info
+        akd_vars = sorted(v for v in self._ds.data_vars if v.startswith("akd_"))
+        if akd_vars:
+            lines.append("  mean information content (1 = measured, 0 = prior):")
+            for v in akd_vars:
+                a = self._ds[v].values.ravel()
+                a = a[np.isfinite(a)]
+                if a.size == 0:
+                    continue
+                mean_a = float(a.mean())
+                label = _info.classify(mean_a)
+                mark = "  <-- not retrieved" if label == _info.NOT_RETRIEVED else ""
+                lines.append(f"    {v[4:]:28s} {mean_a:6.2f}  {label}{mark}")
         return "\n".join(lines)
 
     def __repr__(self):
