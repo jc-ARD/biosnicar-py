@@ -9,9 +9,11 @@ Every field dataset under ``tests/validation_data/`` has exactly one role:
     it generalises.
 
 ``calibration``
-    Feeds a shipped artifact (today: the forward-model error covariance in
-    ``data/model_error/``).  May be fitted against for that artifact; any
-    number quoted from it is in-sample for the artifact.
+    Feeds a shipped artifact (today: the opt-in field-fitted model-error
+    covariance, ``data/model_error/field_se_v1.npz``).  May be fitted against
+    for that artifact; any number quoted from it is in-sample for the
+    artifact.  The default error budget, ``physics_se_v1.npz``, is computed
+    from the forward model and uses no dataset in any role.
 
 ``test``
     Frozen.  Never used to tune the forward model, an emulator, a prior, a

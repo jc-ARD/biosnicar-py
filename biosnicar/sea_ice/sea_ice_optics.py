@@ -70,6 +70,7 @@ from typing import Tuple
 import numpy as np
 
 import biosnicar
+from biosnicar import perturbation
 from biosnicar.optical_properties.op_lookup import get_lut
 from biosnicar.sea_ice.brine_volume import compute_brine_volume, compute_gas_volume
 from biosnicar.sea_ice.brine_optics import compute_brine_rfidx
@@ -99,6 +100,28 @@ def _load_ice_ri(ri_variant: str = "Pic16") -> np.ndarray:
     n_re = data[f"re_{ri_variant}"]
     n_im = data[f"im_{ri_variant}"]
     return n_re + 1j * n_im
+
+
+_POPULATION_SWITCH = {
+    "brine": "brine_inclusion_scale",
+    "mirabilite": "mirabilite_scale",
+    "hydrohalite": "hydrohalite_scale",
+}
+
+
+def ice_absorption_ratio(blend, alternative="Wrn08", base="Pic16"):
+    """Ratio k'/k of ice absorption when *base* is blended towards
+    *alternative* in log space: ``k' = k_base^(1-blend) * k_alt^blend``.
+
+    Used to carry the disagreement between published absorption spectra of
+    ice through the forward model (see :mod:`biosnicar.perturbation`).
+    """
+    k0 = _load_ice_ri(base).imag
+    k1 = _load_ice_ri(alternative).imag
+    ok = (k0 > 0) & (k1 > 0)
+    ratio = np.ones_like(k0)
+    ratio[ok] = (k1[ok] / k0[ok]) ** float(blend)
+    return ratio
 
 
 def _nearest_lut_radius(radius_um: float, lut) -> int:
@@ -179,9 +202,13 @@ def compute_sea_ice_optics(
     # The brine inside sea ice pockets is at the phase-equilibrium (liquidus)
     # salinity, determined by temperature alone.  Do NOT pass bulk salinity.
     ri_brine = compute_brine_rfidx(temperature_C)
+    ri_brine = ri_brine + perturbation.get("brine_index_offset")
 
     # --- 3. Pure-ice complex RI ---
     ri_ice = _load_ice_ri(ri_variant)
+    blend = perturbation.get("ice_absorption_blend")
+    if blend:
+        ri_ice = ri_ice.real + 1j * ri_ice.imag * ice_absorption_ratio(blend)
 
     # --- 4. Effective ice+brine RI (symmetric Bruggeman rule) ---
     # The rule mixes a *two-phase* condensed medium, so it needs the
@@ -225,6 +252,7 @@ def compute_sea_ice_optics(
     g_bubble = bubbly_lut.get(r_lut, "asm_prm")
 
     sca_bubble = sca_cff_vlm * nu_air   # m^-1
+    g_bubble = 1.0 - perturbation.get("bubble_backscatter_scale") * (1.0 - g_bubble)
 
     # --- 7b. Scattering from brine inclusions and precipitated salts ---
     populations = inclusion_scattering(
@@ -233,7 +261,8 @@ def compute_sea_ice_optics(
     )
     sca_coeff = sca_bubble.copy()
     sca_g = sca_bubble * g_bubble
-    for sigma_i, g_i in populations.values():
+    for name_i, (sigma_i, g_i) in populations.items():
+        sigma_i = sigma_i * perturbation.get(_POPULATION_SWITCH[name_i])
         sca_coeff = sca_coeff + sigma_i
         sca_g = sca_g + sigma_i * g_i
 

@@ -34,6 +34,7 @@ from scipy.ndimage import binary_dilation
 from biosnicar.rt_solvers.smoothing import apply_smoothing_function
 
 from biosnicar.classes.outputs import Outputs
+from biosnicar import perturbation
 
 
 def adding_doubling_solver(tau, ssa, g, L_snw, ice, illumination, model_config):
@@ -609,7 +610,9 @@ def _interface_optics(ice, lyrfrsnl):
     if lyrfrsnl < len(ice.layer_type) and ice.layer_type[lyrfrsnl] == 5:
         return (ice.ref_idx_re_water, ice.ref_idx_im_water,
                 ice.fl_r_dif_a_water, ice.fl_r_dif_b_water)
-    return ice.ref_idx_re, ice.ref_idx_im, ice.fl_r_dif_a, ice.fl_r_dif_b
+    offset = perturbation.get("fresnel_diffuse_offset")
+    r_dif_b = ice.fl_r_dif_b + offset if offset else ice.fl_r_dif_b
+    return ice.ref_idx_re, ice.ref_idx_im, ice.fl_r_dif_a, r_dif_b
 
 
 def calc_reflection_transmission_from_top(

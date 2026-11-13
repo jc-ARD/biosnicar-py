@@ -167,15 +167,17 @@ def retrieve(
         when ``"ssa"`` is in *parameters*.  Falls back to
         ``fixed_params["rho"]``, then the midpoint of the emulator's rho
         training range, then 500.0 kg m-3.
-    model_error : None, True, or ModelErrorCovariance, optional
-        A7 forward-model error term added to the OE measurement covariance
-        (``method="oe"``, spectral mode only). ``True`` loads the shipped
-        field-calibrated covariance; or pass a
-        :class:`~biosnicar.inverse.model_error.ModelErrorCovariance`. Corrects
-        the ~30x spectral-evidence over-counting of a diagonal S_e (field
-        residuals have ~2 effective DOF over 60 VIS bands). Refused in band
-        mode, where measurement error is dominated by atmospheric correction
-        (a separate budget). Default None = instrument-noise-only.
+    model_error : None, True, "field", or ModelErrorCovariance, optional
+        Forward-model error term added to the OE measurement covariance
+        (``method="oe"``).  Pass a
+        :class:`~biosnicar.inverse.model_error.ModelErrorCovariance` — for
+        sea ice, ``PhysicsModelError.load().for_type(name)``, which
+        :func:`biosnicar.sea_ice.retrieve.retrieve_sea_ice` does by default.
+        ``True`` or ``"field"`` loads the shipped field-fitted sea-ice
+        covariance (spectral mode only).  In band mode a physics budget is
+        carried through the band convolution (``W.T @ S @ W``); sensor and
+        atmospheric-correction error are separate and go in
+        *obs_uncertainty*.  Default None = instrument noise only.
 
     Returns
     -------
@@ -508,21 +510,26 @@ def _run_oe(parameters, opt_forward_fn, opt_bounds, opt_x0, observed,
     else:
         sig_e = np.full(y.size, 0.02)   # instrument-noise default 1-sigma
     if model_error is not None:
-        # A7: add the empirical forward-model error covariance (low-rank +
-        # diagonal, calibrated from field residuals — see
-        # biosnicar.inverse.model_error). Field residuals are spectrally
-        # correlated (~2 effective DOF over 60 VIS bands), so a diagonal
-        # S_e over-counts spectral evidence ~30x.
+        # A7: add the forward-model error covariance (low-rank + diagonal;
+        # see biosnicar.inverse.model_error).  Forward-model error is
+        # spectrally correlated, so a diagonal S_e treats a few independent
+        # pieces of evidence as hundreds.
+        from biosnicar.inverse.model_error import (
+            ModelErrorCovariance, measurement_space,
+        )
+        # Bare True keeps its meaning in this generic entry point: the
+        # shipped field-fitted covariance.  (retrieve_sea_ice resolves its
+        # own default, a per-surface-type physics budget, before it gets
+        # here.)
+        M = ModelErrorCovariance.load() if model_error is True else model_error
+        W = None
         if platform is not None:
-            raise ValueError(
-                "model_error is calibrated for spectral mode; band-mode S_e "
-                "is dominated by atmospheric-correction error, a separate "
-                "budget (roadmap B-MS1)."
-            )
-        from biosnicar.inverse.model_error import ModelErrorCovariance
-        M = (model_error if hasattr(model_error, "dense")
-             else ModelErrorCovariance.load())
-        S_e = np.diag(sig_e ** 2) + M.dense(sel)
+            from biosnicar.bands import band_weight_matrix
+            flux = (flux_for(dict(zip(parameters, opt_x0)))
+                    if flux_for is not None else flx_slr)
+            W = band_weight_matrix(platform, observed_band_names, flux)
+        S_e = np.diag(sig_e ** 2) + measurement_space(
+            M, sel, W, band_mode=platform is not None)
     else:
         S_e = sig_e ** 2
 

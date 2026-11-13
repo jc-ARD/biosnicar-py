@@ -19,7 +19,7 @@ The ladder (per surface type, N truth states, fixed geometry, no priors):
 C0→C1 isolates the emulator's own approximation error; C1→C2 adds realistic
 forward-model mismatch at the magnitude actually measured against field spectra
 (biosnicar.inverse.model_error). Each condition is inverted twice — with
-instrument-only S_e and with model_error=True — so the experiment also tests
+instrument-only S_e and with model_error="field" — so the experiment also tests
 whether the A7 covariance keeps the retrieval honest under mismatch (does the
 reduced chi-squared stay sane; do the right things get flagged).
 
@@ -120,7 +120,11 @@ def run(n=30, seed=2027):
         for cond, obs in (("C0_crime", np.clip(crime, 0, 1)),
                           ("C1_surrogate", np.clip(full, 0, 1)),
                           ("C2_model_error", me)):
-            for se_label, me_arg in (("Se_inst", None), ("Se_model", True)):
+            # "field": this experiment draws its mismatch from the
+            # field-fitted covariance and inverts with the same one.  The
+            # physics budget has its own closure test
+            # (physics_budget_closure.py).
+            for se_label, me_arg in (("Se_inst", None), ("Se_model", "field")):
                 # use_priors=False: classify spectrum-only, so the measured
                 # degradation is attributable to forward-model mismatch, not to
                 # seasonal priors (which would independently penalise snow and

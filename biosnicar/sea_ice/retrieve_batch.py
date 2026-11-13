@@ -30,9 +30,10 @@ from biosnicar.inverse.optimize import (
     DEFAULT_BOUNDS, _LOG_SPACE_PARAMS, _from_log, _to_log,
 )
 from biosnicar.inverse.optimal_estimation_batch import optimal_estimation_batch
+from biosnicar.bands import band_weight_matrix as _band_weight_matrix
+from biosnicar.inverse.model_error import resolve as resolve_model_error
 
 _LN10 = np.log(10.0)
-_band_matrix_cache: dict = {}
 
 
 def _predict_batch(model, points, all_names, fixed_extra):
@@ -55,29 +56,21 @@ def _predict_batch(model, points, all_names, fixed_extra):
     ])
 
 
-def _band_weight_matrix(platform, band_names, flx_slr):
-    """(480, k) matrix W such that band_values = albedo @ W.
+def _reference_band_matrix(emu, platform, band_names, shared_fixed):
+    """Band weight matrix at the scene's median illumination.
 
-    Band convolution is linear in albedo, so W[:, b] = to_platform(e_i)[b]
-    over the 480 unit spectra. Built once per (platform, bands, flux) and
-    cached — amortised over all pixels and all fleet emulators.
+    Used to carry the forward-model error covariance into band space.  One
+    matrix serves the whole scene: S_e is shared by every pixel, and the
+    dependence of the band weights on solar zenith is a second-order effect
+    on a covariance.
     """
-    from biosnicar.bands import to_platform
-
-    key = (platform, tuple(band_names), flx_slr.tobytes())
-    W = _band_matrix_cache.get(key)
-    if W is not None:
-        return W
-    nwvl = flx_slr.size
-    W = np.empty((nwvl, len(band_names)))
-    e = np.zeros(nwvl)
-    for i in range(nwvl):
-        e[i] = 1.0
-        br = to_platform(e, platform, flx_slr=flx_slr)
-        W[i, :] = [getattr(br, b) for b in band_names]
-        e[i] = 0.0
-    _band_matrix_cache[key] = W
-    return W
+    solar_flux = getattr(emu, "solar_flux", None)
+    sz, dr = shared_fixed.get("solzen"), shared_fixed.get("direct")
+    if solar_flux is None or sz is None:
+        return _band_weight_matrix(platform, band_names, emu.flx_slr)
+    sz = float(np.median(np.asarray(sz, dtype=float)))
+    dr = 1 if dr is None else int(round(float(np.median(np.asarray(dr, float)))))
+    return _band_weight_matrix(platform, band_names, solar_flux(sz, dr))
 
 
 def _band_operator(emu, platform, band_names, shared_fixed, n_pixels):
@@ -124,7 +117,8 @@ def _band_operator(emu, platform, band_names, shared_fixed, n_pixels):
 
 
 def _emulator_setup(emu, retrieve_params, emu_fixed, emu_reg, obs_uncertainty,
-                    sel, model_error, band_op=None, n_bands=None):
+                    sel, model_error, band_op=None, n_bands=None,
+                    band_matrix=None):
     """Pixel-independent OE inputs for one emulator (mirrors optimize._run_oe).
 
     Returns a dict with the parameter list, log mask, opt-space bounds/x0,
@@ -172,13 +166,10 @@ def _emulator_setup(emu, retrieve_params, emu_fixed, emu_reg, obs_uncertainty,
     else:
         sig_e = np.full(m, 0.02)
     if model_error is not None:
-        if band_op is not None:
-            raise ValueError("model_error is spectral-mode only (band-mode S_e "
-                             "is the atmospheric-correction budget, B-MS1).")
-        from biosnicar.inverse.model_error import ModelErrorCovariance
-        M = (model_error if hasattr(model_error, "dense")
-             else ModelErrorCovariance.load())
-        S_e = np.diag(sig_e ** 2) + M.dense(sel)
+        from biosnicar.inverse.model_error import measurement_space
+        S_e = np.diag(sig_e ** 2) + measurement_space(
+            model_error, sel, band_matrix if band_op is not None else None,
+            band_mode=band_op is not None)
     else:
         S_e = sig_e ** 2
 
@@ -260,10 +251,14 @@ def vectorized_oe_fleet(observed, emulators, emu_regs, shared_fixed,
         # each distinct matrix once.
         band_op = (_band_operator(emu, platform, observed_band_names,
                                   shared_fixed, N) if band_mode else None)
+        me = resolve_model_error(model_error, name)
         setup = _emulator_setup(
             emu, params, emu_fixed, emu_regs[name], obs_uncertainty, sel,
-            model_error, band_op=band_op,
+            me, band_op=band_op,
             n_bands=len(observed_band_names) if band_mode else None,
+            band_matrix=(_reference_band_matrix(
+                emu, platform, observed_band_names, shared_fixed)
+                if band_mode and me is not None else None),
         )
         batch = optimal_estimation_batch(
             setup["forward"], Y, setup["x_a"], setup["S_a"], setup["S_e"],

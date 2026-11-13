@@ -1,5 +1,19 @@
 """Forward-model error covariance for OE retrievals (roadmap A7).
 
+Two budgets live here, in the same low-rank + diagonal container:
+
+* **physics** (the default, :class:`PhysicsModelError`,
+  ``data/model_error/physics_se_v1.npz``) — one covariance per surface type,
+  computed by propagating the uncertainty of everything the forward model
+  holds fixed (:mod:`biosnicar.inverse.forward_uncertainty`).  Nothing in it
+  is fitted to measurements; it is a lower bound, complete only as far as
+  the list of uncertain inputs is.
+* **field** (opt-in, ``data/model_error/field_se_v1.npz``) — one covariance
+  for all types, fitted to post-fit residuals against field spectra.  It
+  sees every source of misfit, including the field measurements' own error,
+  and it tightens when the model is made more flexible whether or not the
+  model got better.  The rest of this docstring describes it.
+
 The OE measurement covariance ``S_e`` was instrument-noise-only (diagonal,
 default 0.02), which treats every band as an independent piece of evidence.
 The field-residual library (``tests/validation_data/build_residual_library.py``)
@@ -50,6 +64,9 @@ MODEL_ERROR_VERSION = 1
 DEFAULT_ARTIFACT = str(
     Path(biosnicar.DATA_DIR) / "model_error" / "field_se_v1.npz"
 )
+PHYSICS_ARTIFACT = str(
+    Path(biosnicar.DATA_DIR) / "model_error" / "physics_se_v1.npz"
+)
 
 # Minimum per-band model-error floor, 1-sigma 0.005. Well below the observed
 # correct-model residual median (~0.018, A7 step 1) so it never inflates the
@@ -83,6 +100,45 @@ class ModelErrorCovariance:
         ev = np.clip(ev, 0, None)
         return float(ev.sum() ** 2 / (ev**2).sum())
 
+    @classmethod
+    def from_dense(cls, S, max_rank=40, energy=0.999, meta=None):
+        """Low-rank + diagonal form of a dense (480, 480) covariance.
+
+        Keeps the leading eigenvectors that together hold *energy* of the
+        trace (at most *max_rank*); what they leave on the diagonal stays as
+        per-band variance, so every band's total variance is preserved and
+        only weak off-diagonal structure is dropped.
+        """
+        S = np.asarray(S, dtype=float)
+        S = 0.5 * (S + S.T)
+        w, V = np.linalg.eigh(S)
+        order = np.argsort(w)[::-1]
+        w, V = np.clip(w[order], 0.0, None), V[:, order]
+        total = w.sum()
+        if total > 0:
+            k = int(np.searchsorted(np.cumsum(w) / total, energy) + 1)
+            k = max(1, min(k, max_rank))
+        else:
+            k = 0
+        basis = V[:, :k].T
+        var = w[:k]
+        captured = (basis.T ** 2) @ var if k else np.zeros(S.shape[0])
+        diag = np.clip(np.diag(S) - captured, 0.0, None)
+        m = dict(meta or {})
+        m.setdefault("source", "physics")
+        m.update(n_eofs=int(k), fit="eigen-truncation",
+                 trace_captured=float(var.sum() / total) if total > 0 else 1.0,
+                 version=MODEL_ERROR_VERSION)
+        return cls(eof_basis=basis, eof_var=var, diag_var=diag,
+                   domain=np.diag(S) > 0, meta=m)
+
+    def sigma(self, mask=None):
+        """Per-band one-sigma of the model error (square root of the
+        diagonal of the full covariance)."""
+        var = (self.eof_basis.T ** 2) @ self.eof_var + self.diag_var
+        sig = np.sqrt(var)
+        return sig if mask is None else sig[np.asarray(mask, dtype=bool)]
+
     def save(self, path):
         np.savez_compressed(
             path,
@@ -114,6 +170,133 @@ class ModelErrorCovariance:
 
 
 _LOAD_CACHE: dict = {}
+
+
+@dataclass
+class PhysicsModelError:
+    """Per-surface-type forward-model error from propagated input uncertainty.
+
+    Built by :func:`biosnicar.inverse.forward_uncertainty.build_physics_model_error`.
+
+    Attributes
+    ----------
+    by_type : dict
+        ``{surface_type: ModelErrorCovariance}``.
+    factor_names : list of str
+        The uncertain inputs, in the order of ``factor_var``'s first axis.
+    factor_var : dict
+        ``{surface_type: (n_factors, 480) array}`` — each input's
+        contribution to the per-band variance.  The rows sum to the diagonal
+        of that type's covariance.
+    meta : dict
+        Includes ``factors``: every input with its range, basis and source.
+    """
+
+    by_type: dict
+    factor_names: list
+    factor_var: dict
+    meta: dict
+
+    def for_type(self, surface_type):
+        """Covariance for *surface_type*."""
+        try:
+            return self.by_type[surface_type]
+        except KeyError:
+            raise KeyError(
+                f"no physics error budget for surface type {surface_type!r}; "
+                f"available: {sorted(self.by_type)}"
+            ) from None
+
+    def budget(self, surface_type, mask=None):
+        """Each input's RMS one-sigma contribution over the masked bands.
+
+        Returns ``{factor: sigma}`` sorted largest first; the last entry,
+        ``"total"``, is the root-sum-square.  This is the answer to "which
+        assumption costs the most?" for that surface type.
+        """
+        fv = self.factor_var[surface_type]
+        sel = (np.ones(fv.shape[1], dtype=bool) if mask is None
+               else np.asarray(mask, dtype=bool))
+        rms = np.sqrt(fv[:, sel].mean(axis=1))
+        out = dict(sorted(zip(self.factor_names, rms.tolist()),
+                          key=lambda kv: -kv[1]))
+        out["total"] = float(np.sqrt(fv[:, sel].sum(axis=0).mean()))
+        return out
+
+    def save(self, path):
+        arrays = dict(version=np.array(MODEL_ERROR_VERSION),
+                      types=np.array(list(self.by_type)),
+                      factor_names=np.array(self.factor_names),
+                      meta=np.array(_meta_to_json(self.meta)))
+        for name, m in self.by_type.items():
+            arrays[f"{name}__eof_basis"] = m.eof_basis.astype(np.float32)
+            arrays[f"{name}__eof_var"] = m.eof_var.astype(np.float64)
+            arrays[f"{name}__diag_var"] = m.diag_var.astype(np.float64)
+            arrays[f"{name}__domain"] = m.domain.astype(bool)
+            arrays[f"{name}__meta"] = np.array(_meta_to_json(m.meta))
+            arrays[f"{name}__factor_var"] = self.factor_var[name].astype(np.float32)
+        np.savez_compressed(path, **arrays)
+
+    @classmethod
+    def load(cls, path=None):
+        import json
+        path = str(path or PHYSICS_ARTIFACT)
+        cached = _LOAD_CACHE.get(path)
+        if cached is not None:
+            return cached
+        data = np.load(path, allow_pickle=False)
+        by_type, factor_var = {}, {}
+        for name in [str(t) for t in data["types"]]:
+            by_type[name] = ModelErrorCovariance(
+                eof_basis=np.asarray(data[f"{name}__eof_basis"], dtype=float),
+                eof_var=np.asarray(data[f"{name}__eof_var"], dtype=float),
+                diag_var=np.asarray(data[f"{name}__diag_var"], dtype=float),
+                domain=np.asarray(data[f"{name}__domain"], dtype=bool),
+                meta=json.loads(str(data[f"{name}__meta"])),
+            )
+            factor_var[name] = np.asarray(data[f"{name}__factor_var"],
+                                          dtype=float)
+        model = cls(by_type=by_type,
+                    factor_names=[str(n) for n in data["factor_names"]],
+                    factor_var=factor_var,
+                    meta=json.loads(str(data["meta"])))
+        _LOAD_CACHE[path] = model
+        return model
+
+
+def resolve(model_error, surface_type=None):
+    """Turn a ``model_error`` argument into a covariance, or ``None``.
+
+    ``None`` -> ``None``; ``True`` / ``"physics"`` -> the shipped physics
+    budget; ``"field"`` -> the shipped field-fitted covariance; an object is
+    passed through.  A per-type budget is narrowed to *surface_type* when
+    one is given.
+    """
+    if model_error is None or model_error is False:
+        return None
+    if model_error is True or (isinstance(model_error, str)
+                               and model_error == "physics"):
+        model_error = PhysicsModelError.load()
+    elif isinstance(model_error, str):
+        if model_error != "field":
+            raise ValueError(
+                f"model_error={model_error!r}; expected 'auto', 'physics', "
+                "'field', True, None or a covariance object."
+            )
+        model_error = ModelErrorCovariance.load()
+    if surface_type is not None and hasattr(model_error, "for_type"):
+        if surface_type not in model_error.by_type:
+            # A caller-supplied emulator the budget was never evaluated for.
+            import warnings
+            warnings.warn(
+                f"no forward-model error budget for {surface_type!r}: its "
+                "retrieval uses instrument noise only, so its uncertainties "
+                "and evidence are not comparable with the other types'.",
+                stacklevel=2,
+            )
+            return None
+        return model_error.for_type(surface_type)
+    return model_error
 
 
 def _meta_to_json(meta):
@@ -271,3 +454,36 @@ def fit_model_error_gap_tolerant(residuals, masks, n_eofs=3, min_band_rows=20,
              version=MODEL_ERROR_VERSION)
     return ModelErrorCovariance(eof_basis=eof_basis, eof_var=eof_var,
                                 diag_var=diag_var, domain=domain, meta=m)
+
+
+def measurement_space(model_error, sel, band_matrix=None, band_mode=False):
+    """Model-error covariance in the space the retrieval measures in.
+
+    Spectral mode: the covariance restricted to the bands in *sel*.  Band
+    mode: ``W.T @ S @ W`` with *band_matrix* ``W`` of shape (480, k) — exact,
+    because band convolution is linear.
+
+    Only a physics budget is carried into band space.  The field-fitted
+    covariance contains the error of the field spectrometers it was fitted
+    to, which is not an error of the forward model and not the satellite's
+    either, so in band mode it is refused.
+    """
+    M = resolve(model_error)
+    if not hasattr(M, "dense"):
+        raise ValueError(
+            "model_error is a per-surface-type budget; pass the covariance "
+            "for one type (PhysicsModelError.for_type(name)). "
+            "retrieve_sea_ice does this for you."
+        )
+    if not band_mode:
+        return M.dense(sel)
+    if M.meta.get("source") != "physics":
+        raise ValueError(
+            "model_error: the field-fitted covariance is spectral-mode only "
+            "(it carries field-spectrometer error). Band mode takes the "
+            "physics budget: model_error='physics'."
+        )
+    if band_matrix is None:
+        raise ValueError("model_error in band mode needs the band matrix.")
+    W = np.asarray(band_matrix, dtype=float)
+    return W.T @ M.dense(np.ones(W.shape[0], dtype=bool)) @ W

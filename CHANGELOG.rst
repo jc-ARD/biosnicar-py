@@ -11,6 +11,44 @@ Unreleased
 Added
 ~~~~~
 
+- **A forward-model error budget computed from the physics.**  New module
+  :mod:`biosnicar.inverse.forward_uncertainty` lists every input the forward
+  model holds fixed during a retrieval — the column under the retrieved
+  layer, microstructure constants, optical data, illumination — with a
+  one-sigma range and its source, and propagates each to the spectrum
+  (``K_b S_b K_b^T``, Rodgers 2000), per surface type.  The result ships as
+  ``data/model_error/physics_se_v1.npz``
+  (``scripts/build_physics_model_error.py``; no field data is read) and is
+  loaded by :class:`biosnicar.inverse.model_error.PhysicsModelError`, whose
+  ``budget(surface_type)`` says what each assumption costs.  Visible-band
+  totals are 0.02-0.05 albedo; the largest terms are the fixed drained-layer
+  thickness and densities, not the optical constants.  Checked by a closure
+  test (``tests/validation_data/physics_budget_closure.py``): on spectra
+  generated with every input wrong by its stated range, 91-100% of true
+  values fall within two reported sigma (55-92% with instrument noise
+  alone) and the reduced chi-squared is 0.96-1.01.  It is a lower bound:
+  physics the model lacks contributes nothing, and
+  ``tests/validation_data/physics_budget_vs_field.py`` shows field misfits
+  inside it at 400-700 nm and 2.5-7.5 times outside it beyond 1000 nm on
+  bare ice.
+
+- **``biosnicar.perturbation``** — switches for forward-model assumptions
+  (ice absorption dataset, brine refractive index, inclusion and salt
+  scattering, bubble asymmetry, the interface table, pond-water absorption,
+  young-ice scattering, ocean reflectance).  ``with
+  perturbation.perturbed(...)`` runs the model with them moved; outside the
+  block the model is unchanged.
+
+- **Fixed inputs of the emulator transforms are explicit.**  Each surface
+  type's config has a ``fixed`` dict (layer thicknesses, densities, salinity
+  scale, bubble ratios, grain shape) and its ``transform_fn`` accepts
+  ``fixed={...}`` overrides.  Defaults reproduce the previous transforms
+  exactly; the emulators are unchanged.
+
+- **Band mode carries the forward-model error.**  A physics budget is
+  projected through the band convolution (``W^T S W``;
+  ``biosnicar.bands.band_weight_matrix``) in both OE engines.
+
 - **Brine inclusions and precipitated salts scatter light.**  Sea-ice
   scattering came from air bubbles alone; brine entered only as an absorber.
   New module :mod:`biosnicar.sea_ice.inclusion_scattering` adds scattering by
@@ -214,6 +252,18 @@ Fixed
 
 Changed
 ~~~~~~~
+
+- **``method="oe"`` now defaults to the physics error budget**, in spectral
+  and band mode (``model_error="auto"``).  It was the covariance fitted to
+  field residuals, spectral mode only.  That covariance tightened whenever
+  the model was made more flexible, and it contained the field instruments'
+  own error; it remains available as ``model_error="field"``.
+  ``model_error=True`` in :func:`retrieve_sea_ice` now means the physics
+  budget; in the generic :func:`biosnicar.inverse.optimize.retrieve`, which
+  has no surface type, it still means the field-fitted one.  Posterior
+  uncertainties, averaging kernels and class probabilities from OE change;
+  the default method (L-BFGS-B) is unaffected.  An emulator with no budget
+  falls back to instrument noise with a warning.
 - **The sea-ice LUT and the whole sea-ice emulator fleet are rebuilt** for
   the changes above.  The LUT temperature axis now has 14 nodes from -1 to
   -30 °C, placed on the points where the physics changes slope, and is

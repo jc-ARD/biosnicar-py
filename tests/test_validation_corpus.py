@@ -82,3 +82,12 @@ def test_shipped_model_error_is_not_calibrated_on_the_test_set(manifest):
     from biosnicar.inverse.model_error import ModelErrorCovariance
     meta = ModelErrorCovariance.load().meta
     corpus.require_role(meta["calibration_campaigns"], "calibrate", manifest)
+
+
+def test_default_model_error_uses_no_field_data():
+    """The default error budget is computed from the forward model alone, so
+    there is no campaign it could have been fitted to."""
+    from biosnicar.inverse.model_error import PhysicsModelError
+    meta = PhysicsModelError.load().meta
+    assert meta["source"] == "physics"
+    assert not any("campaign" in k for k in meta)
