@@ -65,6 +65,11 @@ class Illumination:
 
     Attributes:
         direct: Boolean toggling between direct and diffuse irradiance
+        diffuse_fraction: diffuse part of a clear sky's irradiance — None
+            (pure direct beam), "clear_sky" (modelled, see biosnicar.sky),
+            a number or a 480-band array.  Ignored when ``direct`` is 0.
+        regional_albedo: albedo of the surroundings assumed by "clear_sky"
+            (light reflected back down by the atmosphere); default 0.8.
         solzen: solar zenith angle in degrees from the vertical
         incoming: choice of spectral distribution from file 0-6
         stubs: array of stub strings for selecting irradiance files
@@ -75,6 +80,10 @@ class Illumination:
         inputs = load_inputs(input_file)
 
         self.direct = inputs["RTM"]["DIRECT"]
+        self.diffuse_fraction = inputs["RTM"].get("DIFFUSE_FRACTION")
+        from biosnicar.sky import DEFAULT_REGIONAL_ALBEDO
+        self.regional_albedo = inputs["RTM"].get(
+            "REGIONAL_ALBEDO", DEFAULT_REGIONAL_ALBEDO)
         self.solzen = inputs["RTM"]["SOLZEN"]
         self.incoming = inputs["RTM"]["INCOMING"]
         self.stubs = inputs["PATHS"]["ILLUMINATION_FILE_STUBS"]
@@ -112,8 +121,24 @@ class Illumination:
         out = flx_slr / (self.mu_not * np.pi)
 
         if self.direct:
-            self.Fs = out
-            self.Fd = np.zeros(self.nbr_wvl)
+            from biosnicar.sky import (
+                DEFAULT_REGIONAL_ALBEDO, resolve_diffuse_fraction,
+            )
+
+            frac = resolve_diffuse_fraction(
+                getattr(self, "diffuse_fraction", None), self.solzen,
+                getattr(self, "regional_albedo", DEFAULT_REGIONAL_ALBEDO))
+            if frac is None:
+                self.Fs = out
+                self.Fd = np.zeros(self.nbr_wvl)
+            else:
+                # A clear sky with its scattered part.  The solvers take the
+                # incident flux as  mu0*pi*Fs  (beam) +  Fd  (diffuse), so
+                # this splits flx_slr between the two and leaves the total
+                # where it was.
+                frac = np.broadcast_to(frac, (self.nbr_wvl,))
+                self.Fs = (1.0 - frac) * out
+                self.Fd = frac * flx_slr
         else:
             self.Fd = out
             self.Fs = np.zeros(self.nbr_wvl)

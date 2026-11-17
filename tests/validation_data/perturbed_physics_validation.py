@@ -78,7 +78,9 @@ def _truth_params(cfg, n, rng):
 def _full_model_spectrum(cfg, p):
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        return np.asarray(run_model(**cfg["transform_fn"](p)).albedo, dtype=float)
+        return np.asarray(run_model(
+            diffuse_fraction="clear_sky", **cfg["transform_fn"](p)).albedo,
+            dtype=float)
 
 
 def _r2(truth, pred):

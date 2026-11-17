@@ -91,7 +91,8 @@ def forward(stype, truth):
     if stype == "open_water":
         return OpenWaterModel().predict(**truth)
     cfg = SEA_ICE_EMULATOR_CONFIGS[stype]
-    return np.asarray(run_model(**cfg["transform_fn"](truth)).albedo)
+    return np.asarray(run_model(
+        diffuse_fraction="clear_sky", **cfg["transform_fn"](truth)).albedo)
 
 
 def run_retrievals(n, noise, rng, fleet):

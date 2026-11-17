@@ -8,8 +8,7 @@ exactly.  For each surface type:
 
 1. draw a true state across the parameter box;
 2. draw every fixed input from its stated distribution, all at once, and run
-   the full forward model there — the physics, not the lookup table, with a
-   clear sky that has its diffuse component;
+   the full forward model there — the physics, not the lookup table;
 3. add instrument noise;
 4. retrieve with the emulator at the neutral physics, the way a user would;
 5. compare the error of every retrieved parameter with the uncertainty the
@@ -61,6 +60,7 @@ from biosnicar.sea_ice.emulator_configs import (  # noqa: E402
     BAND_MASKS, SEA_ICE_EMULATOR_CONFIGS, load_sea_ice_emulators,
     trained_emulator_names,
 )
+from biosnicar.sky import mixed_sky  # noqa: E402
 
 WVL = fu.WAVELENGTHS_UM
 
@@ -93,13 +93,7 @@ def draw_truth(type_name, params, rng):
             fixed[f.key] = value
         else:
             p[f.key] = int(round(np.clip(value, 1, 89)))
-    y = fu.forward(type_name, p, fixed=fixed or None, **switches)
-    if int(p.get("direct", 1)) == 1:
-        frac = fu.clear_sky_diffuse_fraction(p["solzen"])
-        y_dif = fu.forward(type_name, dict(p, direct=0), fixed=fixed or None,
-                           **switches)
-        y = (1.0 - frac) * y + frac * y_dif
-    return y
+    return fu.forward(type_name, p, fixed=fixed or None, **switches)
 
 
 def _mask(type_name):
@@ -120,7 +114,8 @@ def run_type(type_name, emu, budget, n, sigma_inst, seed):
             y = y + rng.normal(0.0, sigma_inst, y.size)
             for label, me in (("instrument", None), ("physics", budget)):
                 r = retrieve(
-                    observed=y, parameters=free, emulator=emu, method="oe",
+                    observed=y, parameters=free, emulator=mixed_sky(emu),
+                    method="oe",
                     obs_uncertainty=np.full(480, sigma_inst),
                     wavelength_mask=mask, model_error=me,
                     fixed_params={"solzen": p["solzen"], "direct": p["direct"]},

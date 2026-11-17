@@ -311,7 +311,10 @@ from biosnicar.sea_ice.emulator_configs import (
 )
 from biosnicar.sea_ice.brine_volume import compute_brine_volume, invert_brine_volume
 
-si_emus = load_sea_ice_emulators()
+# A clear sky is a beam plus scattered light (biosnicar.sky): generate the
+# observation under that sky, and give plain retrieve() the same one.
+from biosnicar.sky import mixed_sky_fleet
+si_emus = mixed_sky_fleet(load_sea_ice_emulators())
 
 # Seeded random test parameters — non-round values that demonstrably
 # cannot coincide with "convenient" training samples.
@@ -334,7 +337,7 @@ def _si_fwd(type_name, params, solzen=60, direct=1):
     run_kw = SEA_ICE_EMULATOR_CONFIGS[type_name]["transform_fn"](
         {**params, "solzen": solzen, "direct": direct}
     )
-    return np.array(run_model(**run_kw).albedo)
+    return np.array(run_model(diffuse_fraction="clear_sky", **run_kw).albedo)
 
 # ── Example SI-1: FYI bare ice — brine volume + bubble radius ──────────────
 #

@@ -34,8 +34,11 @@ for d_cm in (1, 3, 8, 12, 25):
                     ocean_albedo=0.04, solzen=60, direct=1)
     print(f"  {d_cm:3d} cm  BBA = {out.BBA:.3f}")
 
+# Observations are generated under a real clear sky — a beam plus scattered
+# light (diffuse_fraction="clear_sky") — which is what retrieve_sea_ice assumes.
 obs = run_model(layer_type=6, ice_thickness=0.08, sea_ice_temperature=-8,
-                sea_ice_salinity=25, ocean_albedo=0.04, solzen=70, direct=1)
+                sea_ice_salinity=25, ocean_albedo=0.04, solzen=70, direct=1,
+                diffuse_fraction="clear_sky")
 noisy = np.clip(np.asarray(obs.albedo) + rng.normal(0, NOISE, 480), 0, 1)
 
 # known_month=11: freeze-up — young ice is a candidate and gets a thin-ice prior
@@ -51,8 +54,9 @@ print(f"  SIGRID-3: {result.to_sigrid3().full_code}")
 print("\n" + "=" * 70)
 print("2. Open water — analytical model, no training data")
 print("=" * 70)
-ow = OpenWaterModel()
-water = np.clip(ow.predict(solzen=60, wind_speed_ms=6.0)
+from biosnicar.sky import mixed_sky
+ow = mixed_sky(OpenWaterModel())
+water = np.clip(ow.predict(solzen=60, wind_speed_ms=6.0, direct=1)
                 + rng.normal(0, NOISE, 480), 0, 1)
 result = retrieve_sea_ice(observed=water, solzen=60, direct=1, known_month=9)
 print(f"  classified: {result.surface_type}  (confidence {result.confidence:.2f})")
@@ -85,11 +89,13 @@ pond = run_model(layer_type=[5, 4, 4], dz=[0.25, 0.05, 1.40],
                  rds=[500, 500, 500], rho=[1000, 850, 910],
                  sea_ice_salinity=[None, 8, 6], sea_ice_temperature=[None, -4, -4],
                  sea_ice_bubble_radius=[None, 200, 500],
-                 black_carbon=[0, 100, 0], solzen=60, direct=1)
+                 black_carbon=[0, 100, 0], solzen=60, direct=1,
+                 diffuse_fraction="clear_sky")
 # Regenerate the young-ice pixel at the scene's solzen (observations and
 # the fixed retrieval geometry must match).
 yi60 = run_model(layer_type=6, ice_thickness=0.08, sea_ice_temperature=-8,
-                 sea_ice_salinity=25, ocean_albedo=0.04, solzen=60, direct=1)
+                 sea_ice_salinity=25, ocean_albedo=0.04, solzen=60, direct=1,
+                 diffuse_fraction="clear_sky")
 yi_pixel = np.clip(np.asarray(yi60.albedo) + rng.normal(0, NOISE, 480), 0, 1)
 pixels = np.array([
     water, np.clip(np.asarray(pond.albedo) + rng.normal(0, NOISE, 480), 0, 1),

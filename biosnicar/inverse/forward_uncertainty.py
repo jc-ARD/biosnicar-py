@@ -24,7 +24,8 @@ diagonal (the factors are taken as independent).  Two terms that are not
 parameter uncertainty but are also errors of the forward model as it is
 actually used are added as realised differences: the emulator against the
 model it emulates, and the sea-ice optics table against the physics it
-tabulates.
+tabulates.  The forward model here is the one the retrievals use: under a
+clear sky, a direct beam plus its modelled diffuse part (:mod:`biosnicar.sky`).
 
 What this does and does not contain
 -----------------------------------
@@ -222,18 +223,22 @@ FACTORS = (
         "Angle between sun and surface normal: surface slope and roughness.",
         "judgement",
     ),
+    Factor(
+        "diffuse_sky_fraction", "physics", "diffuse_fraction_scale",
+        "multiplicative", 1.3,
+        "Diffuse fraction of a clear sky (biosnicar.sky): aerosol optical "
+        "depth 0.02-0.15 moves it by about this much at 500 nm, and the "
+        "albedo of the surroundings (assumed 0.8; anything from open water "
+        "to fresh snow) moves it by up to 25% in the blue.",
+        "Tomasi et al. 2015 (Earth-Sci. Rev. 140:108); Hansen & Travis 1974",
+    ),
 )
 
 # Realised (not perturbed) terms, appended after FACTORS in every budget.
-DIFFUSE = "diffuse_sky_fraction"
 LUT = "optics_table_interpolation"
 EMULATOR = "emulator"
-REALISED = (DIFFUSE, LUT, EMULATOR)
+REALISED = (LUT, EMULATOR)
 REALISED_BASIS = {
-    DIFFUSE: "Clear sky is modelled as a pure direct beam. The diffuse part "
-             "of a clear Arctic sky (Rayleigh + background aerosol, single "
-             "scattering) is neglected; the term is that fraction times the "
-             "difference between diffuse-sky and direct-beam albedo.",
     LUT: "Sea-ice layer optics are interpolated from a table; the term is "
          "the table against the physics it was built from.",
     EMULATOR: "The neural-network emulator against the forward model.",
@@ -256,28 +261,6 @@ def factor_table():
     return table
 
 
-def clear_sky_diffuse_fraction(solzen_deg, wavelengths_um=WAVELENGTHS_UM,
-                               aod_500=0.05, angstrom=1.3):
-    """Diffuse fraction of downwelling irradiance under a clear sky.
-
-    Single scattering, no gas absorption, black surface.  Rayleigh optical
-    depth from Hansen & Travis (1974); aerosol optical depth
-    ``aod_500 * (lambda / 0.5)^-angstrom`` with a background-Arctic default
-    (Tomasi et al. 2015).  Half of the Rayleigh-scattered and 85% of the
-    aerosol-scattered light continues downward.  Reflection between a bright
-    surface and the sky is ignored, which makes this a low estimate over
-    snow.
-    """
-    lam = np.asarray(wavelengths_um, dtype=float)
-    mu0 = max(np.cos(np.radians(float(solzen_deg))), 0.05)
-    tau_r = 0.008569 * lam ** -4 * (1 + 0.0113 * lam ** -2 + 0.00013 * lam ** -4)
-    tau_a = aod_500 * (lam / 0.5) ** -angstrom
-    tau = tau_r + tau_a
-    t_dir = np.exp(-tau / mu0)
-    down = (1.0 - t_dir) * (0.5 * tau_r + 0.85 * tau_a) / tau
-    return down / (down + t_dir)
-
-
 # ── forward model at a perturbed b ───────────────────────────────────────
 
 def _config(type_name):
@@ -292,22 +275,28 @@ def forward(type_name, params, fixed=None, **switches):
     """480-band albedo of *type_name* at state *params* and perturbed ``b``.
 
     *fixed* overrides entries of the type's fixed-input dict; *switches* are
-    :mod:`biosnicar.perturbation` switches.
+    :mod:`biosnicar.perturbation` switches.  A clear sky (``direct=1``) is a
+    beam plus its modelled diffuse part, as in the retrievals.
     """
+    from biosnicar.sky import CLEAR_SKY, mixed_sky
+
     cfg = _config(type_name)
     with perturbation.perturbed(**switches), warnings.catch_warnings():
         warnings.simplefilter("ignore")
         if "transform_fn" in cfg:
             from biosnicar.drivers.run_model import run_model
             kwargs = cfg["transform_fn"](dict(params), fixed=fixed)
-            return np.asarray(run_model(**kwargs).albedo, dtype=float)
+            return np.asarray(
+                run_model(diffuse_fraction=CLEAR_SKY, **kwargs).albedo,
+                dtype=float)
         if fixed:
             raise KeyError(f"{type_name} has no fixed inputs")
         model = _ANALYTICAL.get(type_name)
         if model is None:
             from importlib import import_module
             mod, cls = cfg["model_factory"].split(":")
-            model = _ANALYTICAL[type_name] = getattr(import_module(mod), cls)()
+            model = _ANALYTICAL[type_name] = mixed_sky(
+                getattr(import_module(mod), cls)())
         return np.asarray(model.predict(**params), dtype=float)
 
 
@@ -415,19 +404,13 @@ def state_deltas(type_name, params, emulator=None):
     for f in applicable_factors(type_name):
         out[f.name] = factor_delta(type_name, params, f, baseline=base_direct)
 
-    # Clear sky modelled as a pure beam.
-    if int(params.get("direct", 1)) == 1:
-        p_dif = dict(params, direct=0)
-        frac = clear_sky_diffuse_fraction(params["solzen"])
-        out[DIFFUSE] = frac * (
-            forward(type_name, p_dif, sea_ice_direct=True) - base_direct)
-
     # The model as shipped (table lookup) against the physics.
     base_lut = forward(type_name, params)
     out[LUT] = base_lut - base_direct
 
     if emulator is not None and hasattr(emulator, "_forward_pass"):
-        pred = np.asarray(emulator.predict(
+        from biosnicar.sky import mixed_sky
+        pred = np.asarray(mixed_sky(emulator).predict(
             **{k: params[k] for k in emulator.param_names}), dtype=float)
         out[EMULATOR] = pred - base_lut
     return out

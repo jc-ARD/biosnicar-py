@@ -123,6 +123,39 @@ Include at least VIS + NIR bands; a SWIR band (S2 B11, L8 B6) helps
 discriminate snow from bare ice — the per-type classification band masks
 ensure SWIR is only *used* for the types it helps (see §4.2).
 
+### 2.2a Clear skies are not a pure beam
+
+`direct=1` means a clear sky, and a clear sky is a direct beam **plus**
+scattered light from the whole hemisphere — about 30% of the irradiance at
+500 nm and 55% at 400 nm with the sun 30° up over snow-covered ice, most of
+the blue light when it is 10° up, and almost none beyond 1.5 µm. Albedo depends on the angle of
+incidence, so this matters: at a solar zenith of 78° the visible albedo of
+every surface type is about 0.04–0.06 lower than a pure beam would give, and
+0.15 lower at 400 nm on a pond.
+
+`retrieve_sea_ice` accounts for it by default (`diffuse_fraction="clear_sky"`).
+Each emulator's direct-beam and diffuse-sky predictions are blended by the
+diffuse fraction, which is exact — radiative transfer is linear in the
+incident light — and needs no retraining.
+
+```python
+retrieve_sea_ice(obs, solzen=75, direct=1)                        # modelled clear sky
+retrieve_sea_ice(obs, solzen=75, direct=1, diffuse_fraction=f)    # measured: number or 480-band array
+retrieve_sea_ice(obs, solzen=75, direct=1, diffuse_fraction=None) # pure beam (pre-2026-11 behaviour)
+retrieve_sea_ice(obs, solzen=75, direct=1, regional_albedo=0.1)   # dark surroundings (open water, ponds)
+```
+
+The model (`biosnicar.sky.clear_sky_diffuse_fraction`) is single scattering
+by molecules and a background Arctic aerosol, plus light the surroundings
+reflect and the atmosphere scatters back down. That last part depends on the
+albedo of the scene around the target, `regional_albedo`, default 0.8 for
+snow-covered ice; lower it for a scene that is mostly water. Pass a measured fraction where
+you have one — a sky radiometer, or the diffuse fraction an atmospheric
+correction reports. The forward model takes the same argument
+(`run_model(..., diffuse_fraction="clear_sky")`; default `None`, a pure beam),
+and to give a single emulator the same sky outside `retrieve_sea_ice`, wrap
+it: `biosnicar.sky.mixed_sky(emulator)`.
+
 ### 2.3 Whole scenes (batch + spatial export)
 
 Requires the geo extras: `pip install biosnicar[geo]`.
@@ -297,8 +330,8 @@ comparable to or faster than L-BFGS-B per pixel. Worked demonstration:
 > surface type, in spectral and band mode alike
 > (`biosnicar.inverse.forward_uncertainty`; `sea_ice_validation.md` §17).
 > Nothing in it is fitted to field data. On spectra generated with those
-> inputs deliberately wrong by their stated ranges, 91–100% of true values
-> fall within two reported sigma (55–92% with instrument noise alone).
+> inputs deliberately wrong by their stated ranges, 90–100% of true values
+> fall within two reported sigma (57–84% with instrument noise alone).
 >
 > It is a **lower bound**. It contains what is on the list and nothing else:
 > physics the model lacks adds no variance, and beyond 1000 nm on bare and
